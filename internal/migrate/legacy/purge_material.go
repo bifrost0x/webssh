@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/bifrost0x/webssh/internal/keyring"
@@ -110,12 +109,4 @@ func copyOnce(src, dst string) error {
 		}
 	}
 	return copyVerified(src, dst)
-}
-
-// syncFile syncs an opened directory; Windows cannot sync a directory.
-func syncFile(f *os.File) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-	return f.Sync()
 }

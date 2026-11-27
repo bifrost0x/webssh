@@ -1,5 +1,3 @@
-//go:build !windows
-
 package legacy
 
 import (
@@ -132,7 +130,3 @@ func fileIdentity(info os.FileInfo) uint64 {
 	}
 	return 0
 }
-
-// errProbeUnsupported reports a probe this platform does not have. Every
-// probe exists on Unix.
-var errProbeUnsupported = errors.New("legacy: lock probe not available on this platform")

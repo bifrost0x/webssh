@@ -13,7 +13,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 
 	"github.com/bifrost0x/webssh/internal/keyring"
@@ -345,12 +344,8 @@ func moveFile(from, to string) error {
 
 func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
 
-// syncDir makes the new archive's directory entry durable. Windows cannot
-// sync a directory.
+// syncDir makes the new archive's directory entry durable.
 func syncDir(dir string) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
 	d, err := os.Open(dir) // #nosec G304 -- the backup target
 	if err != nil {
 		return err

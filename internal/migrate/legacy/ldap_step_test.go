@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -233,8 +232,8 @@ func TestLDAPFenceNamesThatPythonIgnores(t *testing.T) {
 
 func TestLDAPFenceDirectoryUnreadableFencesEveryLDAPAccount(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("needs POSIX permissions without root")
+	if os.Geteuid() == 0 {
+		t.Skip("needs a user that is not root")
 	}
 	dir := copyGolden(t)
 	fences := filepath.Join(dir, ldapFencesDir)

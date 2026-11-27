@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"unicode/utf8"
 )
@@ -346,12 +345,8 @@ func atomicWrite(dir, name string, content []byte) error {
 	return nil
 }
 
-// syncDir makes a rename in dir durable. Windows cannot sync a
-// directory, and Python skipped it there too.
+// syncDir makes a rename in dir durable.
 func syncDir(dir string) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
 	d, err := os.Open(dir) // #nosec G304 -- the secret directory
 	if err != nil {
 		return err

@@ -5,7 +5,6 @@ import (
 	json "encoding/json/v2"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -46,13 +45,11 @@ func TestDeleteRetainsAVerifiedCopy(t *testing.T) {
 	if err := VerifyRetained(dir, 2); err != nil {
 		t.Fatal(err)
 	}
-	if runtime.GOOS != "windows" {
-		for path, want := range map[string]os.FileMode{l.retained: 0o700, dir: 0o700, filepath.Join(dir, "manifest.json"): 0o600,
-			filepath.Join(dir, "hostops_rows.jsonl"): 0o600, filepath.Join(dir, "accounts_users.jsonl"): 0o600} {
-			info, err := os.Stat(path)
-			if err != nil || info.Mode().Perm() != want {
-				t.Errorf("%s: %v %v", path, info.Mode(), err)
-			}
+	for path, want := range map[string]os.FileMode{l.retained: 0o700, dir: 0o700, filepath.Join(dir, "manifest.json"): 0o600,
+		filepath.Join(dir, "hostops_rows.jsonl"): 0o600, filepath.Join(dir, "accounts_users.jsonl"): 0o600} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != want {
+			t.Errorf("%s: %v %v", path, info.Mode(), err)
 		}
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
