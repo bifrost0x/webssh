@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io/fs"
 	"net"
-	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,7 +27,6 @@ type Backend struct {
 	tree     *smb2.Share
 	host     string
 	share    string
-	peer     netip.Addr // the address the policy admitted
 	ioIdle   time.Duration
 	mutation time.Duration
 	security smb2.SecurityInfo
@@ -45,10 +43,6 @@ type Backend struct {
 
 var _ files.Backend = (*Backend)(nil)
 var _ files.AccessProber = (*Backend)(nil)
-var _ files.Routed = (*Backend)(nil)
-
-// Route implements files.Routed: an SMB connection has no relay.
-func (b *Backend) Route() (netip.Addr, []string, bool) { return b.peer, nil, true }
 
 func newBackend(session *smb2.Session, tree *smb2.Share, cfg Config, info smb2.SecurityInfo) *Backend {
 	mutation := cfg.MutationTimeout

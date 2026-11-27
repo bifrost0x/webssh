@@ -74,9 +74,15 @@ remote-user allowlists.
 The admin setting **Block ordinary SSH to tailnet nodes** (Admin →
 Integrations, enabled by default) closes that path. Changes take effect for the
 next connection without a restart and clear the cached reachability results.
-Turning the block on applies to new connections; terminal sessions and
-file-transfer connections that are already open stay until they end, so
-restart WebSSH to close them at once. The
+Turning the block on also closes open terminal sessions and SFTP connections
+that it would now refuse, judged by the address each was pinned to when it
+opened and by what its jump hosts or SOCKS5 proxy were asked to reach; tmux
+sessions are detached, not ended, and the owner sees why the session closed.
+Tailscale SSH sessions and SMB connections stay open, and an automation run
+already in progress finishes; the sweep is recorded as
+`TAILNET_RESTRICTED_CONNECTIONS_CLOSED`. The sweep runs only when the setting
+is changed in the admin menu: a connection still being opened at that moment
+is not swept, so restart WebSSH after such a change to be sure. The
 change is recorded in the security audit
 log as `APPLICATION_FEATURE_CHANGED` with
 `feature=tailscale_ssh_restrict_tailnet_routes`. Whenever the WebSSH host is a
@@ -89,7 +95,9 @@ through the loopback device. This applies to password and key terminal connectio
 Gateway selectors, Jump Hosts and locally validated targets behind them,
 SOCKS5 proxy endpoints and
 locally validated SOCKS5 destinations, file transfers, automation runs, host
-discovery and the reachability check. Saved Tailscale SSH hosts that the account
+discovery and the reachability check. SMB shares are not affected: the rule
+concerns SSH, whose tailnet server authorizes the node instead of the
+offered credentials. Saved Tailscale SSH hosts that the account
 may still use stay checkable in the reachability check. The browser reports that
 the host requires Tailscale SSH and links administrators to the setting;
 automation records `tailscale_route_restricted`. The setting row shows whether

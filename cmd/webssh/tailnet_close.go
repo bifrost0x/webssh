@@ -16,7 +16,7 @@ const tailnetCloseTimeout = 30 * time.Second
 // block refuses now that the administrator turned it on
 // (close_restricted_tailnet_connections): terminal sessions, jump chains
 // and gateway connections included, detached like an administrator
-// disconnect, and Quick SFTP and SMB sources. Tailscale SSH stays open.
+// disconnect, and Quick SFTP sources. Tailscale SSH and SMB stay open.
 // It does nothing while the rule does not apply.
 func closeTailnetRestricted(ctx context.Context, sys *system) {
 	if sys.policy == nil || !sys.policy.TailnetRuleActive() {

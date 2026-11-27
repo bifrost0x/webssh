@@ -245,8 +245,6 @@ These limits apply to 3.3 and 3.4 alike or are open for a later release:
   users.
 - A detached terminal whose program keeps printing stays open until its
   owner signs out, because output counts as activity.
-- Switching the tailnet rule back on in Administration applies to new
-  connections; open connections to tailnet hosts stay until they end.
 - Audit entries for Tailscale SSH do not include the client address yet,
   and attempts through the SSH gateway count against the SSH session quota.
 - Tailscale SSH has been tested against a stand-in for tailscaled, not

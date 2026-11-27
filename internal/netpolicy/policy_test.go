@@ -156,6 +156,27 @@ func TestTailnetRuleInDialer(t *testing.T) {
 	}
 }
 
+// The tailnet rule is about SSH: SMB servers on tailnet nodes stay
+// reachable while it is on, as in the Python release (W3-3a).
+func TestTailnetRuleLeavesSMB(t *testing.T) {
+	p, rec, _ := newTestPolicy(t, Config{Tailnet: Tailnet{InterfacePresent: func(string) bool { return true }}})
+	for _, addr := range []string{"100.100.100.10:445", "node.example:445"} {
+		if _, err := p.DialContext(t.Context(), RoleSSH, "tcp", addr); !errors.Is(err, ErrTailnetRestricted) {
+			t.Fatalf("SSH to %s: %v", addr, err)
+		}
+		adm, err := p.Admit(t.Context(), RoleSMB, strings.Split(addr, ":")[0], 445)
+		if err != nil || adm.Addr.Addr() != netip.MustParseAddr("100.100.100.10") {
+			t.Errorf("SMB to %s: %+v, %v", addr, adm, err)
+		}
+		if _, err := p.DialContext(t.Context(), RoleSMB, "tcp", addr); !errors.Is(err, errDialed) {
+			t.Errorf("SMB dial to %s: %v", addr, err)
+		}
+	}
+	if len(rec.addrs) != 2 {
+		t.Fatalf("dialed %v", rec.addrs)
+	}
+}
+
 func TestDestinations(t *testing.T) {
 	p, _, _ := newTestPolicy(t, Config{BlockInternal: true, JumpRemoteDNS: []string{"only-remote.corp"}})
 	if got, err := p.JumpDestination(t.Context(), "Public.Example.", 22, false); err != nil || got != "8.8.8.8" {

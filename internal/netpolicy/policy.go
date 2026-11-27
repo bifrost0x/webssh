@@ -123,7 +123,11 @@ func (p *Policy) Admit(ctx context.Context, role Role, host string, port int) (A
 	if port < 1 || port > 65535 {
 		return Admitted{}, errPort
 	}
-	adm, err := p.admit(ctx, canonical, port)
+	// The tailnet rule is about SSH to tailnet nodes, whose tailssh
+	// authorizes the WebSSH node instead of the offered credential; SMB
+	// servers are not subject to it, as in the Python release
+	// (smb_network_policy.py).
+	adm, err := p.admit(ctx, canonical, port, role != RoleSMB)
 	if err != nil {
 		return Admitted{}, err
 	}
@@ -144,13 +148,13 @@ func (p *Policy) decide(addr netip.Addr) (allowed, viaAllowance bool) {
 	return false, false
 }
 
-func (p *Policy) admit(ctx context.Context, canonical string, port int) (Admitted, error) {
+func (p *Policy) admit(ctx context.Context, canonical string, port int, tailnetRule bool) (Admitted, error) {
 	if literal, ok := parsePythonAddr(canonical); ok {
 		allowed, via := p.decide(literal)
 		if !allowed {
 			return Admitted{}, errBlocked
 		}
-		if p.cfg.Tailnet.targetRestricted(ctx, literal) {
+		if tailnetRule && p.cfg.Tailnet.targetRestricted(ctx, literal) {
 			return Admitted{}, tailnetRefusal(msgTailnetTarget)
 		}
 		return Admitted{Host: canonical, Addr: netip.AddrPortFrom(literal, uint16(port)), ViaAllowance: via}, nil // #nosec G115 -- port checked by the caller
@@ -173,7 +177,7 @@ func (p *Policy) admit(ctx context.Context, canonical string, port int) (Admitte
 		if !allowed {
 			continue
 		}
-		if p.cfg.Tailnet.targetRestricted(ctx, addr) {
+		if tailnetRule && p.cfg.Tailnet.targetRestricted(ctx, addr) {
 			tailnet = true
 			continue
 		}
