@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -30,9 +31,15 @@ func TestCrashHelper(t *testing.T) {
 	parts := strings.Split(spec, "|")
 	o := testOptions(t, parts[2])
 	o.BackupTempDir = parts[3]
+	// "<point>#<n>" crashes at the n-th time the point is reached.
+	point, nth, _ := strings.Cut(parts[1], "#")
+	want, _ := strconv.Atoi(nth)
+	seen := 0
 	o.checkpoint = func(p string) {
-		if p == parts[1] {
-			_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
+		if p == point {
+			if seen++; seen >= want {
+				_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
+			}
 		}
 	}
 	var err error
