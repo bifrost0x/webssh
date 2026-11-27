@@ -67,6 +67,7 @@ func wireSchedules(sys *system) error {
 	if err != nil {
 		return err
 	}
+	sys.schedules = sched
 	secure := httpapi.ReachedOverHTTPS
 	if sys.automationHTTP != nil {
 		secure = sys.automationHTTP.Secure

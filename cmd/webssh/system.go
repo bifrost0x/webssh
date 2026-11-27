@@ -146,8 +146,10 @@ type system struct {
 	// automationHTTP holds the HTTPS rule of the automation routes
 	// (AUTOMATION_ALLOW_INSECURE_LOOPBACK); the schedule routes share it.
 	automationHTTP *automation.HTTP
-	edge           *httpapi.Handler
-	pages          *pages
+	// schedules are the automation schedules (wire_schedules.go).
+	schedules *automation.Schedules
+	edge      *httpapi.Handler
+	pages     *pages
 
 	// The file workspace (wire_files.go); backend areas register their
 	// source kinds on fileSources.

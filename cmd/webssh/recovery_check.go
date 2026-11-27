@@ -9,6 +9,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
+	"github.com/bifrost0x/webssh/internal/pyjson"
 	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/ssh/hostkey"
 )
@@ -70,6 +71,11 @@ func (rc *recoveryCheck) get(w http.ResponseWriter, r *http.Request) {
 		rc.fail(w, r, err)
 		return
 	}
+	schedules, err := rc.schedules(r.Context(), p)
+	if err != nil {
+		rc.fail(w, r, err)
+		return
+	}
 	var at any
 	if restoredAt != "" {
 		at = restoredAt
@@ -77,7 +83,32 @@ func (rc *recoveryCheck) get(w http.ResponseWriter, r *http.Request) {
 	writeRecoveryJSON(w, http.StatusOK, map[string]any{"restored_at": at, "needs_review": needsReview,
 		"coverage": map[string]string{"configuration": "included", "account_authentication": "included",
 			"remote_credentials": "excluded", "live_sessions": "excluded"},
-		"hosts": hosts, "schedules": []any{}})
+		"hosts": hosts, "schedules": schedules})
+}
+
+// schedules lists the account's schedules as the checklist shows them:
+// id, name, enabled and the last status.
+func (rc *recoveryCheck) schedules(ctx context.Context, p principal.Principal) ([]jsontext.Value, error) {
+	out := []jsontext.Value{}
+	if rc.sys.schedules == nil {
+		return out, nil
+	}
+	rows, err := rc.sys.schedules.List(ctx, p.UserID)
+	if err != nil {
+		return nil, err
+	}
+	null := jsontext.Value("null")
+	for _, row := range rows {
+		get := func(name string) jsontext.Value {
+			if v, ok := pyjson.Get(row, name); ok {
+				return v
+			}
+			return null
+		}
+		out = append(out, pyjson.Object([]pyjson.Member{{Name: "id", Value: get("id")}, {Name: "name", Value: get("name")},
+			{Name: "enabled", Value: get("enabled")}, {Name: "status", Value: get("last_status")}}))
+	}
+	return out, nil
 }
 
 // hosts builds the rows of the account's saved hosts.
