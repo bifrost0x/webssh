@@ -127,7 +127,7 @@ func TestRunThroughJumpHostWithSavedPassword(t *testing.T) {
 		w.dials[0].Jumps[0].Auth.KeyID != "k1" || w.dials[0].Jumps[0].Auth.Password != "" {
 		t.Fatalf("dial: %+v", w.dials)
 	}
-	want := []string{`sh -c 'eval "$(cat)"'|first`, `sudo -n -- sh -c 'eval "$(cat)"'|second`}
+	want := []string{`first`, `sudo -n -- sh -c second`}
 	if strings.Join(w.scripts, ";") != strings.Join(want, ";") {
 		t.Fatalf("scripts %q", w.scripts)
 	}

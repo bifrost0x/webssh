@@ -6,7 +6,9 @@
 // Command lines are built by WebSSH from fixed text. Values that come from
 // users or from stored data travel on stdin, or, where a program only takes
 // them as an argument, as a Word: a token from a small character set that
-// no shell treats specially inside single quotes.
+// no shell treats specially inside single quotes. The one exception is
+// Shell, the command of an automation step, which the user wrote for the
+// login shell of the target account.
 package remotecmd
 
 import (
@@ -51,6 +53,10 @@ type Command struct {
 	// MaxStderr is the number of stderr bytes kept (4 KiB when zero, at
 	// most MaxOutput).
 	MaxStderr int
+
+	// shell marks a line built by Shell: a user command for the login
+	// shell, which may hold line breaks and be longer than MaxLine.
+	shell bool
 }
 
 // Result is the outcome of a command that reported an exit status.
@@ -67,12 +73,17 @@ type Result struct {
 var errInvalid = fault.New(fault.InvalidValue, "The remote command is invalid.")
 
 func (c *Command) check() error {
-	switch {
-	case c.Line == "" || len(c.Line) > MaxLine:
-		return errInvalid
-	case strings.ContainsFunc(c.Line, func(r rune) bool { return r < 0x20 && r != '\t' || r == 0x7f }):
+	if c.shell {
+		// A Shell line: line breaks and the length are the command's own.
+		if c.Line == "" || len(c.Line) > maxShellLine || strings.IndexByte(c.Line, 0) >= 0 {
+			return errInvalid
+		}
+	} else if c.Line == "" || len(c.Line) > MaxLine ||
 		// One line only: a newline would start a second command.
+		strings.ContainsFunc(c.Line, func(r rune) bool { return r < 0x20 && r != '\t' || r == 0x7f }) {
 		return errInvalid
+	}
+	switch {
 	case len(c.Stdin) > MaxStdin:
 		return errInvalid
 	case c.Timeout < 0 || c.MaxOutput < 0 || c.MaxOutput > MaxOutput:

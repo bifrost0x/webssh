@@ -177,6 +177,24 @@ func TestLabWorkflows(t *testing.T) {
 	if s := slow.Targets[0].Steps[0]; slow.Status != StatusUnknown || s.Status != StatusUnknown || *s.Reason != "timeout" || s.Stdout != "begin\n" {
 		t.Errorf("timeout: %+v", slow)
 	}
+	// The step is the exec request, as in Python: the login shell of the
+	// account reads it unchanged, so the shell's own syntax works (here
+	// [[ ]], $'…' and ${var/…/…}, which busybox ash shares with Bash) and
+	// the shell's command line is the step itself, not a wrapper.
+	shellSyntax := `[[ -n "$HOME" ]] && x=$'\x41' && s=abc && echo "$x ${s/b/B}"`
+	ownLine := `line=$(tr '\0' '|' </proc/$$/cmdline); echo "$line"`
+	shellBook, err := json.Marshal(map[string]any{"name": "Shell", "steps": []map[string]any{
+		{"name": "syntax", "command": shellSyntax}, {"name": "line", "command": ownLine}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell := run(book(string(shellBook))).Targets[0].Steps
+	if shell[0].Status != StatusSucceeded || shell[0].Stdout != "A aBc\n" {
+		t.Errorf("shell syntax step: %+v", shell[0])
+	}
+	if shell[1].Status != StatusSucceeded || !strings.HasSuffix(shell[1].Stdout, "|-c|"+ownLine+"|\n") {
+		t.Errorf("the login shell did not get the step as its command: %+v", shell[1])
+	}
 	_ = db.Read(ctx, func(tx *store.Tx) error { return nil })
 }
 

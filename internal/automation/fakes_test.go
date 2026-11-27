@@ -150,18 +150,21 @@ func (w *world) set(fn func(w *world)) {
 	fn(w)
 }
 
-// fakeConn runs the scripts: "fail" exits 2, "wait" blocks until the
+// fakeConn runs the commands: "fail" exits 2, "wait" blocks until the
 // context ends, "leak" prints the password, anything else prints "ok".
+// The command is the exec line, behind "sudo -n -- sh -c " for sudo.
 type fakeConn struct{ w *world }
 
 func (c *fakeConn) Exec(ctx context.Context, line string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
-	if !strings.Contains(line, `eval "$(cat)"`) {
-		return -1, errors.New("the script is not on stdin")
+	if stdin == nil {
+		return -1, errors.New("no stdin")
 	}
-	raw, _ := io.ReadAll(stdin)
-	script := string(raw)
+	if raw, _ := io.ReadAll(stdin); len(raw) != 0 {
+		return -1, errors.New("a step sent data on stdin")
+	}
+	script := strings.TrimPrefix(line, "sudo -n -- sh -c ")
 	c.w.mu.Lock()
-	c.w.scripts = append(c.w.scripts, line+"|"+script)
+	c.w.scripts = append(c.w.scripts, line)
 	c.w.mu.Unlock()
 	switch script {
 	case "fail":

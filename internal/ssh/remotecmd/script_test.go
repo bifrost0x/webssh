@@ -47,3 +47,34 @@ func TestProgram(t *testing.T) {
 		}
 	}
 }
+
+func TestShell(t *testing.T) {
+	t.Parallel()
+	body := "for i in {1..3}; do\n  echo \"$i\"\ndone"
+	c, err := remotecmd.Shell(body, false)
+	if err != nil || c.Line != body || c.Stdin != nil {
+		t.Fatalf("Shell = %+v, %v", c, err)
+	}
+	f := &fakeExec{status: 0}
+	if _, err := remotecmd.Run(t.Context(), f, c); err != nil || f.line != body || len(f.stdin) != 0 {
+		t.Fatalf("Run = %v; line %q stdin %q", err, f.line, f.stdin)
+	}
+	c, err = remotecmd.Shell("it's", true)
+	if err != nil || c.Line != `sudo -n -- sh -c 'it'"'"'s'` {
+		t.Fatalf("sudo Shell = %+v, %v", c, err)
+	}
+	if c, err := remotecmd.Shell(strings.Repeat("'", remotecmd.MaxShellCommand), true); err != nil {
+		t.Fatalf("Shell of %d quotes = %v", remotecmd.MaxShellCommand, err)
+	} else if _, err := remotecmd.Run(t.Context(), &fakeExec{}, c); err != nil {
+		t.Fatalf("Run of the longest sudo line = %v", err)
+	}
+	for _, bad := range []string{"", "a\x00b", "\xff", strings.Repeat("x", remotecmd.MaxShellCommand+1)} {
+		if _, err := remotecmd.Shell(bad, false); !fault.Is(err, fault.InvalidValue) {
+			t.Errorf("Shell(%q) = %v", bad[:min(len(bad), 8)], err)
+		}
+	}
+	// A line break stays refused outside Shell.
+	if _, err := remotecmd.Run(t.Context(), &fakeExec{}, remotecmd.Command{Line: "a\nb"}); !fault.Is(err, fault.InvalidValue) {
+		t.Fatalf("a two-line fixed command ran: %v", err)
+	}
+}

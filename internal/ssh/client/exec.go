@@ -16,9 +16,23 @@ import (
 // as unknown.
 var ErrNoExitStatus = errors.New("ssh: command ended without an exit status")
 
+// ErrExecUnconfirmed reports that the exec request was sent but its
+// start was not confirmed: the command may have started. Callers that
+// must not repeat a command treat its outcome as unknown.
+var ErrExecUnconfirmed = errors.New("ssh: exec request sent without a confirmed start")
+
 // maxCommandLen bounds one command line. The remote shell receives it as
-// one string; commands are fixed text built by WebSSH, never user input.
-const maxCommandLen = 32 << 10
+// one string; it is fixed text built by WebSSH, or the command of an
+// automation step (remotecmd.Shell, up to 8 KiB quoted for sudo).
+const maxCommandLen = 64 << 10
+
+// unconfirmedError keeps the text and the fault code of a failed start
+// and adds ErrExecUnconfirmed.
+type unconfirmedError struct{ err error }
+
+func unconfirmed(err error) error           { return &unconfirmedError{err} }
+func (e *unconfirmedError) Error() string   { return e.err.Error() }
+func (e *unconfirmedError) Unwrap() []error { return []error{ErrExecUnconfirmed, e.err} }
 
 func checkCommand(command string) error {
 	if command == "" || len(command) > maxCommandLen || strings.IndexByte(command, 0) >= 0 {
@@ -60,10 +74,10 @@ func (c *Conn) Exec(ctx context.Context, command string, stdin io.Reader, stdout
 	defer func() { _ = s.Close() }()
 	s.Stdin, s.Stdout, s.Stderr = stdin, stdout, stderr
 	if err := s.Start(command); err != nil {
-		return -1, setupFail(ctx, gctx, disarm(), err)
+		return -1, unconfirmed(setupFail(ctx, gctx, disarm(), err))
 	}
 	if disarm() {
-		return -1, setupFail(ctx, gctx, true, nil)
+		return -1, unconfirmed(setupFail(ctx, gctx, true, nil))
 	}
 	// Running is bounded by ctx (internal/ssh/remotecmd); its end closes
 	// the channel only, so the connection stays usable for a fallback.

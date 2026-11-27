@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,9 +22,10 @@ const streamBytes = 128 << 10
 // Executor runs one command on an open connection (*client.Conn).
 type Executor = remotecmd.Executor
 
-// capture wraps the executor of a step: it notes when the command took
-// its script from stdin (the script reached the host) and keeps the
-// first streamBytes of each stream, also when the command is cancelled.
+// capture wraps the executor of a step: it notes when the host
+// confirmed the start of the command (the session then reads its empty
+// stdin) and keeps the first streamBytes of each stream, also when the
+// command is cancelled.
 type capture struct {
 	on      Executor
 	started atomic.Bool
@@ -61,9 +63,10 @@ func (s startReader) Read(p []byte) (int, error) {
 }
 
 func (c *capture) Exec(ctx context.Context, command string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
-	if stdin != nil {
-		stdin = startReader{c, stdin}
+	if stdin == nil {
+		stdin = strings.NewReader("")
 	}
+	stdin = startReader{c, stdin}
 	return c.on.Exec(ctx, command, stdin, io.MultiWriter(stdout, captureWriter{c, 0}), io.MultiWriter(stderr, captureWriter{c, 1}))
 }
 
@@ -73,9 +76,9 @@ func (c *capture) streams() ([2][]byte, [2]bool) {
 	return [2][]byte{append([]byte(nil), c.out[0]...), append([]byte(nil), c.out[1]...)}, c.over
 }
 
-// runStep is execute_step: the step's script on stdin of a fixed command
-// line, bounded by the step timeout, with the outcome as the history
-// keeps it. cancelled reports a stop of the run; budget is the output
+// runStep is execute_step: the step's command as the exec request, as
+// command_for of app/automation_transport.py builds it (remotecmd.Shell),
+// bounded by the step timeout, with the outcome as the history keeps it. cancelled reports a stop of the run; budget is the output
 // the run may still keep.
 func runStep(ctx context.Context, on Executor, step Step, cancelled func() bool, secrets []string, budget int, now func() time.Time) StepResult {
 	started := now()
@@ -87,7 +90,7 @@ func runStep(ctx context.Context, on Executor, step Step, cancelled func() bool,
 	if cancelled() {
 		return result(StatusCancelled, new("cancelled"), nil)
 	}
-	cmd, err := remotecmd.Script(step.Command, step.Sudo)
+	cmd, err := remotecmd.Shell(step.Command, step.Sudo)
 	if err != nil {
 		return result(StatusFailed, new("dispatch_failed"), nil)
 	}
@@ -110,8 +113,11 @@ func runStep(ctx context.Context, on Executor, step Step, cancelled func() bool,
 		return result(StatusUnknown, new("timeout"), nil)
 	case errors.Is(err, client.ErrNoExitStatus), c.started.Load():
 		return result(StatusUnknown, new("channel_lost"), nil)
+	case errors.Is(err, client.ErrExecUnconfirmed):
+		// The exec request left WebSSH; the host may have run it.
+		return result(StatusUnknown, new("acknowledgement_lost"), nil)
 	}
-	// The script never left WebSSH: the host cannot have run it.
+	// The exec request never left WebSSH: the host cannot have run it.
 	return result(StatusFailed, new("dispatch_failed"), nil)
 }
 

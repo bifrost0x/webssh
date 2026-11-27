@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"net"
 	"strings"
 	"sync"
@@ -201,6 +202,11 @@ func TestChannelSetupIsBounded(t *testing.T) {
 				case err := <-done:
 					if fault.CodeOf(err) != fault.Timeout {
 						t.Fatalf("mode %d: %v, want timeout", mode, err)
+					}
+					// An unanswered exec request may have started the
+					// command; a channel that never opened cannot have.
+					if sent := name == "exec" && stage == "request"; errors.Is(err, ErrExecUnconfirmed) != sent {
+						t.Fatalf("mode %d: unconfirmed %v, want %v", mode, errors.Is(err, ErrExecUnconfirmed), sent)
 					}
 				case <-time.After(10 * budget):
 					t.Fatalf("mode %d: still waiting after %v", mode, time.Since(start))

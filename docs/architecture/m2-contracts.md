@@ -663,13 +663,23 @@ event.
 ### Remote commands
 
 `internal/ssh/remotecmd` stays the only way to run a non-interactive
-command. M2 adds `Script(body, sudo) (Command, error)` (compiled):
+command. M2 adds `Script(body, sudo) (Command, error)` (compiled) for
+fixed WebSSH scripts and `Shell(command, sudo) (Command, error)` for
+automation steps (W3 integration, AU1-1):
 
-- The script (1 to 8192 bytes of UTF-8 without NUL, line breaks allowed)
-  travels on stdin; the command line is the fixed text
+- `Script`: the script (1 to 8192 bytes of UTF-8 without NUL, line
+  breaks allowed) travels on stdin; the command line is the fixed text
   `sh -c 'eval "$(cat)"'`, or `sudo -n -- sh -c 'eval "$(cat)"'` with
-  sudo. The script runs with an exhausted stdin, as the Python release
-  closed stdin after `sudo -n -- sh -c <script>`.
+  sudo.
+- `Shell`: the step's command (same bounds) is the exec request itself,
+  as `command_for` of `app/automation_transport.py` builds it. Without
+  sudo the login shell of the target account interprets it unchanged
+  (Bash syntax keeps working where the account's shell is Bash); with
+  sudo the line is `sudo -n -- sh -c <command quoted like shlex.quote>`.
+  stdin is empty, as the Python release shut it down after the exec.
+  `client.ErrExecUnconfirmed` marks an exec request that left WebSSH
+  without a confirmed start; the step is then `unknown` with reason
+  `acknowledgement_lost`, as in Python.
 - No password is written to sudo: a step that needs one fails with a
   non-zero exit status, as in Python. The M2 plan's "sudo input" is not
   needed.

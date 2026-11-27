@@ -22,6 +22,7 @@ record() {
 record internal/hosts/testdata/oracle.py internal/hosts/testdata/oracle.json
 record internal/hosts/testdata/recovery_oracle.py internal/hosts/testdata/recovery_oracle.json
 record internal/settings/testdata/oracle.py internal/settings/testdata/oracle.json
+record internal/automation/testdata/command_line.py internal/automation/testdata/command_line.json
 record internal/ssh/hostkey/testdata/golden.py internal/ssh/hostkey/testdata/golden.json
 (cd internal/qrcode/testdata && echo "recording internal/qrcode" && "$PYTHON" -I python_vectors.py >/dev/null)
 echo "recording internal/netpolicy"
@@ -42,5 +43,5 @@ random="internal/ssh/hostkey/testdata/oracle.json internal/config/testdata/pytho
 trap 'git checkout -- $random' EXIT
 record internal/ssh/hostkey/testdata/oracle.py internal/ssh/hostkey/testdata/oracle.json
 go test -count=1 -run '.' ./internal/config -update
-go test -count=1 ./cmd/webssh ./internal/config ./internal/hosts ./internal/settings ./internal/qrcode \
+go test -count=1 ./cmd/webssh ./internal/config ./internal/hosts ./internal/settings ./internal/automation ./internal/qrcode \
 	./internal/netpolicy ./internal/idna2003 ./internal/ssh/hostkey
