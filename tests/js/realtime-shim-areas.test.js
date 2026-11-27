@@ -30,30 +30,21 @@ const M2_REQUESTS = ['ssh_gateway_answer', 'ssh_gateway_input', 'ssh_gateway_ack
 
     'get_file_permissions', 'set_file_permissions', 'prepare_file_permissions', 'get_file_permissions_job',
     'apply_file_permissions_job', 'cancel_file_permissions_job'];
-const M1_UNAVAILABLE = ['list_commands', 'list_command_sets', 'list_smb_shares', 'probe_session_sftp',
-    'request_session_insights', 'request_session_runtime_inventory'];
-// Areas built in M2 move their events from the unavailable replies to the
-// requests (realtime-shim-<area>.js of the owning package).
 const M2_REFRESH = ['smb.share.list', 'commands.list', 'commands.set.list'];
-const M1_FEATURES = ['files', 'smb', 'commands', 'commandSets', 'insights', 'terminalTools'];
 
 test('the split table equals the table of M1 plus the areas built since', () => {
     assert.deepEqual(Object.keys(catalog.REQUESTS).sort(), [...M1_REQUESTS, ...M2_REQUESTS].sort());
-    assert.deepEqual(Object.keys(catalog.UNAVAILABLE_REPLIES).sort(), M1_UNAVAILABLE.filter(e => !M2_REQUESTS.includes(e)).sort());
     assert.deepEqual(Object.keys(catalog.REFRESH_PUSH), ['keys.list', ...M2_REFRESH]);
-    assert.equal(catalog.featureOf('delete_command_set'), 'other');
-    assert.equal(catalog.featureOf('delete_command'), 'other');
-    // A built area has no feature of the preview notice any more.
-    assert.equal(catalog.featureOf('smb_list'), 'other');
-    assert.equal(catalog.featureOf('quick_sftp_open'), 'other');
-    assert.equal(catalog.featureOf('get_file_permissions'), 'other');
-    assert.equal(catalog.featureOf('prepare_transfer'), 'other');
-    assert.equal(catalog.featureOf('ssh_gateway_quick_cancel'), 'other');
-    assert.equal(catalog.featureOf('list_profiles'), 'other');
-    const features = new Set(M1_FEATURES.filter(f => !['files', 'smb', 'commands', 'commandSets'].includes(f)));
-    for (const event of ['request_session_insights', 'request_herdr_snapshot']) {
-        assert.ok(features.has(catalog.featureOf(event)), event);
+});
+
+// No area answers events locally any more (M2 plan, guideline 3).
+test('no area has local replies or preview features', () => {
+    for (const name of catalog.AREAS) {
+        const area = require(areaFile(name));
+        assert.deepEqual(Object.keys(area).filter(key => !['requests', 'refresh', 'events'].includes(key)), [], name);
     }
+    assert.equal(catalog.UNAVAILABLE_REPLIES, undefined);
+    assert.equal(catalog.featureOf, undefined);
 });
 
 test('every area has its own file and the catalog loads them all', () => {
@@ -81,8 +72,4 @@ test('a missing area or an event in two areas stops the load', () => {
         ? source.replace("get_notepad: {", "list_keys: {type: 'keys.list'}, get_notepad: {")
         : source));
     assert.throws(() => loadCatalog(twice), /list_keys is in two areas/);
-    const both = sources.map((source, i) => (catalog.AREAS[i] === 'files'
-        ? source.replace('unavailable: Object.freeze({})', "unavailable: Object.freeze({list_keys: () => ['x', {}]})")
-        : source));
-    assert.throws(() => loadCatalog(both), /list_keys is both built and unavailable/);
 });

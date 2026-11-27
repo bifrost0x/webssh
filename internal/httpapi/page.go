@@ -93,10 +93,6 @@ type PageData struct {
 	Kind      string `json:"kind"`
 	ActionURL string `json:"action_url"`
 	Detail    string `json:"detail"`
-
-	// Preview describes the parts the preview build does not offer. It
-	// has no Python counterpart.
-	Preview PreviewNotice `json:"preview"`
 }
 
 // User is the signed-in account. Python passes it as current_user and,
@@ -141,13 +137,4 @@ type TransferLimits struct {
 // SSHInputLimits bound one terminal input event.
 type SSHInputLimits struct {
 	MaxEventBytes int64 `json:"maxEventBytes"`
-}
-
-// PreviewNotice is published to the preview notice script as JSON.
-// Unavailable lists area identifiers the script hides or marks; Message is
-// the fallback text for languages the script does not know.
-type PreviewNotice struct {
-	Enabled     bool     `json:"enabled"`
-	Unavailable []string `json:"unavailable"`
-	Message     string   `json:"message"`
 }

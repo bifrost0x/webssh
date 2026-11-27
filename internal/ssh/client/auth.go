@@ -24,8 +24,8 @@ const maxPromptRounds = 8
 //
 // Any further prompt (a one-time code, a second question) needs the user:
 // an Interaction that is a Challenger gets the round, also for jump hosts;
-// an attended connection without one ends with not_available_in_preview,
-// an unattended one with interaction_required.
+// a connection without one ends with interaction_required; an attended
+// one says that the host asks for further input.
 type authPlan struct {
 	ctx      context.Context
 	password string

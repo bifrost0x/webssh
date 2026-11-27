@@ -18,16 +18,6 @@
   },
   {
    "cases": [
-    "workspace_preview",
-    "login_preview",
-    "settings_preview"
-   ],
-   "side": "go",
-   "line": "(<script id=\"websshPreview\" type=\"application/json\">|json:\\{\"enabled\": true, \"message\": \"Preview: [^\"]*\", \"unavailable\": \\[(\"[a-z]+\"(, )?)+\\]\\}|<script src=\"(/webssh)?/static/js/preview-notice(-i18n)?\\.js\\?v=VERSION\">|<link href=\"(/webssh)?/static/css/preview-notice\\.css\\?v=VERSION\" rel=\"stylesheet\">)",
-   "reason": "The preview notice exists only in the Go build; it is rendered only when PageData.Preview.Enabled is set. Removing an opening script line also removes its closing tag."
-  },
-  {
-   "cases": [
     "error_unsafe_action"
    ],
    "side": "jinja",

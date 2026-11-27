@@ -25,7 +25,7 @@ func TestStatus(t *testing.T) {
 		{name: "wrapped twice", err: fmt.Errorf("save: %w", Wrap(StorageError, secret, "")), wantStatus: 500, wantCode: StorageError, wantMsg: "The data could not be stored."},
 		{name: "unclassified hides text", err: secret, wantStatus: 500, wantCode: Internal, wantMsg: "An internal error occurred."},
 		{name: "unknown code hides message", err: New(Code("made_up"), "internal detail"), wantStatus: 500, wantCode: Internal, wantMsg: "An internal error occurred."},
-		{name: "preview", err: New(NotAvailableInPreview, ""), wantStatus: 501, wantCode: NotAvailableInPreview, wantMsg: "Not available in this preview yet."},
+		{name: "preview", err: New(NotAvailableInPreview, ""), wantStatus: 501, wantCode: NotAvailableInPreview, wantMsg: "This function is not available on this server."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

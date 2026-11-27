@@ -1342,6 +1342,20 @@ No new message types; `terminal.open` and `SessionInfo` gain members
   with `use_tmux`, as before); `target.use_herdr` asks for Herdr as the
   program.
 - `SessionInfo.herdr` and `use_herdr` are `herdr.session_flags`.
+- `SessionInfo.file_source` (FE1-1) is the `FileSource` descriptor of the
+  session's own source `sftp-session:<session_id>`, as the `file_source`
+  member of `ssh_connected` and `ssh_session_restored`
+  (`_public_file_source`). It is set in the `terminal.open` result and in
+  `hello.restorable`, and absent in `hello.persistent` (Python's
+  `persistent_session_available` has none; the reattach answers with a
+  new `terminal.open` result). The descriptor is the one the
+  `sftp-session` opener produces (label = display name or
+  `user@host`, endpoint `host:port`, `host_key_verified`, not ephemeral);
+  while the source is not open in the caller's browser session the
+  capabilities are the SFTP defaults without `chmod`, as in Python before
+  the first SFTP channel announced `lsetstat@openssh.com`. The terminal
+  gets it from a provider set by the composition root
+  (`Manager.SetFileSources`); without one the member is absent.
 
 Consumer interfaces of `internal/terminal` (Deps):
 

@@ -1,8 +1,7 @@
 package httpapi
 
 // Routes of the area "automation" (AU1): automation runbooks and runs.
-// AU1 moves each route it builds from automationPreview to automationBuilt with its
-// access level; no other package edits this file.
+// No other package edits this file.
 
 var automationBuilt = []route{
 	{"GET /automation", AccessUser},
@@ -17,5 +16,3 @@ var automationBuilt = []route{
 	{"POST /api/automation/runs/clear", AccessUser},
 	{"GET /api/automation/runs/{run_id}/export", AccessUser},
 }
-
-var automationPreview = []string{}

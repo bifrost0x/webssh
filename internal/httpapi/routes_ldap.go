@@ -1,8 +1,7 @@
 package httpapi
 
 // Routes of the area "ldap" (ID1): LDAP and Active Directory sign-in, links and step-up.
-// ID1 moves each route it builds from ldapPreview to ldapBuilt with its
-// access level; no other package edits this file.
+// No other package edits this file.
 
 var ldapBuilt = []route{
 	{"GET /admin/api/ldap/status", AccessAdmin},
@@ -12,5 +11,3 @@ var ldapBuilt = []route{
 	{"POST /api/account/step-up/ldap", AccessUser},
 	{"POST /login/ldap", AccessPublic},
 }
-
-var ldapPreview = []string{}

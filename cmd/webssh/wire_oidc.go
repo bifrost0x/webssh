@@ -44,7 +44,7 @@ func oidcArea() extension {
 		},
 		wire: func(sys *system) error {
 			if provider == nil {
-				return nil
+				return sys.edge.DisableArea("oidc")
 			}
 			links := &oidc.Links{DB: sys.db}
 			cfg := sys.cfg

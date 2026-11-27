@@ -15,8 +15,8 @@ import (
 )
 
 // buildEdges wires the realtime endpoint, the pages and the HTTP edge,
-// registers every route and finishes both, so that a route nobody
-// registered answers not_available_in_preview.
+// registers every route and finishes both; a catalog route nobody
+// registered stops the start.
 func (s *system) buildEdges(in bootInput) error {
 	cfg := s.cfg
 	var err error
@@ -73,9 +73,14 @@ func (s *system) buildEdges(in bootInput) error {
 			}
 		}
 	}
-	// Finish logs the catalog routes that answer 501 in this build.
-	if _, err := s.edge.Finish(); err != nil {
+	// Every route of the catalog has a handler in a complete build; a
+	// route nobody registered is a wiring error, not a reduced server.
+	filled, err := s.edge.Finish()
+	if err != nil {
 		return fmt.Errorf("http routes: %w", err)
+	}
+	if len(filled) > 0 {
+		return fmt.Errorf("http routes without a handler: %s", strings.Join(filled, ", "))
 	}
 	return nil
 }

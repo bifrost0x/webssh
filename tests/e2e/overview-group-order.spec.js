@@ -1,6 +1,12 @@
 const {test, expect} = require('playwright/test');
 const {login, waitForInventory, assertNoExternalRequests, installSshConnectTrap} = require('./helpers');
 
+// A document fulfilled through page.route has no address space, so
+// Chromium's local network access checks block its WebSocket to the
+// loopback server (net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS).
+// Socket.IO fell back to long polling; a WebSocket-only server cannot.
+test.use({launchOptions: {args: ['--disable-features=LocalNetworkAccessChecks']}});
+
 // Group arrangement lives in the classic overview layout.
 const setLayout = async (page, value) => {
     const response = await page.request.post('/api/account/preferences', {data:{overview_layout:value}, headers:{'X-CSRFToken':await page.locator('meta[name="csrf-token"]').getAttribute('content')}});

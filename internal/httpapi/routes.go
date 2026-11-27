@@ -31,9 +31,10 @@ const (
 	// AccessProbe routes (/health, /ready) and static files never look at the
 	// session or the CSRF binding.
 	AccessProbe
-	// AccessPreview routes are planned but not built in this preview. They
-	// answer 501 before anything reads the request.
-	AccessPreview
+	// AccessGone routes are answered by the edge itself before anything
+	// reads the request: the Socket.IO path of the Python release (410)
+	// and the dropped routes (404).
+	AccessGone
 )
 
 // String returns the level for logs and tests.
@@ -51,8 +52,8 @@ func (a Access) String() string {
 		return "upgrade"
 	case AccessProbe:
 		return "probe"
-	case AccessPreview:
-		return "preview"
+	case AccessGone:
+		return "gone"
 	}
 	return "unknown"
 }
@@ -74,11 +75,11 @@ const (
 	pathLogin         = "/login"
 )
 
-// m1Routes are the routes of the preview (M1 plan, section 1.3). The
-// capabilities register their handlers on the edge's mux with exactly these
-// patterns (wildcard names may differ); a catalog route without a handler
-// answers 501 like a preview route, so a missing package never leaves a
-// route open. Paths are relative to the application root: the reverse
+// m1Routes are the routes of M1 (M1 plan, section 1.3). The capabilities
+// register their handlers on the edge's mux with exactly these patterns
+// (wildcard names may differ); a catalog route without a handler answers
+// 404 and stops the server from starting (Handler.Finish), so a missing
+// package never leaves a route open. Paths are relative to the application root: the reverse
 // proxy strips APPLICATION_ROOT, as for the Python release.
 var m1Routes = []route{
 	// Probes and the edge's own routes.

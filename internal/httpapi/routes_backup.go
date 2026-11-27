@@ -1,8 +1,7 @@
 package httpapi
 
 // Routes of the area "backup" (OP1): online backup, upload, restore and the recovery check after a restore.
-// OP1 moves each route it builds from backupPreview to backupBuilt with its
-// access level; no other package edits this file.
+// No other package edits this file.
 
 var backupBuilt = []route{
 	{"POST /admin/api/backups", AccessAdmin},
@@ -15,5 +14,3 @@ var backupBuilt = []route{
 	{"POST /admin/api/backups/upload", AccessAdmin},
 	{"POST /api/account/recovery-check", AccessUser},
 }
-
-var backupPreview = []string{}

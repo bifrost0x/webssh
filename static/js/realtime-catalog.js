@@ -2,8 +2,9 @@
  *
  * Request events become one request with a result. The push events that
  * the Python release sent next to its acknowledgement are produced here
- * from that result, so the frontend modules keep their listeners. Events
- * without a v1 type are answered locally with not_available_in_preview.
+ * from that result, so the frontend modules keep their listeners. An
+ * event without a v1 type is answered locally with unknown_type; every
+ * event the pages send has one (tests/js/realtime-shim-coverage.test.js).
  * Terminal events are handled by realtime-terminal.js. The table itself is
  * split into one file per area (realtime-shim-<area>.js), loaded before
  * this file.
@@ -23,7 +24,7 @@
 })(typeof window !== 'undefined' ? window : globalThis, function (acks, areas) {
     'use strict';
 
-    const UNAVAILABLE = 'not_available_in_preview';
+    const UNKNOWN = 'unknown_type';
 
     // Joins one table of every area; a name in two areas is a load error,
     // so two packages can never answer the same event.
@@ -41,8 +42,6 @@
     // Each area (realtime-shim-<area>.js) provides some of:
     //   requests:    event: {type, payload?, ack?, push?: [[event, build]], failure?: [[event, build]], errorEvent?, answeredByPage?, refresh?}
     //   refresh:     list request type: [event, build] pushed after a refresh
-    //   unavailable: event: data => [event, payload], a local reply while the area is not built
-    //   features:    [[feature, pattern]] for the preview notice
     //   events:      v1 server event type: payload => [event, data], dispatched as Socket.IO event
     // payload(data) builds the request; ack(result, data) the acknowledgement;
     // push builders get the acknowledgement and the request data. errorEvent
@@ -54,21 +53,9 @@
     // whose result is pushed afterwards; failurePush builders
     // get the failure and the request data and are pushed on a failure (the
     // error events of their own the Python release sent).
-    // Events without a v1 type are answered locally with not_available_in_preview.
     const REQUESTS = join('requests');
     const REFRESH_PUSH = join('refresh');
-    const UNAVAILABLE_REPLIES = join('unavailable');
     const SERVER_EVENTS = join('events');
-    for (const event of Object.keys(UNAVAILABLE_REPLIES)) {
-        if (Object.hasOwn(REQUESTS, event)) throw new Error(`realtime shim: ${event} is both built and unavailable`);
-    }
-    // Feature groups for the preview notice; everything else is "other".
-    const FEATURE_PATTERNS = areas.flatMap(([, area]) => area.features || []);
-
-    function featureOf(event) {
-        const match = FEATURE_PATTERNS.find(([, pattern]) => pattern.test(event));
-        return match ? match[0] : 'other';
-    }
 
     // Correlation fields a generic 'error' event carries back, so that
     // handlers keyed by request can release their pending state.
@@ -84,18 +71,10 @@
         return fields;
     }
 
-    function unavailable(root) {
-        const key = 'previewNotice.notAvailable';
-        const text = root.i18n?.t?.(key);
-        return {success: false, code: UNAVAILABLE, error: text && text !== key ? text : 'Not available in this preview yet.'};
-    }
-
-    // Tells the preview notice which feature the user just reached.
-    function notifyUnavailable(root, event) {
-        if (typeof root.dispatchEvent !== 'function' || typeof root.CustomEvent !== 'function') return;
-        root.dispatchEvent(new root.CustomEvent('webssh:preview-unavailable', {
-            detail: {event, feature: featureOf(event)},
-        }));
+    // The answer to an event without a v1 type, with the text of the
+    // server's unknown_type failure.
+    function unknown() {
+        return {success: false, code: UNKNOWN, error: 'Unknown message type.'};
     }
 
     // Routing. host: {root, request(type, payload), dispatch(event, ...args), later(fn)}.
@@ -132,18 +111,15 @@
         });
     }
 
+    // Answers an event no table knows, so that a caller waiting for its
+    // acknowledgement or a request id never hangs.
     function unmapped(host, event, data, ack) {
-        const failed = unavailable(host.root);
-        notifyUnavailable(host.root, event);
-        const reply = Object.hasOwn(UNAVAILABLE_REPLIES, event) ? UNAVAILABLE_REPLIES[event] : null;
+        const failed = unknown();
         const fields = correlation(data);
+        console.error(`[WebSSH] Realtime event without a v1 type: ${event}`);
         host.later(() => {
-            if (reply) {
-                const [name, payload] = reply(data);
-                host.dispatch(name, payload);
-            }
             if (ack) ack(failed);
-            else if (!reply && (fields.request_id || fields.source_id)) host.dispatch('error', {...failed, ...fields});
+            else if (fields.request_id || fields.source_id) host.dispatch('error', {...failed, ...fields});
         });
     }
 
@@ -179,16 +155,13 @@
 
     return Object.freeze({
         AREAS: Object.freeze(areas.map(([name]) => name)),
-        UNAVAILABLE,
+        UNKNOWN,
         route,
-        unavailable,
-        notifyUnavailable,
+        unknown,
         REQUESTS,
         REFRESH_PUSH,
-        UNAVAILABLE_REPLIES,
         SERVER_EVENTS,
         serverEvent,
-        featureOf,
         correlation,
         e2eEvent,
     });

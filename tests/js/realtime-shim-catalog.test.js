@@ -185,11 +185,11 @@ test('settings acknowledgements and the notepad keep their Python shapes', async
     socket.disconnect();
 });
 
-test('events without a v1 type are answered locally and reported to the notice', async () => {
+test('events without a v1 type are answered locally with unknown_type', async () => {
     const window = loadShim();
     const {socket, ws} = await connected(window);
     const reported = [];
-    window.addEventListener('webssh:preview-unavailable', event => reported.push(event.detail.feature));
+    window.addEventListener('webssh:preview-unavailable', event => reported.push(event.detail));
     const seen = [];
     socket.on('error', data => seen.push(['error', data]));
     const sent = ws.sent.length;
@@ -198,10 +198,10 @@ test('events without a v1 type are answered locally and reported to the notice',
     await tick();
     assert.equal(ws.sent.length, sent, 'nothing reaches the server');
     assert.deepEqual(plain(seen), [
-        ['timed', null, 'not_available_in_preview'],
-        ['error', {success: false, code: 'not_available_in_preview', error: 'Not available in this preview yet.', source_id: 'src', request_id: 'r2', path: '/'}],
+        ['timed', null, 'unknown_type'],
+        ['error', {success: false, code: 'unknown_type', error: 'Unknown message type.', source_id: 'src', request_id: 'r2', path: '/'}],
     ]);
-    assert.deepEqual(reported, ['other', 'other']);
+    assert.deepEqual(reported, [], 'no preview notice is told');
     socket.disconnect();
 });
 
@@ -235,16 +235,6 @@ test('command changes push the Python events, refresh the list and repeat failur
         ['ack', failed],
         ['resolve', null, {success: false, code: 'validation_error', error: 'Provide exactly the declared command parameter values'}],
     ]);
-    socket.disconnect();
-});
-
-test('the unavailable message follows the page language', async () => {
-    const window = loadShim({i18n: {t: key => (key === 'previewNotice.notAvailable' ? 'In dieser Vorschau noch nicht verfügbar.' : key)}});
-    const {socket} = await connected(window);
-    let message;
-    socket.emit('request_not_built', {}, ack => { message = ack.error; });
-    await tick();
-    assert.equal(message, 'In dieser Vorschau noch nicht verfügbar.');
     socket.disconnect();
 });
 

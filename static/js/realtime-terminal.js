@@ -54,11 +54,41 @@
     // routes are not projected. use_tmux carries the persistent
     // session to reattach, which the server checks. gateway_interaction and
     // ssh_interaction say the page answers prompt.interactive.
+    // The checks of handle_ssh_connect that need no stored data, with the
+    // texts of the Python release; null when the request passes them.
+    function targetError(data) {
+        const authType = data.auth_type || (data.key_id ? 'key' : 'password');
+        if (savedRoute(data.socks_proxy, 'socks_proxy_id', data.socks_proxy_id) === null) return 'SOCKS proxy reference not found';
+        if (savedRoute(data.proxy_jump, 'jump_host_id', data.jump_host_id) === null) return 'Jump host reference not found';
+        if (!['password', 'key', 'tailscale'].includes(authType)) return 'Invalid authentication method';
+        return null;
+    }
+
+    // credential_error of the Python release: a saved password that cannot
+    // be used keeps its code and text where Python named it; any other
+    // refusal (the target or route changed since the assignment, saved
+    // passwords turned off) is credential_unavailable with one text.
+    const CREDENTIAL_TEXTS = Object.freeze({
+        https_required: 'Saved passwords require HTTPS.',
+        vault_locked: 'Unlock your credential vault and try again.',
+        vault_missing: 'Set up your credential vault first.',
+        credential_missing: 'Save a password for this connection first.',
+    });
+    const CREDENTIAL_REFUSALS = new Set(['credential_target_changed', 'credential_unavailable', 'credentials_disabled']);
+
+    function credentialError(target, err) {
+        const saved = target.saved_password || target.jump_saved_password || target.socks_saved_password;
+        if (!saved) return null;
+        if (Object.hasOwn(CREDENTIAL_TEXTS, err.code)) return {error: CREDENTIAL_TEXTS[err.code], code: err.code};
+        if (!CREDENTIAL_REFUSALS.has(err.code)) return null;
+        return {error: 'Saved credentials no longer match this connection. Review it and try again.', code: 'credential_unavailable'};
+    }
+
     function openTarget(data) {
+        if (targetError(data) !== null) return null;
         const authType = data.auth_type || (data.key_id ? 'key' : 'password');
         const jump = savedRoute(data.proxy_jump, 'jump_host_id', data.jump_host_id);
         const socks = savedRoute(data.socks_proxy, 'socks_proxy_id', data.socks_proxy_id);
-        if (!['password', 'key', 'tailscale'].includes(authType) || jump === null || socks === null) return null;
         const target = {auth_type: authType};
         if (data.gateway_interaction === 1 || data.ssh_interaction === 1) target.interactive = true;
         for (const name of TARGET_FIELDS) {
@@ -241,7 +271,7 @@
             const requestId = data.client_request_id;
             const target = openTarget(data);
             if (!target) {
-                host.dispatch('ssh_error', {...host.unavailable(), client_request_id: requestId});
+                host.dispatch('ssh_error', {error: targetError(data), client_request_id: requestId});
                 return;
             }
             const channel = allocate({mode: 'opening', requestId});
@@ -251,8 +281,9 @@
             if (channels.get(channel.id) !== channel) return;
             if (!result.ok) {
                 release(channel, 'open failed');
+                const credential = credentialError(target, result.err);
                 host.dispatch('ssh_error', {
-                    error: result.err.message || result.err.code, code: result.err.code,
+                    ...(credential || {error: result.err.message || result.err.code, code: result.err.code}),
                     client_request_id: requestId,
                     ...(result.err.retry_after_ms ? {retry_after_ms: result.err.retry_after_ms} : {}),
                 });

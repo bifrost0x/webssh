@@ -40,9 +40,11 @@ func profilePayload(req protocol.HostsProfileSave) payload {
 func invalid(message string) error { return fault.New(fault.ValidationError, message) }
 
 var (
-	errTailscalePreview = fault.New(fault.NotAvailableInPreview, "Tailscale SSH hosts cannot be saved in this preview.")
-	errGatewayPreview   = fault.New(fault.NotAvailableInPreview, "SSH gateway selectors are not available in this preview.")
-	errCommandsPreview  = fault.New(fault.NotAvailableInPreview, "Commands and command sets cannot be assigned in this preview.")
+	// Answers of a service built without the optional collaborators
+	// (Variants, Commands); the composition root always wires them.
+	errTailscalePreview = fault.New(fault.NotAvailableInPreview, "Tailscale SSH hosts cannot be saved on this server.")
+	errGatewayPreview   = fault.New(fault.NotAvailableInPreview, "SSH gateway selectors are not available on this server.")
+	errCommandsPreview  = fault.New(fault.NotAvailableInPreview, "Commands and command sets cannot be assigned on this server.")
 )
 
 // draft is a validated profile before it meets the stored list: the

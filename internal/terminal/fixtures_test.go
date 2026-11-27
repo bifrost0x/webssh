@@ -29,9 +29,24 @@ func TestFixtureSessions(t *testing.T) {
 	if output(t, peer, 5) != fixtureOutput || att.Seq != 1 {
 		t.Fatalf("fixture replay %q, seq %d", output(t, peer, 5), att.Seq)
 	}
+	fix, ok := m.RestoreFixture(1, ids[0])
+	if !ok || fix.Host != "reload-fixture.local" || fix.Done == nil {
+		t.Fatalf("restore fixture %+v %v", fix, ok)
+	}
+	if _, ok := m.RestoreFixture(2, ids[0]); ok {
+		t.Fatal("another user reached the fixture")
+	}
+	if _, ok := m.RestoreFixture(1, real.SessionID); ok {
+		t.Fatal("a real session counts as a fixture")
+	}
 	again, err := m.ReplaceFixtureSessions(t.Context(), peer, 1, 0)
 	if err != nil || len(again) != 0 {
 		t.Fatal(err)
+	}
+	select {
+	case <-fix.Done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the replaced fixture did not end")
 	}
 	if list, _ := m.Restorable(t.Context(), principal.Principal{UserID: 1}); len(list) != 1 || list[0].SessionID != real.SessionID {
 		t.Fatalf("replace touched a real session: %+v", list)

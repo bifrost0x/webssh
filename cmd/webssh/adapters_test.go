@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json/jsontext"
-	"slices"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/config"
@@ -34,18 +33,6 @@ func TestSettingsEnvironmentDefaults(t *testing.T) {
 	env := settingsEnvironment(config.Config{}, lookupMap(map[string]string{"AUTOMATION_ENABLED": "true"}))
 	if !env.Values["TMUX_ENABLED"] || env.Values["TMUX_DEFAULT"] || !env.Values["AUTOMATION_ENABLED"] || env.Values["SFTP_CHMOD_ENABLED"] {
 		t.Errorf("values %v", env.Values)
-	}
-}
-
-func TestPreviewNotice(t *testing.T) {
-	signIn := previewNotice(true)
-	if signIn.Enabled || len(signIn.Unavailable) != 0 {
-		t.Errorf("sign-in notice %+v", signIn)
-	}
-	work := previewNotice(false)
-	if !work.Enabled || !slices.Contains(work.Unavailable, "discovery") || slices.Contains(work.Unavailable, "files") ||
-		slices.Contains(work.Unavailable, "commands") || slices.Contains(work.Unavailable, "automation") {
-		t.Errorf("workspace notice %+v", work)
 	}
 }
 

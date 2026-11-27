@@ -144,7 +144,7 @@ func wireE2E(ctx context.Context, env e2eseed.Env) (*e2eseed.Backend, error) {
 func herdrFixtureLive(m *terminal.Manager, owner int64, id string) (hostops.Live, bool) {
 	exec, s, ok := m.HerdrFixture(owner, id)
 	if !ok {
-		return hostops.Live{}, false
+		return restoreFixtureLive(m, owner, id)
 	}
 	return hostops.Live{Exec: exec, Host: s.Host, Port: s.Port, Username: s.Username, ProfileID: s.ProfileID,
 		Herdr: s.Herdr, UseHerdr: s.UseHerdr, Done: s.Done}, true

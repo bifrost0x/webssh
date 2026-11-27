@@ -1,8 +1,7 @@
 package httpapi
 
 // Routes of the area "github" (ID3): GitHub sign-in, its configuration and the factor bootstrap.
-// ID3 moves each route it builds from githubPreview to githubBuilt with its
-// access level; no other package edits this file.
+// No other package edits this file.
 
 var githubBuilt = []route{
 	// The redirect and its callback run before sign-in; a link callback
@@ -17,5 +16,3 @@ var githubBuilt = []route{
 	{"GET /admin/api/github-auth/config", AccessAdmin},
 	{"POST /admin/api/github-auth/config", AccessAdmin},
 }
-
-var githubPreview = []string{}

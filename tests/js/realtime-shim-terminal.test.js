@@ -110,12 +110,13 @@ test('a failed open and an unsupported target become ssh_error with the request 
     socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'key', key_id: 'k', socks_proxy: 'p', client_request_id: 'req_e'});
     await tick();
     assert.equal(ws.sent.length, sent, 'unsupported targets never reach the server');
-    assert.deepEqual(errors.map(e => [e.client_request_id, e.code]), [
-        ['req_b', 'not_available_in_preview'],
-        ['req_c', 'not_available_in_preview'],
-        ['req_d', 'not_available_in_preview'],
-        ['req_e', 'not_available_in_preview'],
-        ['req_a', 'unreachable'],
+    // The texts of handle_ssh_connect in the Python release.
+    assert.deepEqual(errors.map(e => [e.client_request_id, e.code, e.error]), [
+        ['req_b', undefined, 'Invalid authentication method'],
+        ['req_c', undefined, 'Jump host reference not found'],
+        ['req_d', undefined, 'Jump host reference not found'],
+        ['req_e', undefined, 'SOCKS proxy reference not found'],
+        ['req_a', 'unreachable', 'The host could not be reached.'],
     ]);
     assert.equal(errors[4].error, 'The host could not be reached.');
     socket.disconnect();
@@ -281,6 +282,32 @@ test('restorable sessions are attached and restored before connected', async () 
         ['connected'],
     ]);
     assert.equal(ws.frames(KIND_ACK).at(-1).seq, 3);
+    socket.disconnect();
+});
+
+test('the session file source reaches ssh_connected and ssh_session_restored', async () => {
+    const source = {
+        source_id: 'sftp-session:sess-1', kind: 'sftp', label: 'u@h.test', endpoint: 'h.test:22', protocol: 'SFTP',
+        capabilities: ['list', 'read'], ephemeral: false, security: {host_key_verified: true}, access: {},
+    };
+    const window = loadShim();
+    const socket = window.io({path: '/socket.io', autoConnect: false});
+    const seen = [];
+    socket.on('ssh_session_restored', data => seen.push(['restored', plain(data.file_source)]));
+    socket.on('ssh_connected', data => seen.push(['connected', plain(data.file_source)]));
+    socket.connect();
+    const {FakeWebSocket} = require('./support/realtime-harness.js');
+    const ws = FakeWebSocket.instances.at(-1);
+    ws.hello([{...INFO, file_source: source}]);
+    const attach = ws.lastRequest('terminal.attach');
+    ws.reply(attach.id, {ch: 1, session_id: 'sess-1', seq: 0, full: true});
+    await tick(60);
+    const other = {...source, source_id: 'sftp-session:sess-2'};
+    socket.emit('ssh_connect', {host: 'h.test', port: '22', username: 'u', auth_type: 'password', password: 'pw', client_request_id: 'req_2'});
+    const open = ws.lastRequest('terminal.open');
+    ws.reply(open.id, {session_id: 'sess-2', info: {...INFO, session_id: 'sess-2', file_source: other}});
+    await tick();
+    assert.deepEqual(seen, [['restored', source], ['connected', other]]);
     socket.disconnect();
 });
 
@@ -549,5 +576,36 @@ test('e2e.output_stream binds a server channel to a session name', async () => {
     await tick(80);
     assert.deepEqual(plain(output), [{session_id: 'load-0', data: 'frame-1', sequence: 1}]);
     assert.deepEqual(ws.frames(KIND_ACK).map(f => [f.channel, f.seq]), [[ch, 1]]);
+    socket.disconnect();
+});
+
+// credential_error of the Python release: a refused saved password of the
+// target or a route shows one text, the guard of the SOCKS5 login
+// included (credential_target_changed, RS35-F1).
+test('a refused saved password reads like the Python release', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const errors = [];
+    socket.on('ssh_error', data => errors.push(plain(data)));
+    const cases = [
+        ['r1', {credential_id: 'c1'}, 'credential_target_changed'],
+        ['r2', {socks_proxy: {socks_proxy_id: 's1', credential_id: 'c2'}}, 'credential_target_changed'],
+        ['r3', {credential_id: 'c1'}, 'vault_locked'],
+        ['r4', {}, 'credential_target_changed'],
+        ['r5', {credential_id: 'c1'}, 'unreachable'],
+    ];
+    for (const [id, extra, code] of cases) {
+        socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', client_request_id: id, ...extra});
+        ws.fail(ws.lastRequest('terminal.open').id, {code, message: `server text ${code}`});
+    }
+    await tick();
+    const unusable = 'Saved credentials no longer match this connection. Review it and try again.';
+    assert.deepEqual(errors.map(e => [e.client_request_id, e.code, e.error]), [
+        ['r1', 'credential_unavailable', unusable],
+        ['r2', 'credential_unavailable', unusable],
+        ['r3', 'vault_locked', 'Unlock your credential vault and try again.'],
+        ['r4', 'credential_target_changed', 'server text credential_target_changed'],
+        ['r5', 'unreachable', 'server text unreachable'],
+    ]);
     socket.disconnect();
 });

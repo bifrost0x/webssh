@@ -9,6 +9,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/files"
 	"github.com/bifrost0x/webssh/internal/principal"
+	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
 )
 
@@ -140,6 +141,21 @@ func SessionOpener(s Sessions, o Options) func(context.Context, principal.Princi
 		}
 		return descriptor(sess.Hop, sess.Name, false), b, nil
 	}
+}
+
+// SessionSource is the descriptor the page receives for the source of
+// terminal session handle before the source is opened (the file_source
+// member of ssh_connected): the descriptor of SessionOpener with the SFTP
+// defaults. chmod needs the server's extensions, which only an open
+// source knows, as in the Python release.
+func SessionSource(handle string, s Session) (protocol.FileSource, error) {
+	id, err := files.FormatSourceID(files.SourceSFTPSession, handle)
+	if err != nil {
+		return protocol.FileSource{}, err
+	}
+	d := descriptor(s.Hop, s.Name, false)
+	d.SourceID = id
+	return files.PublicSource(d, files.Capabilities{Ops: files.CapAll}), nil
 }
 
 // ProbeTimeout bounds the capability probe (CAPABILITY_TIMEOUT).

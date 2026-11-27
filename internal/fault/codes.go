@@ -119,7 +119,9 @@ const (
 	statusGatewayTimeout      = 504
 )
 
-// entry is the fixed presentation of one code.
+// entry is the fixed presentation of one code. not_available_in_preview
+// keeps the spelling of the preview builds (codes are never renamed); only
+// a capability built without an optional collaborator sends it.
 type entry struct {
 	status  int
 	message string // default text, safe to show
@@ -142,7 +144,7 @@ var catalog = map[Code]entry{
 	PreconditionFailed:    {statusPreconditionFailed, "The data has changed. Reload and try again."},
 	RateLimited:           {statusTooManyRequests, "Too many attempts. Try again later."},
 	Busy:                  {statusConflict, "Another operation is in progress."},
-	NotAvailableInPreview: {statusNotImplemented, "Not available in this preview yet."},
+	NotAvailableInPreview: {statusNotImplemented, "This function is not available on this server."},
 	Maintenance:           {statusServiceUnavailable, "The server is in maintenance mode."},
 	Unavailable:           {statusServiceUnavailable, "The service is unavailable."},
 	StorageError:          {statusInternalServerError, "The data could not be stored."},

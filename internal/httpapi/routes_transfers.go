@@ -1,8 +1,7 @@
 package httpapi
 
 // Routes of the area "transfers" (TR1): HTTP transfers.
-// TR1 moves each route it builds from transfersPreview to transfersBuilt with its
-// access level; no other package edits this file.
+// No other package edits this file.
 
 // The upload streams its body to the file source (Handler.StreamBody).
 var transfersBuilt = []route{
@@ -10,5 +9,3 @@ var transfersBuilt = []route{
 	{"GET /api/transfers/{token}/folder-download", AccessUser},
 	{"POST /api/transfers/{token}/upload", AccessUser},
 }
-
-var transfersPreview = []string{}

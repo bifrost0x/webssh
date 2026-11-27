@@ -56,6 +56,11 @@ type SessionInfo struct {
 	// LastSeq is the sequence of the last output chunk; terminal.attach
 	// with after_seq = LastSeq replays nothing.
 	LastSeq uint64 `json:"last_seq"`
+	// FileSource is the sftp-session source of a live session, as the
+	// file_source member of ssh_connected and ssh_session_restored: set in
+	// the terminal.open result and in Hello.Restorable, absent in
+	// Hello.Persistent (no connection yet).
+	FileSource *FileSource `json:"file_source,omitempty"`
 }
 
 // Auth types of terminal.open.

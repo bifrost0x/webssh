@@ -57,29 +57,3 @@ func TestWorkspaceLoadsRealtimeClientInOrder(t *testing.T) {
 		}
 	}
 }
-
-func TestPreviewNoticeAssets(t *testing.T) {
-	r := testRenderer(t)
-	for _, c := range loadCases(t) {
-		order := assetOrder(renderCase(t, r, c))
-		notice := slices.Index(order, "js/preview-notice.js")
-		css := slices.Contains(order, "css/preview-notice.css")
-		i18nNotice := slices.Index(order, "js/preview-notice-i18n.js")
-		switch c.Name {
-		case "workspace_preview", "settings_preview":
-			if notice < 0 || !css || i18nNotice < 0 || i18nNotice > notice || i18nNotice < slices.Index(order, "js/i18n.js") {
-				t.Errorf("%s: want css, i18n.js, preview-notice-i18n.js, preview-notice.js; got %v", c.Name, order)
-			}
-		case "login_preview":
-			// The sign-in page has no i18n.js; the notice uses its
-			// built-in English texts there.
-			if notice < 0 || !css || i18nNotice >= 0 {
-				t.Errorf("%s: want css and preview-notice.js without translations; got %v", c.Name, order)
-			}
-		default:
-			if notice >= 0 || css || i18nNotice >= 0 {
-				t.Errorf("%s: preview assets outside a preview", c.Name)
-			}
-		}
-	}
-}

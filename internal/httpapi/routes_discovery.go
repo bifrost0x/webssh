@@ -1,8 +1,7 @@
 package httpapi
 
 // Routes of the area "discovery" (HO2): discovery scans and the reachability check.
-// HO2 moves each route it builds from discoveryPreview to discoveryBuilt with its
-// access level; no other package edits this file.
+// No other package edits this file.
 
 var discoveryBuilt = []route{
 	{"POST /api/discovery/scans", AccessUser},
@@ -10,5 +9,3 @@ var discoveryBuilt = []route{
 	{"GET /api/discovery/scans/{scan_id}", AccessUser},
 	{"POST /api/overview/reachability", AccessUser},
 }
-
-var discoveryPreview = []string{}

@@ -7,5 +7,3 @@ package httpapi
 var filesBuilt = []route{
 	{"GET /api/files/handoff/{token}", AccessUser},
 }
-
-var filesPreview = []string{}

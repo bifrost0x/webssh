@@ -14,6 +14,9 @@ const PACKAGES = new Set(['ID1', 'ID2', 'ID3', 'ID4', 'NW1', 'NW2', 'RT1', 'SM0'
     'FS1', 'FS2', 'FS3', 'VA1', 'TR1', 'CM1', 'AU1', 'AU2', 'OP1', 'OP2', 'OP3', 'PF1', 'PF2', 'PF3', 'FE1', 'MG1',
     'DOC1']);
 const SERIAL_ACCOUNTS = new Set(['e2e_admin']);
+// A decision that drops what a test checks (an ADR under docs/adr or a
+// product decision D-xx); such a test stays out of the Go suite for good.
+const DECISION = /^(ADR \d{4}|D-\d{2})$/;
 
 // Checks the file and returns the Playwright file lists and the titles to
 // leave out. Exported for tests/js.
@@ -33,8 +36,10 @@ function plan(suite, enabled, specExists) {
         if (spec.serial !== undefined && !SERIAL_ACCOUNTS.has(spec.serial)) throw new Error(`${spec.file}: unknown serial account ${spec.serial}`);
         for (const entry of spec.exclude) {
             if (!entry.title || !entry.reason) throw new Error(`${spec.file}: an excluded test needs a title and a reason`);
-            if (entry.requires ? !(entry.requires in suite.requires) : !PACKAGES.has(entry.package)) {
-                throw new Error(`${spec.file}: "${entry.title}" names no package that unlocks it`);
+            const unlocked = entry.requires ? entry.requires in suite.requires : PACKAGES.has(entry.package);
+            const decided = entry.decision !== undefined && DECISION.test(entry.decision) && !entry.requires && !entry.package;
+            if (!(entry.decision === undefined ? unlocked : decided)) {
+                throw new Error(`${spec.file}: "${entry.title}" names neither a decision nor what unlocks it`);
             }
         }
         if (!available(spec)) continue;

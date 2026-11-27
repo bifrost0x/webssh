@@ -9,7 +9,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-var errTailscaleConnect = fault.New(fault.NotAvailableInPreview, "Tailscale SSH is not available in this preview.")
+var errTailscaleConnect = fault.New(fault.NotAvailableInPreview, "Tailscale SSH is not available on this server.")
 
 // Resolve returns the connection target of a saved host of owner, read
 // from the stores at this moment (terminal.Profiles). Passwords never come
@@ -18,7 +18,7 @@ var errTailscaleConnect = fault.New(fault.NotAvailableInPreview, "Tailscale SSH 
 // everything else is taken from the saved records, never from the
 // browser. It fails with not_found
 // for a host, jump host or proxy that does not exist for owner, and with
-// not_available_in_preview for routes this release does not build.
+// not_available_in_preview for routes the service is built without.
 func (s *Service) Resolve(ctx context.Context, owner int64, profileID string) (client.Target, error) {
 	var t client.Target
 	err := s.DB.Read(ctx, func(tx *store.Tx) error {

@@ -56,8 +56,5 @@
                 client_request_id: p.request_id, sequence: p.sequence, data: text(p.data),
             }],
         }),
-        features: Object.freeze([
-            ['terminalTools', /^(request_herdr_snapshot|request_session_directory)/],
-        ]),
     });
 });

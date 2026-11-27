@@ -1,8 +1,7 @@
 package httpapi
 
 // Routes of the area "oidc" (ID2): OpenID Connect sign-in, links and step-up at the provider.
-// ID2 moves each route it builds from oidcPreview to oidcBuilt with its
-// access level; no other package edits this file.
+// No other package edits this file.
 
 var oidcBuilt = []route{
 	{"GET /oidc/login", AccessPublic},
@@ -19,5 +18,3 @@ var oidcBuilt = []route{
 	{"DELETE /admin/api/users/{user_id}/oidc-identities/{identity_id}", AccessAdmin},
 	{"POST /admin/api/users/{user_id}/oidc-link", AccessAdmin},
 }
-
-var oidcPreview = []string{}

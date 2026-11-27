@@ -2,6 +2,8 @@ package terminal
 
 import (
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/principal"
+	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
 )
 
@@ -55,4 +57,23 @@ func (m *Manager) SessionConn(owner int64, id string) (SessionConn, error) {
 		sc.Tmux = s.tmux.name
 	}
 	return sc, nil
+}
+
+// FileSources describes the sftp-session source of owner p's live session
+// for the page (SessionInfo.FileSource, the file_source member of
+// ssh_connected and ssh_session_restored). info is the session's current
+// description; nil means the session has no source to offer.
+type FileSources func(p principal.Principal, info protocol.SessionInfo) *protocol.FileSource
+
+// SetFileSources sets the provider of SessionInfo.FileSource. The
+// composition root calls it once while wiring, before connections are
+// served; without a provider the member stays absent.
+func (m *Manager) SetFileSources(f FileSources) { m.fileSources = f }
+
+// withFileSource adds the session's file source to info for p.
+func (m *Manager) withFileSource(p principal.Principal, info protocol.SessionInfo) protocol.SessionInfo {
+	if m.fileSources != nil {
+		info.FileSource = m.fileSources(p, info)
+	}
+	return info
 }

@@ -32,7 +32,6 @@
     {{if and (and $.AdminPanelEnabled $.User.IsAdmin) (not $.RecoveryMode)}}
     <link rel="stylesheet" href="{{$.Asset "css/customer-workflows.css"}}">
     {{end}}
-    {{template "preview_notice_style" $}}
 </head>
 <body class="webssh-ui webssh-account" data-sync-terminal-directory="{{if $.SyncTerminalDirectory}}true{{else}}false{{end}}" data-theme="{{or $.Theme "glass"}}" data-ldap-managed="{{if $.LDAPManaged}}true{{else}}false{{end}}" data-recovery-mode="{{if $.RecoveryMode}}true{{else}}false{{end}}" data-account-mfa-enabled="{{if $.AccountMFAEnabled}}true{{else}}false{{end}}" data-recovery-enabled="{{if $.RecoveryCodesEnabled}}true{{else}}false{{end}}" data-confirm-session-close="{{if $.ConfirmSessionClose}}true{{else}}false{{end}}" data-disconnect-session-action="{{$.DisconnectSessionAction}}" data-authentication-session-duration-minutes="{{$.AuthenticationSessionDurationMinutes}}">
     <header class="header">
@@ -496,7 +495,5 @@
     <script src="{{$.Asset "js/restore-status-flow.js"}}"></script>
     <script src="{{$.Asset "js/admin.js"}}"></script>
     {{end}}
-    {{template "preview_notice_i18n" $}}
-    {{template "preview_notice" $}}
 </body>
 </html>{{end}}

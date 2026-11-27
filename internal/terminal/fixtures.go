@@ -159,3 +159,20 @@ func (l *ledger) connFrames(conn uint64) int {
 	}
 	return 0
 }
+
+// RestoreFixture returns the connection details of the owner's live
+// restore fixture session id (ReplaceFixtureSessions), whose files and
+// samples the e2e build serves from stand-ins; ok is false for anything
+// else, a Herdr fixture included.
+func (m *Manager) RestoreFixture(owner int64, id string) (SessionConn, bool) {
+	s, err := m.lookup(owner, id)
+	if err != nil || !s.fixture || s.fixtureExec != nil {
+		return SessionConn{}, false
+	}
+	info, live := s.snapshot()
+	if !live {
+		return SessionConn{}, false
+	}
+	return SessionConn{Done: s.done, ProfileID: info.ProfileID, Host: info.Host, Port: info.Port,
+		Username: info.Username, Name: info.DisplayName, InputIdle: s.InputIdle}, true
+}

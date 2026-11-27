@@ -26,6 +26,8 @@ test('the runner refuses malformed entries', () => {
         {file: 'mfa.spec.js', serial: 'e2e_user', exclude: []},
         {file: 'mfa.spec.js', requires: 'nothing', exclude: []},
         {file: 'missing.spec.js', exclude: []},
+        {file: 'mfa.spec.js', exclude: [{title: 't', reason: 'r', decision: 'later'}]},
+        {file: 'mfa.spec.js', exclude: [{title: 't', reason: 'r', decision: 'ADR 0005', package: 'FE1'}]},
     ];
     for (const spec of bad) {
         assert.throws(() => plan({...base, specs: [spec]}, new Set(), exists), undefined, JSON.stringify(spec));
@@ -34,4 +36,15 @@ test('the runner refuses malformed entries', () => {
     assert.throws(() => plan(base, new Set(['unknown']), exists));
     const ok = plan({...base, specs: [{file: 'mfa.spec.js', exclude: [{title: 't', reason: 'r', package: 'ID1'}]}]}, new Set(), exists);
     assert.deepEqual(ok.excluded, ['t']);
+    const decided = plan({...base, specs: [{file: 'mfa.spec.js', exclude: [
+        {title: 'a', reason: 'r', decision: 'ADR 0005'}, {title: 'b', reason: 'r', decision: 'D-13'}]}]}, new Set(), exists);
+    assert.deepEqual(decided.excluded, ['a', 'b']);
+});
+
+// After the last M2 package nothing waits for a package any more: what is
+// left out is either a capability of the build or a decision.
+test('no excluded test waits for FE1', () => {
+    for (const spec of suite.specs) {
+        for (const entry of spec.exclude) assert.notEqual(entry.package, 'FE1', `${spec.file}: ${entry.title}`);
+    }
 });

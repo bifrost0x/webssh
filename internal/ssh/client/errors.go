@@ -75,7 +75,7 @@ func classify(ctx context.Context, timedOut bool, err error) (fault.Code, string
 	case errors.Is(err, errBanner):
 		return fault.BannerDeclined, "", ""
 	case errors.Is(err, errMultiStep):
-		return fault.NotAvailableInPreview, "The host asks for further input (for example a one-time code). Interactive sign-in is not available in this preview.", ""
+		return fault.InteractionRequired, "The host asks for further input (for example a one-time code), which this connection cannot answer.", ""
 	case errors.Is(err, errInteraction):
 		return fault.InteractionRequired, "", ""
 	case errors.Is(err, errAuthExhausted), errors.Is(err, errChallengeDeclined):
