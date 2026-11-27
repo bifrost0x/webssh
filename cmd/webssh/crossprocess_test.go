@@ -29,6 +29,7 @@ func webssh(t *testing.T, env []string, args ...string) *exec.Cmd {
 	raw, _ := json.Marshal(args)
 	cmd := exec.CommandContext(t.Context(), os.Args[0])
 	cmd.Env = append(append(os.Environ(), env...), envProcessArgs+"="+string(raw))
+	cmd.Env = append(cmd.Env, helperTempDir(t))
 	return cmd
 }
 

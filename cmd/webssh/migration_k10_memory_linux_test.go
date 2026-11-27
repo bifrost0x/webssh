@@ -1,3 +1,8 @@
+//go:build linux && !race
+
+// The race detector multiplies the memory of every allocation, so the
+// measurement runs only in a normal build.
+
 package main
 
 import (
@@ -111,6 +116,7 @@ func TestBuildMigrationMemoryWithLargeStores(t *testing.T) {
 	}
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestK10MemoryHelper$", "-test.count=1", "-test.v")
 	cmd.Env = append(os.Environ(), k10MemoryEnv+"="+dir)
+	cmd.Env = append(cmd.Env, helperTempDir(t))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("helper: %v\n%s", err, out)

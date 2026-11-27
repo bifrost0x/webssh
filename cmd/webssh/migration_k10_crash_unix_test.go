@@ -86,6 +86,7 @@ func TestBuildCrashInEveryStep(t *testing.T) {
 			before := legacyState(t, dir)
 			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestK10CrashHelper$", "-test.count=1")
 			cmd.Env = append(os.Environ(), k10CrashEnv+"="+entity+"|"+dir)
+			cmd.Env = append(cmd.Env, helperTempDir(t))
 			out, err := cmd.CombinedOutput()
 			var exit *exec.ExitError
 			if !errors.As(err, &exit) {

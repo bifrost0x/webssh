@@ -30,6 +30,7 @@ func TestFallbackRootsWithoutBundle(t *testing.T) {
 	}
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestFallbackRootsWithoutBundle$") // #nosec G204 -- the test binary itself
 	cmd.Env = append(os.Environ(), rootsChildEnv+"=1", "SSL_CERT_FILE=/nonexistent", "SSL_CERT_DIR=/nonexistent")
+	cmd.Env = append(cmd.Env, helperTempDir(t))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("child: %v\n%s", err, out)
 	}
