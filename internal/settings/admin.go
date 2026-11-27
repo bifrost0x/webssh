@@ -17,12 +17,6 @@ import (
 // a failed write leaves every setting as it was, and the previous values
 // the audit compares with are read in the same transaction.
 
-// Admin switches stored as plain booleans (_ADMIN_FLAGS).
-var adminFlags = []string{
-	"registration_enabled", "ssh_gateway_enabled", "herdr_enabled",
-	"support_links_enabled", "tailscale_ssh_restrict_tailnet_routes",
-}
-
 // SignInBound is the accepted range of a sign-in protection value.
 type SignInBound struct{ Min, Max int }
 
@@ -68,9 +62,7 @@ func AdminSettingNames() []string {
 		names = append(names, b.Name)
 	}
 	names = append(names, featurePolicies...)
-	for _, name := range runtimeFeatureOrder {
-		names = append(names, name)
-	}
+	names = append(names, runtimeFeatureOrder...)
 	return append(names, SettingDiscoveryUsers, SettingReachabilityUsers)
 }
 

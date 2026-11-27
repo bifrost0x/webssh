@@ -85,6 +85,7 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 		Theme:                    "glass",
 		RegistrationEnabled:      app.RegistrationEnabled || bootstrap,
 		AdminPanelEnabled:        pg.cfg.Accounts.AdminPanelEnabled,
+		AuditExportEnabled:       pg.cfg.Audit.ExportEnabled,
 		WebAuthnEnabled:          pg.active(ctx, "passkey"),
 		WebAuthnOrigin:           pg.cfg.WebAuthn.Origin,
 		WebAuthnRPID:             pg.cfg.WebAuthn.RPID,
