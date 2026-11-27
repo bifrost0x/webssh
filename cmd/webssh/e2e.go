@@ -44,10 +44,20 @@ const (
 	envE2EPort        = "WEBSSH_E2E_PORT"
 	envE2ESeed        = "WEBSSH_E2E_SEED"
 	envE2EFastHashing = "WEBSSH_E2E_FAST_HASHING"
-	defaultE2ESeed    = "tests/e2e/seed.json"
+	// envE2ESMBPort points SMB connections at the port of the lab's Samba
+	// (tests/e2e/m2/smb.spec.js); production connections use 445.
+	envE2ESMBPort  = "WEBSSH_E2E_SMB_PORT"
+	defaultE2ESeed = "tests/e2e/seed.json"
 )
 
-func init() { e2eCommand = runE2E }
+func init() {
+	e2eCommand = runE2E
+	if v := os.Getenv(envE2ESMBPort); v != "" {
+		if port, err := e2eseed.ParsePort(v); err == nil {
+			smbPort = uint16(port) // #nosec G115 -- ParsePort bounds the port to 1..65535
+		}
+	}
+}
 
 // runE2E starts the disposable backend of the browser suite:
 //

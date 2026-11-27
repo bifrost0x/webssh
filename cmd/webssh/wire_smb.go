@@ -9,6 +9,10 @@ import (
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
+// smbPort is the port of SMB connections, 445 when zero. Only the
+// end-to-end build changes it (e2e.go), for the lab's Samba.
+var smbPort uint16
+
 var (
 	_ smb.Network = (*netpolicy.Policy)(nil)
 	_ smb.Sources = (*files.Registry)(nil)
@@ -34,7 +38,7 @@ func smbArea() extension {
 			svc := &smb.Service{
 				Shares: &smb.Shares{DB: sys.db, Max: cfg.MaxSavedShares},
 				Config: smb.Config{Network: sys.policy, AllowedTargets: smbAllowedTargets(cfg),
-					ConnectTimeout: cfg.ConnectTimeout, IOIdleTimeout: cfg.IOIdleTimeout},
+					ConnectTimeout: cfg.ConnectTimeout, IOIdleTimeout: cfg.IOIdleTimeout, Port: smbPort},
 				Sources:   sys.fileSources,
 				Passwords: savedPasswords{sys.vault},
 				Logger:    sys.log,
