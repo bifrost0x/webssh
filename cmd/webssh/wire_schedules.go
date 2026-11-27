@@ -1,7 +1,211 @@
 package main
 
+import (
+	"context"
+	"io/fs"
+	"strings"
+	"time"
+
+	"github.com/bifrost0x/webssh/internal/accounts"
+	"github.com/bifrost0x/webssh/internal/audit"
+	"github.com/bifrost0x/webssh/internal/automation"
+	"github.com/bifrost0x/webssh/internal/config"
+	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/files"
+	"github.com/bifrost0x/webssh/internal/httpapi"
+	"github.com/bifrost0x/webssh/internal/jobs"
+	"github.com/bifrost0x/webssh/internal/migrate/legacy"
+	"github.com/bifrost0x/webssh/internal/principal"
+	"github.com/bifrost0x/webssh/internal/quota"
+	"github.com/bifrost0x/webssh/internal/realtime/protocol"
+	"github.com/bifrost0x/webssh/internal/session"
+	"github.com/bifrost0x/webssh/internal/settings"
+	"github.com/bifrost0x/webssh/internal/store"
+	"github.com/bifrost0x/webssh/internal/vault"
+)
+
 // schedulesArea wires the area "schedules" (AU2): automation schedules and permission jobs (internal/automation).
 // AU2 fills in the hooks; no other package edits this file.
+//
+// The schedules need the run side of automation (AU1) to review and run;
+// scheduleWorkflows returns it once that area is wired. Until then the
+// schedules can be listed, paused and deleted, and no due slot is touched,
+// so migrated schedules keep their approval.
 func schedulesArea() extension {
-	return extension{name: "schedules"}
+	return extension{
+		name:    "schedules",
+		schemas: []store.Schema{automation.ScheduleSchema()},
+		wire:    wireSchedules,
+		migrate: func(r *legacy.Registry, _ config.Config, _ config.LookupFunc) error {
+			return legacy.AddSchedules(r)
+		},
+	}
+}
+
+// scheduleWorkflows returns the run side of automation; the automation
+// area (AU1) provides it.
+var scheduleWorkflows = func(*system) automation.ScheduleWorkflows { return nil }
+
+func wireSchedules(sys *system) error {
+	draining := func() bool { return sys.maintenance.Load() }
+	sched, err := automation.NewSchedules(automation.ScheduleOptions{
+		DB: sys.db, Workflows: scheduleWorkflows(sys), Accounts: scheduleAccounts{sys.accounts, sys.sessions},
+		Policy: schedulePolicy{sys.settings}, Passwords: sys.vault, StepUp: sys.stepup, Audit: sys.audit,
+		Draining: draining,
+	})
+	if err != nil {
+		return err
+	}
+	(&automation.SchedulesHTTP{Schedules: sched, Secure: httpapi.ReachedOverHTTPS, Logger: sys.log}).Register(sys.edge.Mux())
+	if sched.Runs() {
+		if err := sys.jobs.Register("automation.schedules", jobs.Spec{Every: automation.ScheduleTickInterval, Singleton: true,
+			Timeout: time.Minute}, sched.Tick); err != nil {
+			return err
+		}
+	}
+	perms, err := automation.NewPermissionJobs(automation.PermOptions{
+		Sources: permSources{reg: sys.fileSources, settings: sys.settings}, Quotas: sys.quotas,
+		Audit: permAudit{reg: sys.fileSources, log: sys.audit}, Draining: draining,
+	})
+	if err != nil {
+		return err
+	}
+	sys.realtime.Mount(perms.Routes()...)
+	sys.realtime.OnClose(func(p protocol.Peer) { perms.PeerClosed(p.Principal().UserID, p.ID()) })
+	unsubscribe := sys.sessions.Subscribe(func(rev principal.Revocation) {
+		sched.Revoke(rev)
+		perms.Revoke(rev)
+	})
+	sys.closers = append(sys.closers, func() error {
+		unsubscribe()
+		ctx, cancel := context.WithTimeout(context.Background(), jobs.MaxShutdownGrace)
+		defer cancel()
+		return perms.Shutdown(ctx)
+	})
+	return nil
+}
+
+// The providers satisfy the consumer interfaces of the area.
+var (
+	_ automation.SchedulePasswords = (*vault.Service)(nil)
+	_ automation.ScheduleAudit     = (*audit.Logger)(nil)
+	_ automation.PermQuotas        = (*quota.Policy)(nil)
+	_ automation.ScheduleAccounts  = scheduleAccounts{}
+	_ automation.SchedulePolicy    = schedulePolicy{}
+	_ automation.PermSources       = permSources{}
+	_ automation.PermAudit         = permAudit{}
+)
+
+// scheduleAccounts binds approvals to the account and to the
+// installation's sign-out generation.
+type scheduleAccounts struct {
+	accounts *accounts.Service
+	sessions *session.Service
+}
+
+func (a scheduleAccounts) ScheduleAccount(ctx context.Context, userID int64) (automation.AccountBinding, error) {
+	acc, err := a.accounts.Get(ctx, userID)
+	if err != nil {
+		return automation.AccountBinding{}, err
+	}
+	epoch, err := a.sessions.Epoch(ctx)
+	if err != nil {
+		return automation.AccountBinding{}, err
+	}
+	return automation.AccountBinding{Incarnation: acc.Incarnation, AuthGeneration: acc.AuthGeneration, Epoch: epoch,
+		Locked: acc.IsLocked}, nil
+}
+
+type schedulePolicy struct{ settings *settings.Service }
+
+func (p schedulePolicy) AutomationPolicy(ctx context.Context) (bool, string, error) {
+	app, err := p.settings.App(ctx)
+	return app.AutomationEnabled, app.AutomationRevision, err
+}
+
+// permSources holds the file sources of the workspace for permission
+// changes while SFTP_CHMOD_ENABLED is on (read per request, as Python).
+type permSources struct {
+	reg      *files.Registry
+	settings *settings.Service
+}
+
+func (s permSources) Hold(ctx context.Context, p principal.Principal, sourceID string) (automation.PermSource, any, func(), error) {
+	app, err := s.settings.App(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if !app.RuntimeFeature("sftp_chmod_enabled").Enabled {
+		return nil, nil, nil, fault.New(fault.UnsupportedOperation, "")
+	}
+	b, release, err := s.reg.Resolve(ctx, p, sourceID, files.CapChmod)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return permBackend{b}, b, release, nil
+}
+
+func (permSources) Clean(path string) (string, error) { return files.CleanTarget(path) }
+
+// permBackend is a files.Backend as a permission source.
+type permBackend struct{ b files.Backend }
+
+func (p permBackend) Lstat(ctx context.Context, path string) (automation.PermEntry, error) {
+	e, err := p.b.Stat(ctx, path, false)
+	if err != nil {
+		return automation.PermEntry{}, err
+	}
+	out := automation.PermEntry{Mode: e.Mode, Size: e.Size, ModTime: e.ModTime}
+	if e.Owner != nil {
+		uid, gid := e.Owner.UID, e.Owner.GID
+		out.UID, out.GID = &uid, &gid
+	}
+	return out, nil
+}
+
+func (p permBackend) Children(ctx context.Context, dir string, fn func(string) error) error {
+	l, err := p.b.OpenListing(ctx, dir)
+	if err != nil {
+		return err
+	}
+	defer l.Close()
+	for {
+		entries, more, err := l.Next(ctx, 512)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if err := fn(e.Name); err != nil {
+				return err
+			}
+		}
+		if !more {
+			return nil
+		}
+	}
+}
+
+func (p permBackend) Chmod(ctx context.Context, path string, perm uint32) error {
+	return p.b.Chmod(ctx, path, fs.FileMode(perm)&fs.ModePerm)
+}
+
+// permAudit writes FILE_SOURCE_OPERATION with the target fields of the
+// source, as the file workspace does.
+type permAudit struct {
+	reg *files.Registry
+	log *audit.Logger
+}
+
+func (a permAudit) PermissionChange(p principal.Principal, sourceID, operation, result, path, oldMode, newMode string) {
+	if a.log == nil {
+		return
+	}
+	d, _, _ := a.reg.Describe(p, sourceID)
+	name := path
+	if i := strings.LastIndexByte(path, '/'); i >= 0 && path != "/" {
+		name = path[i+1:]
+	}
+	a.log.Security("FILE_SOURCE_OPERATION", "user", p.Username, "operation", operation, "result", result,
+		"source_kind", "sftp", "target_host", d.Endpoint, "share", nil, "filename", name, "size", 0,
+		"old_mode", oldMode, "new_mode", newMode)
 }
