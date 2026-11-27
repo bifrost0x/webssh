@@ -21,7 +21,7 @@ npx playwright test --trace off       # same, without traces
 | `WEBSSH_E2E_SERVER_TIMEOUT_MS` | `120000` | How long Playwright waits for `GET /login` to answer. |
 | `PYTHON` | `python` (`.venv\Scripts\python.exe` on Windows) | Interpreter for the default command. |
 | `WEBSSH_E2E_FAST_HASHING` | unset | `1` uses cheap password hashing for the seeded accounts (CI). |
-| `WEBSSH_E2E_OUTPUT_DIR`, `WEBSSH_E2E_TIMING_FILE` | temp dir / `e2e-timing-full.json` | Playwright artifacts and the timing report. |
+| `WEBSSH_E2E_OUTPUT_DIR`, `WEBSSH_E2E_TIMING_FILE` | new directory under `.test-run.tmp/playwright/` (`test-results` in CI) / `e2e-timing-full.json` | Playwright artifacts and the timing report. |
 
 There is no base URL variable. Specs and `helpers.js` build
 `http://127.0.0.1:<port>` and the WebAuthn origin `http://localhost:<port>`
@@ -172,7 +172,7 @@ like `entrypoint.sh`, the server reads or creates `DATA_DIR/secret_key`.
 | `fresh-start` | `create-admin`, sign-in, TOTP activated and enrolled, sign-in with TOTP, saved host on `ssh-modern` with host-key prompt and shell round trip, reload resumes the session, close, second connection without prompt, key upload (step-up on Go), key connection through `ssh-bastion` to `ssh-inner` |
 | `hosts` | saved host created, edited and deleted, each surviving a reload, without any connection |
 | `passkey` | passkey registered with a virtual authenticator, then sign-in with it |
-| `preview-areas` | every navigation area, asset manager, workspace tool and Settings section opens without page errors, unhandled rejections, 5xx other than the preview's 501 or a loading indicator older than 5 s; the preview notice on Go, none on Python |
+| `areas` | every navigation area, asset manager, workspace tool and Settings section opens without page errors, unhandled rejections, 5xx, a realtime event the server has no type for or a loading indicator older than 5 s; no preview notice on either backend |
 
 `tests/e2e/m2/` holds acceptance journeys of M2 packages that need the
 same disposable backend and the lab. It uses the M1 helpers and variables

@@ -2,15 +2,12 @@
 // test lab. Each spec file starts its own server (../m1/backend.js). Run
 // from the repository root:
 //   npx playwright test -c tests/e2e/m2/playwright.config.js
-const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
+const {ensureOutputDir} = require('../output-dir');
 
-// Every run gets its own output directory unless one is given; the worker
-// inherits the choice of the main process through the environment.
-if (!process.env.WEBSSH_E2E_OUTPUT_DIR) {
-    process.env.WEBSSH_E2E_OUTPUT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'webssh-playwright-results-'));
-}
+// Every run gets its own output directory unless one is given
+// (tests/e2e/output-dir.js).
+ensureOutputDir();
 
 module.exports = {
     testDir: __dirname,

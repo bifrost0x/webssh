@@ -1,21 +1,20 @@
-// M1 acceptance: a walk through every navigation area and dialog. Nothing
-// may break: no page error, no unhandled rejection, no server error other
-// than the preview's 501 and no loading indicator that stays longer than
-// 5 s. Against the Go preview every area it does not provide yet must say
-// so through the preview notice; the Python release shows no such notice.
+// Acceptance: a walk through every navigation area and dialog. Nothing may
+// break: no page error, no unhandled rejection, no server error and no
+// loading indicator that stays longer than 5 s. Neither release shows a
+// preview notice, and no answer says that a function is missing.
 const {test, expect} = require('playwright/test');
-const {freshBackend, attachLogOnFailure, kind} = require('./backend');
+const {freshBackend, attachLogOnFailure} = require('./backend');
 const {openProfileManagement} = require('../helpers');
 const ui = require('./ui');
 
-const admin = {username: 'm1preview', password: 'M1-preview-admin-password-4'};
+const admin = {username: 'm1areas', password: 'M1-areas-admin-password-4'};
 const busy = '.spinner, .btn-spinner, .loading, .fm-loading, .fm-loading-spinner, .preview-loading, '
     + '.od-skeleton, .od-agents-skeleton, [aria-busy="true"]';
 
 let backend;
 
 test.beforeAll(async () => {
-    backend = freshBackend('preview');
+    backend = freshBackend('areas');
     const result = await backend.createAdmin(admin.username, admin.password);
     expect(result.code, result.output).toBe(0);
     await backend.start();
@@ -29,36 +28,26 @@ test.afterEach(async ({}, testInfo) => attachLogOnFailure(testInfo, backend));
 
 function watch(page) {
     const problems = [];
-    const previewAnswers = [];
     page.on('pageerror', error => problems.push(`pageerror: ${error.message}`));
     page.on('response', async response => {
-        const status = response.status();
-        if (status === 501) {
-            previewAnswers.push(new URL(response.url()).pathname);
-            // A page route (a navigation such as /automation) answers in
-            // plain text, an API route with the JSON error code.
-            const page = response.request().resourceType() === 'document';
-            const answer = page
-                ? (await response.text().catch(() => '')).includes('Not available in this preview yet.')
-                : (await response.json().catch(() => null))?.code === 'not_available_in_preview';
-            if (!answer) problems.push(`501 without preview answer: ${response.url()}`);
-        } else if (status >= 500) {
-            problems.push(`${status} ${response.request().method()} ${response.url()}`);
-        }
+        if (response.status() >= 500) problems.push(`${response.status()} ${response.request().method()} ${response.url()}`);
     });
-    return {problems, previewAnswers};
+    return {problems};
 }
 
 async function installRecorders(context) {
     await context.addInitScript(() => {
         window.__m1Rejections = [];
-        window.__m1Unavailable = [];
+        window.__m1Unknown = [];
         window.addEventListener('unhandledrejection', event => {
             window.__m1Rejections.push(String(event.reason?.message || event.reason));
         });
-        window.addEventListener('webssh:preview-unavailable', event => {
-            window.__m1Unavailable.push(event.detail?.feature || 'other');
-        });
+        // The realtime client logs every event the server has no type for.
+        const error = console.error.bind(console);
+        console.error = (...args) => {
+            if (String(args[0]).includes('Realtime event without a v1 type')) window.__m1Unknown.push(String(args[0]));
+            error(...args);
+        };
     });
 }
 
@@ -92,13 +81,11 @@ test('every area and dialog opens without errors or endless loading', async ({br
     const context = await browser.newContext({baseURL: backend.baseURL});
     await installRecorders(context);
     const page = await context.newPage();
-    const {problems, previewAnswers} = watch(page);
+    const {problems} = watch(page);
 
     await test.step('sign-in page', async () => {
         await page.goto('/login');
         await settled(page, '/login');
-        // Every sign-in provider is built, so neither release shows the
-        // preview notice before sign-in.
         await expect(page.locator('#previewNotice')).toHaveCount(0);
     });
 
@@ -158,28 +145,13 @@ test('every area and dialog opens without errors or endless loading', async ({br
             await tabs.nth(index).click();
             await settled(page, `settings: ${label}`);
         }
-        if (kind === 'go') await expect(page.locator('#previewNotice')).toBeAttached();
     });
 
-    await test.step('preview notice', async () => {
+    await test.step('no preview notice', async () => {
         await page.goto('/');
         await ui.dismissTour(page);
-        const unavailable = await page.evaluate(() => window.__m1Unavailable);
-        if (kind === 'go') {
-            const notice = page.locator('#previewNotice');
-            await expect(notice).toBeVisible();
-            await expect(notice.locator('.preview-notice-text')).not.toBeEmpty();
-            // Areas reached in this walk that the preview lacks are named
-            // after a reload as well (the notice lives per page).
-            if (previewAnswers.length || unavailable.length) {
-                await page.locator('#commandLibraryBtn').click().catch(() => {});
-                await expect.poll(() => notice.locator('.preview-notice-details').textContent()).not.toBe('');
-            }
-        } else {
-            await expect(page.locator('#previewNotice')).toHaveCount(0);
-            expect(previewAnswers).toEqual([]);
-            expect(unavailable).toEqual([]);
-        }
+        await expect(page.locator('#previewNotice')).toHaveCount(0);
+        expect(await page.evaluate(() => window.__m1Unknown)).toEqual([]);
     });
 
     test.info().annotations.push({type: 'visited', description: visited.join(', ')});
