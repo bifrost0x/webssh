@@ -29,10 +29,11 @@ type PendingSignIn interface {
 }
 
 // RuleLimiter is the part of the sign-in flow's rate limiter (*Limiter)
-// the factor routes use. Allow reports whether one more hit on key fits
-// into r.
+// the factor routes use. Allow reports whether one more hit on the
+// source key key fits into r; AllowAccount does so for a key per account.
 type RuleLimiter interface {
 	Allow(key string, r Rule) (bool, time.Duration)
+	AllowAccount(key string, r Rule) (bool, time.Duration)
 }
 
 // FactorLimits applies RATELIMIT_* to the factor routes as the Python
@@ -71,7 +72,7 @@ func (l FactorLimits) UserLimited(r *http.Request, userID int64, endpoint string
 	if !l.Enabled || l.Limiter == nil {
 		return false
 	}
-	user := l.allow(endpoint+":user:"+itoa(userID), limit)
+	user, _ := l.Limiter.AllowAccount(endpoint+":user:"+itoa(userID), limit)
 	source := l.allow(endpoint+":ip:"+l.addr(r), limit)
 	return !(user && source)
 }

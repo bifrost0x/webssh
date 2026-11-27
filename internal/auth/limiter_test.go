@@ -110,7 +110,7 @@ func TestLimiterBoundedMemory(t *testing.T) {
 	if ok, _ := l.Allow("new", r); !ok {
 		t.Fatal("a full limiter refused a new key")
 	}
-	if _, kept := l.buckets["0"]; kept {
+	if _, kept := l.sources.buckets["0"]; kept {
 		t.Fatal("least recently used bucket kept")
 	}
 	if ok, _ := l.Allow("new", r); ok {
@@ -120,8 +120,8 @@ func TestLimiterBoundedMemory(t *testing.T) {
 	if ok, _ := l.Allow("new", r); !ok {
 		t.Fatal("window did not slide")
 	}
-	if len(l.buckets) > maxBuckets {
-		t.Fatalf("%d buckets", len(l.buckets))
+	if len(l.sources.buckets) > maxBuckets {
+		t.Fatalf("%d buckets", len(l.sources.buckets))
 	}
 }
 

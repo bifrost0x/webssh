@@ -98,11 +98,11 @@ func (f *Flow) reserveUsername(ctx context.Context, endpoint, name, source, devi
 		return nil, false
 	}
 	if device != "" {
-		if dev, ok, _ := f.Limiter.Reserve(DeviceBudgetKey(endpoint, device), Rule{Limit: DeviceFailureBudget, Window: DeviceFailureWindow}); ok {
+		if dev, ok, _ := f.Limiter.ReserveAccount(DeviceBudgetKey(endpoint, device), Rule{Limit: DeviceFailureBudget, Window: DeviceFailureWindow}); ok {
 			return []Reservation{src, dev}, true
 		}
 	}
-	all, ok, _ := f.Limiter.Reserve(key, Rule{Limit: global, Window: time.Minute})
+	all, ok, _ := f.Limiter.ReserveAccount(key, Rule{Limit: global, Window: time.Minute})
 	if !ok {
 		f.Limiter.Release(src)
 		return nil, false
