@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -36,7 +35,8 @@ func rotationEnv(t *testing.T, dir string) {
 }
 
 // migratedPurged returns the extended golden data set migrated by Go and
-// purged of the legacy data: the state in which a rotation is allowed.
+// purged of the legacy data with `webssh legacy purge`: the state in
+// which a rotation is allowed.
 func migratedPurged(t *testing.T) string {
 	t.Helper()
 	dir := extractGolden(t, "datadir-extended.tar")
@@ -55,40 +55,21 @@ func migratedPurged(t *testing.T) string {
 		!strings.Contains(out.Stderr, "cannot be rotated while legacy data exists") {
 		t.Fatalf("rotation beside legacy data: %+v", out)
 	}
-	simulatePurge(t, dir)
+	purgeLegacy(t, dir)
 	return dir
 }
 
-// simulatePurge leaves dir as `webssh legacy purge` does: the legacy files
-// removed and the purge entry recorded. The real purge refuses while
-// entities of later packages are pending (B6), which the golden data set
-// holds; once every entity is migrated, this becomes `legacy purge`.
-func simulatePurge(t *testing.T, dir string) {
+// purgeLegacy runs `webssh legacy purge` with a backup: the state in
+// which a rotation is allowed (OP2-1, every entity of the golden data set
+// is migrated since the third wave).
+func purgeLegacy(t *testing.T, dir string) {
 	t.Helper()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
+	out := runCLI(t, "legacy", "purge", "--yes", "--backup-to", t.TempDir())
+	if out.Code != 0 {
+		t.Fatalf("legacy purge: %+v", out)
 	}
-	for _, e := range entries {
-		switch e.Name() {
-		case keyring.GoDirName, keyring.LogsDirName, "secret_key":
-			continue
-		}
-		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
-			t.Fatal(err)
-		}
-	}
-	db, err := store.Open(t.Context(), filepath.Join(dir, keyring.GoDirName, keyring.DatabaseName), store.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = db.Write(t.Context(), func(tx *store.Tx) error {
-		_, err := tx.ExecContext(t.Context(), `INSERT INTO migrate_purge (id, in_progress, files, backup, started_at, completed_at)
-VALUES (1, 0, '[]', '', '2026-11-27T00:00:00Z', '2026-11-27T00:00:01Z')`)
-		return err
-	})
-	if err := errors.Join(err, db.Close()); err != nil {
-		t.Fatal(err)
+	if _, err := os.Lstat(filepath.Join(dir, "app.db")); !os.IsNotExist(err) {
+		t.Fatalf("the purge left app.db: %v", err)
 	}
 }
 
