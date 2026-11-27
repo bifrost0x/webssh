@@ -44,6 +44,7 @@ func commands() []command {
 		{name: "reset-password", summary: "set a new password for a local account", run: runResetPassword},
 		{name: "ldap-secret", summary: "manage the LDAP secret volume", run: runLDAPSecret},
 		{name: "issue-factor-bootstrap", summary: "issue a code for a GitHub account's first factor", run: runIssueFactorBootstrap},
+		{name: "connection-store", summary: "list or delete records of an oversized connection store", run: runConnectionStore},
 		{name: "migrate", summary: "--dry-run or --replace the migration of the Python data", run: runMigrate},
 		{name: "legacy", summary: "purge: remove the Python data after the migration", run: runLegacy},
 		{name: "version", summary: "print the version and source revision", run: runVersion},
@@ -64,7 +65,7 @@ func usage() string {
 	var b strings.Builder
 	b.WriteString("Usage:\n  webssh <command> [options]\n\nCommands:\n")
 	for _, c := range commands() {
-		fmt.Fprintf(&b, "  %-15s %s\n", c.name, c.summary)
+		fmt.Fprintf(&b, "  %-22s %s\n", c.name, c.summary)
 	}
 	return b.String()
 }

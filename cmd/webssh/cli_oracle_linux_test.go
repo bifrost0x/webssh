@@ -72,6 +72,7 @@ const resetDeviation = "the running server ends SSH sessions only at a restart u
 func cliCases() []cliCase {
 	pw := func(args ...string) []string { return append([]string{"create-admin"}, args...) }
 	fb := func(args ...string) []string { return append([]string{"issue-factor-bootstrap"}, args...) }
+	cs := func(args ...string) []string { return append([]string{"connection-store"}, args...) }
 	return []cliCase{
 		{Name: "missing username", Tool: "flask", Steps: []cliStep{{Args: pw()}}},
 		{Name: "unknown option", Tool: "flask", Steps: []cliStep{{Args: pw("--foo")}}},
@@ -120,6 +121,23 @@ func cliCases() []cliCase {
 			{Args: []string{"reset-password", "--username", "admin1", "--password-file", "{tmp}/other"}, Deviation: resetDeviation},
 			{Args: []string{"reset-password", "--username", "admin1"}, Stdin: "password9\npassword9\n", Deviation: resetDeviation},
 			{Args: []string{"reset-password", "--username", "admin1"}, Stdin: "password9\n"},
+		}},
+		{Name: "connection-store group", Tool: "flask", Steps: []cliStep{{Args: cs()}, {Args: cs("--help")}, {Args: cs("bogus")},
+			{Args: cs("--foo")}, {Args: cs("list", "--help")}, {Args: cs("delete", "--help")}}},
+		{Name: "connection-store usage", Tool: "flask", Steps: []cliStep{{Args: cs("list")}, {Args: cs("list", "--username", "x")},
+			{Args: cs("list", "--username", "x", "--kind", "bad")}, {Args: cs("delete", "--username", "x", "--kind", "profiles")},
+			{Args: cs("list", "--username", "x", "--kind", "profiles", "--confirm-offline=yes")}}},
+		{Name: "connection-store offline", Tool: "flask", Steps: []cliStep{{Args: cs("list", "--username", "x", "--kind", "profiles")},
+			{Args: cs("delete", "--username", "x", "--kind", "jump-hosts", "--selector", "s")}}},
+		{Name: "connection-store records", Tool: "flask", Files: []string{"good"}, Steps: []cliStep{
+			{Args: pw("--username", "admin1", "--password-file", "{tmp}/good")},
+			{Args: cs("list", "--username", "nobody", "--kind", "profiles", "--confirm-offline")},
+			{Args: cs("list", "--username", "admin1", "--kind", "profiles", "--confirm-offline")},
+			{Args: cs("list", "--username", "admin1", "--kind", "jump-hosts", "--confirm-offline")},
+			{Args: cs("list", "--username", "admin1", "--kind", "socks-proxies", "--confirm-offline")},
+			{Args: cs("delete", "--username", "admin1", "--kind", "profiles", "--selector", "r1:0:" + strings.Repeat("0", 64), "--confirm-offline")},
+			{Args: cs("delete", "--username", "admin1", "--kind", "socks-proxies", "--selector", "x", "--confirm-offline")},
+			{Args: cs("delete", "--username", "ADMIN1", "--kind", "socks-proxies", "--selector", "x", "--confirm-offline")},
 		}},
 		{Name: "ldap no command", Tool: "ldap", Steps: []cliStep{{Args: []string{"--secret-dir", "{tmp}/s"}}}},
 		{Name: "ldap help", Tool: "ldap", Steps: []cliStep{{Args: []string{"--help"}}, {Args: []string{"--secret-dir", "{tmp}/s", "set-password", "--help"}},

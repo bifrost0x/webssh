@@ -63,6 +63,7 @@ func requireCompleteRegistry(r *legacy.Registry) error {
 // goData is the Go database with the services the administrator commands
 // use.
 type goData struct {
+	cfg      config.Config
 	db       *store.DB
 	ring     *keyring.Ring
 	accounts *accounts.Service
@@ -112,7 +113,7 @@ func openGoData(ctx context.Context, cfg config.Config) (*goData, error) {
 	if errors.Is(dbErr, fs.ErrNotExist) && legacyErr == nil {
 		return nil, errNotMigrated
 	}
-	g := &goData{}
+	g := &goData{cfg: cfg}
 	st, err := legacy.Start(ctx, o)
 	var se *legacy.StopError
 	switch {
