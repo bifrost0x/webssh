@@ -41,9 +41,12 @@ def test_key_mutations_use_acknowledgements_and_preserve_local_state():
     ):
         assert signature in PROFILE_MANAGER
 
-    assert "window.socket.emit('upload_key'" in PROFILE_MANAGER
+    # Upload and replacement go through sendKeyChange, which retries with a
+    # step-up grant or passphrase; rename emits directly.
+    assert 'window.socket.emit(event, {...payload, ...extra}, resolve)' in PROFILE_MANAGER
+    assert "this.sendKeyChange('upload_key'" in PROFILE_MANAGER
     assert "window.socket.emit('rename_key'" in PROFILE_MANAGER
-    assert "window.socket.emit('replace_key'" in PROFILE_MANAGER
+    assert "this.sendKeyChange('replace_key'" in PROFILE_MANAGER
     assert 'this.upsertKeySummary(acknowledgement.key)' in PROFILE_MANAGER
     assert 'profileEditorKeySelect' in PROFILE_MANAGER
     assert 'editingKeyId' in PROFILE_MANAGER
