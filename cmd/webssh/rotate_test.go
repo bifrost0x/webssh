@@ -359,6 +359,13 @@ func TestRotationCoversEveryTable(t *testing.T) {
 		"vault_credential_assignments", "vault_credential_imports",
 		"vault_legacy_automation", // sealed with the user's passphrase, not the keyring
 		"webauthn_credentials",
+		// W3: runbooks, runs (output redacted before it is stored),
+		// schedules (bindings are generations and unkeyed digests, the
+		// metadata tokens of the permission jobs use a key in memory),
+		// the command library. Transfer tokens and backup operations
+		// live in memory only.
+		"automation_runbook_steps", "automation_runbooks", "automation_runs", "automation_schedules",
+		"commands_sets", "commands_user",
 	}
 	steps := map[string]bool{}
 	for _, s := range rotationSteps() {
