@@ -89,6 +89,18 @@
     {"file": "terminal-load.spec.js", "requires": "e2e_hooks", "exclude": [
       {"title": "20 active TUIs retain state without reconnecting over polling", "reason": "no long polling in the Go server (ADR 0005)", "package": "FE1"}
     ]},
+    {"file": "post-connect-profiles.spec.js", "exclude": [
+      {"title": "saving after mode changes removes stale post-connect fields", "reason": "the profile editor saves a command and a command set reference first (C-CMD, the hosts refuse new references until the library exists)", "package": "CM1"},
+      {"title": "missing post-connect references stop before the guarded SSH network layer", "reason": "without the command library the terminal answers not_available_in_preview instead of Command not found", "package": "CM1"}
+    ]},
+    {"file": "terminal-windows.spec.js", "exclude": [
+      {"title": "window layout retains each restored session and its placement after reload", "reason": "checks the command library of the restored session (C-CMD)", "package": "CM1"}
+    ]},
+    {"file": "pane-assignment.spec.js", "exclude": []},
+    {"file": "workspace-restore.spec.js", "requires": "e2e_hooks", "exclude": [
+      {"title": "sessions over polling at", "reason": "no long polling in the Go server (ADR 0005)", "package": "FE1"},
+      {"title": "sessions over websocket at", "reason": "checks the command library, the session's files and diagnostics of the restored sessions (C-CMD first; then FS1 and HO1)", "package": "CM1"}
+    ]},
 
     {"file": "settings-layout.spec.js", "exclude": [
       {"title": "settings sections share their content track and user actions remain reachable", "reason": "the preview toast of the 501 routes on the settings page (/admin/api/host-keys, /admin/api/backups/restore/status) covers the user action menu at 390 px once the preview notice lists fewer areas; it goes with the preview toast and banner", "package": "FE1"}
@@ -101,9 +113,7 @@
     {"file": "account-theme-matrix.spec.js", "exclude": [
       {"title": "main workspaces retain all primary views in", "reason": "visits the file workspace (C-SFTP)", "package": "FS1"}
     ]},
-    {"file": "terminal-appearance.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "restored terminals load their saved fonts on demand without losing output", "reason": "hook e2e_workspace_restore, not mapped in M1", "package": "TM1"}
-    ]},
+    {"file": "terminal-appearance.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "i18n-locales.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "redesign-shell.spec.js", "serial": "e2e_admin", "exclude": [
       {"title": "reference composition and workspace continuity at", "reason": "opens the files context and the file manager (C-SFTP)", "package": "FS1"}
