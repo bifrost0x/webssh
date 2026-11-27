@@ -8,6 +8,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/ssh/client"
 )
 
 const (
@@ -38,10 +39,12 @@ type Challenger interface {
 }
 
 // Credentials are the saved factors of the hop. An empty Password means
-// "ask the browser"; it is dropped after its one use.
+// "ask the browser"; it is dropped after its one use. Guard, when set,
+// re-checks a saved Password right before it is sent.
 type Credentials struct {
 	Signer   ssh.Signer
 	Password string
+	Guard    client.PasswordGuard
 }
 
 // Auth chooses methods for multi-factor gateway and MFA logins. It is a
@@ -183,13 +186,19 @@ func (a *Auth) use(m string, c *ssh.ClientAuthContext) ssh.AuthMethod {
 }
 
 // password returns the saved password once, or asks the browser for it.
-// Called by x/crypto without a.mu held.
+// A saved password is sent only while its guard accepts it; a refusal
+// ends the attempt. Called by x/crypto without a.mu held.
 func (a *Auth) password() (string, error) {
 	a.mu.Lock()
-	saved := a.creds.Password
+	saved, guard := a.creds.Password, a.creds.Guard
 	a.creds.Password = ""
 	a.mu.Unlock()
 	if saved != "" {
+		if guard != nil {
+			if err := guard.Check(a.ctx); err != nil {
+				return "", a.fail(err)
+			}
+		}
 		return saved, nil
 	}
 	answers, err := a.ask.Challenge(a.ctx, "", "", []Prompt{{Label: "Password"}})

@@ -18,7 +18,7 @@ import (
 func (a *Attempt) Variant(ready bool) *client.Variant {
 	v := &client.Variant{Auth: func(r client.AuthRequest) ssh.ClientAuthCallback {
 		ask := hopChallenger{attempt: a, req: r}
-		return NewAuth(r.Ctx, r.User, Credentials{Signer: r.Signer, Password: r.Password}, ask, a.Check).Callback
+		return NewAuth(r.Ctx, r.User, Credentials{Signer: r.Signer, Password: r.Password, Guard: r.Guard}, ask, a.Check).Callback
 	}}
 	if ready {
 		v.Ready = func(ctx context.Context, target *ssh.Client) error {

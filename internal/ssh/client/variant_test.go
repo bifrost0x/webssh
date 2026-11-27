@@ -91,7 +91,8 @@ func TestVariantAuthRunsOnEveryHop(t *testing.T) {
 	d, _ := newDialer(trusting(inner, jump), nil)
 	var seen []AuthRequest
 	tg := target(inner, "inner", Auth{})
-	tg.Jumps = []Hop{{Host: jump.host, Port: jump.port, User: "jump", Auth: Auth{Password: "pw1"}}}
+	jumpGuard := &guard{}
+	tg.Jumps = []Hop{{Host: jump.host, Port: jump.port, User: "jump", Auth: Auth{Password: "pw1", Guard: jumpGuard}}}
 	tg.Variant = &Variant{Auth: func(r AuthRequest) ssh.ClientAuthCallback {
 		seen = append(seen, r)
 		used := false
@@ -113,7 +114,8 @@ func TestVariantAuthRunsOnEveryHop(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = c.Close()
-	if len(seen) != 2 || seen[0].Role != RoleJump || seen[1].Role != RoleTarget || seen[1].Password != "" {
+	if len(seen) != 2 || seen[0].Role != RoleJump || seen[1].Role != RoleTarget || seen[1].Password != "" ||
+		seen[0].Guard != jumpGuard || seen[1].Guard != nil {
 		t.Fatalf("auth requests: %+v", seen)
 	}
 }

@@ -54,7 +54,7 @@ func (d *Dialer) handshake(ctx context.Context, conn net.Conn, owner int64, h ho
 			}
 		}
 		authCallback = variant(AuthRequest{Ctx: hctx, Role: h.role, Host: h.Host, Port: h.Port, User: h.User,
-			Password: h.Auth.Password, Signer: signer, Pause: wd.pause})
+			Password: h.Auth.Password, Guard: h.Auth.Guard, Signer: signer, Pause: wd.pause})
 	}
 	cfg := &ssh.ClientConfig{
 		KeyExchanges: algos.KeyExchanges, Ciphers: algos.Ciphers, MACs: algos.MACs,

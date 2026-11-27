@@ -37,6 +37,10 @@ type AuthRequest struct {
 	Port     int
 	User     string
 	Password string
+	// Guard re-checks a saved Password; the variant runs it right before
+	// the password is sent and ends the attempt on an error. Nil for a
+	// typed password.
+	Guard PasswordGuard
 	// Signer is the hop's stored key, nil without one.
 	Signer ssh.Signer
 	// Pause stops the handshake watchdog while the user is asked; call the
