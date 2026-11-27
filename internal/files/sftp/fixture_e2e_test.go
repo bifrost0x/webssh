@@ -19,6 +19,27 @@ func TestFixtureServesTheBackend(t *testing.T) {
 	if err := Probe(t.Context(), f, Options{}); err != nil {
 		t.Fatalf("probe: %v", err)
 	}
+	sub, err := f.Subsystem(t.Context(), "sftp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Open(t.Context(), sub, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, err := b.Home(t.Context())
+	if err != nil || home != "/home/fixture" {
+		t.Fatalf("home %q %v", home, err)
+	}
+	l, err := b.OpenListing(t.Context(), home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, _, err := l.Next(t.Context(), 50)
+	if err != nil || len(entries) != 1 || entries[0].Name != "reload-proof.txt" || entries[0].Size != 12 {
+		t.Fatalf("listing %+v %v", entries, err)
+	}
+	_ = l.Close()
 	if _, err := f.Subsystem(t.Context(), "exec"); err == nil {
 		t.Fatal("a subsystem other than sftp was served")
 	}

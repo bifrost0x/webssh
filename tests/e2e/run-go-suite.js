@@ -14,8 +14,8 @@ const PACKAGES = new Set(['ID1', 'ID2', 'ID3', 'ID4', 'NW1', 'NW2', 'RT1', 'SM0'
     'FS1', 'FS2', 'FS3', 'VA1', 'TR1', 'CM1', 'AU1', 'AU2', 'OP1', 'OP2', 'OP3', 'PF1', 'PF2', 'PF3', 'FE1', 'MG1',
     'DOC1']);
 const SERIAL_ACCOUNTS = new Set(['e2e_admin']);
-// A decision that drops what a test checks (an ADR or a D-xx entry of
-// the decision log); such a test stays out of the Go suite for good.
+// A decision that drops what a test checks (an ADR under docs/adr or a
+// product decision D-xx); such a test stays out of the Go suite for good.
 const DECISION = /^(ADR \d{4}|D-\d{2})$/;
 
 // Checks the file and returns the Playwright file lists and the titles to
