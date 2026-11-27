@@ -63,7 +63,7 @@ func (t terminalFiles) Session(_ context.Context, p principal.Principal, handle 
 	if err != nil {
 		return sftp.Session{}, fault.New(fault.SourceUnavailable, "")
 	}
-	return sftp.Session{Conn: f.Conn, Exec: f.Conn, Tmux: f.Tmux, Name: f.Name,
+	return sftp.Session{Conn: f.Conn, Exec: f.Conn, Tmux: f.Tmux, Name: f.Name, InputIdle: f.InputIdle,
 		Hop: client.Hop{Host: f.Host, Port: f.Port, User: f.Username}}, nil
 }
 

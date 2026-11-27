@@ -188,8 +188,10 @@ func (a *Area) directory(ctx context.Context, _ protocol.Peer, req protocol.File
 	case err != nil:
 		return reason("unavailable")
 	}
+	// Read after the probe, as the Python release did: typing during the
+	// probe counts.
 	out := &protocol.SessionDirectory{Path: d.Path, ShellReady: d.ShellReady, ShellID: d.ShellID, Shell: d.Shell,
-		BracketedPaste: d.BracketedPaste, Tmux: sess.Tmux != ""}
+		BracketedPaste: d.BracketedPaste, Tmux: sess.Tmux != "", InputIdle: sess.InputIdle != nil && sess.InputIdle()}
 	if d.Prompt != nil {
 		out.Prompt = &protocol.PromptMarker{Generation: int(d.Prompt.Generation), Phase: d.Prompt.Phase}
 	}

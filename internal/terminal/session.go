@@ -49,6 +49,7 @@ type Session struct {
 	activity time.Time
 	warned   bool
 	queued   int // bytes in stdin
+	prompt   promptState
 	size     [2]int
 
 	stdin   chan []byte
@@ -172,6 +173,7 @@ func (s *Session) publish(data []byte) {
 		return
 	}
 	s.seq++
+	s.prompt.output(data)
 	c := chunk{seq: s.seq, data: data}
 	s.replay.add(c)
 	s.activity = s.m.now()
@@ -235,6 +237,7 @@ func (s *Session) queueStartup(b []byte) {
 	select {
 	case s.stdin <- b:
 		s.queued += len(b)
+		s.prompt.input(b)
 	default:
 	}
 }
@@ -250,6 +253,7 @@ func (s *Session) enqueueInput(b []byte, now time.Time) bool {
 	case s.stdin <- b:
 		s.queued += len(b)
 		s.activity = now
+		s.prompt.input(b)
 		return true
 	default:
 		return false

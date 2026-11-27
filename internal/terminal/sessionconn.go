@@ -28,6 +28,9 @@ type SessionConn struct {
 	// probe of the session).
 	Name string
 	Tmux string
+	// InputIdle reports, at the moment of the call, whether the shell shows
+	// a prompt nobody typed into (input_idle of the session directory).
+	InputIdle func() bool
 }
 
 // SessionConn returns the connection of owner's live session id. Every
@@ -46,7 +49,7 @@ func (m *Manager) SessionConn(owner int64, id string) (SessionConn, error) {
 	sc := SessionConn{
 		Conn: s.host.sshConn(), Done: s.done, ProfileID: info.ProfileID,
 		Host: info.Host, Port: info.Port, Username: info.Username, Herdr: info.Herdr, UseHerdr: info.UseHerdr,
-		Name: info.DisplayName,
+		Name: info.DisplayName, InputIdle: s.InputIdle,
 	}
 	if s.tmux != nil {
 		sc.Tmux = s.tmux.name

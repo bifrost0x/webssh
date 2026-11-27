@@ -2,6 +2,10 @@ package sftp_test
 
 import (
 	"context"
+	"io"
+	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/fault"
@@ -91,6 +95,38 @@ func TestAreaRefusalsAndReasons(t *testing.T) {
 		raw, perr := call(a, protocol.TypeFilesSessionDirectory, map[string]any{"session_id": payload})
 		if perr != nil || raw != want {
 			t.Fatalf("directory %q: %s %+v", payload, raw, perr)
+		}
+	}
+}
+
+// answeringExec answers the directory probe with a ready shell in /srv.
+type answeringExec struct{}
+
+func (answeringExec) Exec(_ context.Context, _ string, _ io.Reader, stdout, _ io.Writer) (int, error) {
+	_, err := io.WriteString(stdout, "webssh-directory\x0042\x001\x00bash\x00/srv\x00")
+	return 0, err
+}
+
+type idleSessions struct{ idle *atomic.Bool }
+
+func (s idleSessions) Session(context.Context, principal.Principal, string) (sftp.Session, error) {
+	return sftp.Session{Exec: answeringExec{}, InputIdle: s.idle.Load}, nil
+}
+
+// input_idle is the terminal's prompt state read after the probe; a
+// session that reports none is never idle.
+func TestDirectoryReportsTheTerminalPromptState(t *testing.T) {
+	alice := principal.Principal{UserID: 1, SessionID: "s1", Username: "alice"}
+	peer := protocoltest.NewPeer(t, alice)
+	ctx := principal.With(t.Context(), alice)
+	idle := &atomic.Bool{}
+	a := &sftp.Area{Sessions: idleSessions{idle}}
+	for _, want := range []bool{false, true} {
+		idle.Store(want)
+		raw, perr := protocoltest.Call(ctx, routes(a)[protocol.TypeFilesSessionDirectory], peer, map[string]any{"session_id": "s"})
+		if perr != nil || !strings.Contains(string(raw), `"path":"/srv"`) ||
+			!strings.Contains(string(raw), `"input_idle":`+strconv.FormatBool(want)) {
+			t.Fatalf("idle %v: %s %+v", want, raw, perr)
 		}
 	}
 }

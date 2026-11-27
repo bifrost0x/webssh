@@ -112,6 +112,9 @@ type Session struct {
 	// tmux session the shell runs in, if any.
 	Exec Execer
 	Tmux string
+	// InputIdle reports whether the shell shows a prompt nobody typed into
+	// (prompt_input_idle); nil: never idle.
+	InputIdle func() bool
 }
 
 // Sessions finds a terminal session of p by its handle
