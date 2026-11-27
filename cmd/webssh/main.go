@@ -83,6 +83,7 @@ func main() {
 	if !loadDotenv(os.Args, path, s.stderr) {
 		os.Exit(1)
 	}
+	applyMemoryLimit(os.LookupEnv, os.DirFS("/"), s.stderr)
 	os.Exit(dispatch(context.Background(), os.Args, s))
 }
 
