@@ -29,7 +29,7 @@ var operationCodes = map[Code]entry{
 
 // The M2 code lists join the catalog once, before any lookup.
 func init() {
-	for _, part := range []map[Code]entry{operationCodes} {
+	for _, part := range []map[Code]entry{operationCodes, automationCodes} {
 		for c, e := range part {
 			if _, dup := catalog[c]; dup {
 				panic(fmt.Sprintf("fault: code %q is defined twice", c))

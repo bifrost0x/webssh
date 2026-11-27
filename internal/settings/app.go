@@ -80,8 +80,11 @@ type App struct {
 	// CredentialsRevision changes whenever an administrator turns saved
 	// passwords on or off (credentials_enabled_revision); prepared
 	// password operations are bound to it.
-	CredentialsRevision    string
-	AutomationEnabled      bool
+	CredentialsRevision string
+	AutomationEnabled   bool
+	// AutomationRevision changes whenever automation is turned on or off
+	// (automation_enabled_revision); approved schedules are bound to it.
+	AutomationRevision     string
 	TailnetRouteRestricted bool
 	AuditBackupCount       int
 	SignIn                 SignInProtection
@@ -150,6 +153,9 @@ func effectiveApp(rows map[string]appRow, env Environment) App {
 		a.AutomationEnabled = env.Values["AUTOMATION_ENABLED"]
 	} else {
 		a.AutomationEnabled = isTrue("automation_enabled")
+	}
+	if r, ok := rows["automation_enabled_revision"]; ok {
+		a.AutomationRevision, _ = asString(r.value)
 	}
 	a.TailnetRouteRestricted = !isFalse("tailscale_ssh_restrict_tailnet_routes")
 	a.AuditBackupCount = integer("audit_backup_count", env.AuditBackupCount)

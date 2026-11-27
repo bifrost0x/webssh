@@ -43,4 +43,8 @@ var accountActions = []principal.Action{
 	// The target is the intent token of the saved-password change; the vault
 	// binds the intent to the user and the session.
 	principal.ActionCredentialsVault,
+
+	// The target is the token of the schedule intent; the schedules bind
+	// the intent to the user and the session.
+	principal.ActionAutomationSchedule,
 }
