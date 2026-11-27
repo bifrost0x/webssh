@@ -76,6 +76,12 @@ func (r *secretRotator) Rotate(ctx context.Context) (admincli.RotationReport, er
 	if st.Migrated {
 		return admincli.RotationReport{}, errors.New("legacy: unexpected migration")
 	}
+	if blocked, msg := restoreBlocked(r.cfg.DataDir); blocked {
+		// The files of the failed restore are the only copy of the
+		// previous state; a rotation would leave them under the old key.
+		return admincli.RotationReport{}, fmt.Errorf("the last restore is not finished (%s); run `webssh backup restore` "+
+			"first. Nothing was changed", msg)
+	}
 	if !legacyGone(r.cfg.DataDir, st.State) {
 		return admincli.RotationReport{}, keyring.ErrRotationLegacy
 	}

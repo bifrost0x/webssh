@@ -317,6 +317,24 @@ func TestRotateSecretKeyRefusals(t *testing.T) {
 	}
 }
 
+// A rotation is refused while the last restore is unfinished or its
+// rollback failed (RS4-05): its files would stay under the old key.
+func TestRotateSecretKeyRefusesAfterAFailedRollback(t *testing.T) {
+	dir := migratedPurged(t)
+	before := readSecret(t, dir)
+	failed := `{"format":1,"operation_id":"op","state":"rollback_failed","started_at":"2026-11-27T00:00:00Z",` +
+		`"updated_at":"2026-11-27T00:00:00Z","message":"Restore failed and the rollback failed"}`
+	if err := os.WriteFile(filepath.Join(dir, keyring.GoDirName, backup.JournalName), []byte(failed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := runCLI(t, "rotate-secret-key", "--confirm-offline"); out.Code != 1 || !strings.Contains(out.Stderr, "last restore is not finished") {
+		t.Fatalf("rotation after a failed rollback: %+v", out)
+	}
+	if readSecret(t, dir) != before {
+		t.Fatal("a refused rotation changed the secret")
+	}
+}
+
 // Every table of this build is either handled by a rotation step or holds
 // nothing the keyring sealed or MACed. A new table must be classified
 // here; one with a sealed column that no step handles stops the rotation

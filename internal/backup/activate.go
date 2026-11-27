@@ -140,6 +140,11 @@ func apply(dataDir, goDir string, j *Journal, point func(string)) error {
 			if err := os.Rename(db, prev); err != nil {
 				return fmt.Errorf("backup: keep the previous database: %w", err)
 			}
+			// The rename crosses directories: both entries must be on
+			// disk before the staged database takes the place.
+			if err := errors.Join(syncDir(dir), syncDir(goDir)); err != nil {
+				return err
+			}
 			point(PointPreviousKept)
 		}
 		for _, s := range sideSuffixes {
@@ -231,6 +236,9 @@ func rollback(dataDir, goDir string, j *Journal) error {
 		if err := os.Rename(db, filepath.Join(dir, failedDBName)); err != nil {
 			return err
 		}
+		if err := errors.Join(syncDir(goDir), syncDir(dir)); err != nil {
+			return err
+		}
 	}
 	if exists(prev) {
 		if exists(db) && !stagedLeft {
@@ -248,7 +256,7 @@ func rollback(dataDir, goDir string, j *Journal) error {
 				}
 			}
 		}
-		if err := syncDir(goDir); err != nil {
+		if err := errors.Join(syncDir(goDir), syncDir(dir)); err != nil {
 			return err
 		}
 	}
@@ -284,6 +292,50 @@ func removeStaged(dataDir, goDir, operationID string) error {
 	return errors.Join(errs...)
 }
 
+// SetAsidePrefix replaces stagedPrefix in the name of the staging
+// leftovers of a restore whose rollback failed (SetAsideLeftovers).
+const SetAsidePrefix = "failed-restore-"
+
+// SetAsideLeftovers renames the staging leftovers of a restore whose
+// rollback failed so that no later restore or start removes them: they
+// may be the only copy of the previous database and material. It returns
+// the new paths, also those renamed before an error.
+func SetAsideLeftovers(dataDir string) ([]string, error) {
+	var out []string
+	for _, p := range leftovers(dataDir) {
+		dir, name := filepath.Split(p)
+		to := filepath.Join(dir, SetAsidePrefix+strings.TrimPrefix(name, stagedPrefix))
+		if exists(to) {
+			return out, fmt.Errorf("backup: %s already exists", to)
+		}
+		if err := os.Rename(p, to); err != nil {
+			return out, fmt.Errorf("backup: set aside %s: %w", p, err)
+		}
+		if err := syncDir(dir); err != nil {
+			return out, err
+		}
+		out = append(out, to)
+	}
+	return out, nil
+}
+
+// leftovers lists the staging leftovers in dataDir.
+func leftovers(dataDir string) []string {
+	var out []string
+	for _, dir := range []string{filepath.Join(dataDir, keyring.GoDirName), filepath.Join(dataDir, keyring.LogsDirName, keyring.StateDirName)} {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), stagedPrefix) {
+				out = append(out, filepath.Join(dir, e.Name()))
+			}
+		}
+	}
+	return out
+}
+
 // removeStale removes the staging leftovers of finished restores: every
 // .restore-* entry of the Go directory and of the state directory. Only
 // a restore in progress (or one whose rollback failed) keeps its files.
@@ -292,16 +344,8 @@ func removeStale(dataDir, goDir string, j *Journal) error {
 		return nil
 	}
 	var errs []error
-	for _, dir := range []string{goDir, filepath.Join(dataDir, keyring.LogsDirName, keyring.StateDirName)} {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), stagedPrefix) {
-				errs = append(errs, os.RemoveAll(filepath.Join(dir, e.Name())))
-			}
-		}
+	for _, p := range leftovers(dataDir) {
+		errs = append(errs, os.RemoveAll(p))
 	}
 	return errors.Join(errs...)
 }
