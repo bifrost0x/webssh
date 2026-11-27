@@ -235,8 +235,8 @@ func (m *Manager) generation(owner int64) uint64 {
 // connection attempt of the user ends as well, and an attempt that
 // commits concurrently fails to register. Persistent tmux sessions stay
 // for a later reattach after a sign-out; for every other reason they end
-// and their rows are removed, as the Python release did. It does not
-// block.
+// and their rows are removed, as the Python release did. Apart from that
+// removal, a single write bounded by tmuxEndTimeout, it does not block.
 func (m *Manager) Revoked(rev principal.Revocation) {
 	if keepsTerminals(rev.Reason) || rev.UserID <= 0 {
 		return
@@ -255,7 +255,12 @@ func (m *Manager) Revoked(rev principal.Revocation) {
 		s.terminateAs(reasonClosed, nil, end)
 	}
 	if end == endRevoke {
-		m.spawn(func() { m.forgetUser(rev.UserID, live) })
+		// The rows go before Revoked returns: an account deletion removes
+		// every row of the account right after it published the
+		// revocation, and a detached tmux session it removed first would
+		// end without its TMUX_SESSION_NOT_ENDED warning. This is one
+		// bounded local write; the kills above stay in the background.
+		m.forgetUser(rev.UserID, live)
 	}
 }
 
