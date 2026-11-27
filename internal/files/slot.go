@@ -2,6 +2,7 @@ package files
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/bifrost0x/webssh/internal/principal"
@@ -14,6 +15,7 @@ type Slot struct {
 	kind    SourceKind
 	once    sync.Once
 	release func()
+	pass    uint64 // Registry.tailnetPass at Reserve
 }
 
 // Reserve takes the quota of a new source of kind for p before it is
@@ -27,7 +29,7 @@ func (r *Registry) Reserve(ctx context.Context, p principal.Principal, kind Sour
 			return nil, err
 		}
 	}
-	return &Slot{r: r, p: p, kind: kind, release: release}, nil
+	return &Slot{r: r, p: p, kind: kind, release: release, pass: r.passNow()}, nil
 }
 
 // Add registers b on the slot and returns the new source id; the source
@@ -52,12 +54,24 @@ func (s *Slot) add(id string, d Descriptor, b Backend) error {
 		return errUnavailable
 	}
 	d.SourceID = id
-	if err := s.r.insert(s.p, s.kind, d, b, s.release); err != nil {
+	for {
+		err := s.r.insert(s.p, s.kind, d, b, s.release, &s.pass)
+		if err == nil {
+			return nil
+		}
+		if errors.Is(err, errPassMoved) {
+			// A CloseRestrictedRoutes pass began after the slot was
+			// reserved and did not see this source: check its route as
+			// the pass would, then try again.
+			if !s.r.lateRouteRestricted(b) {
+				continue
+			}
+			err = errTailnetRoute
+		}
 		s.release()
 		_ = b.Close()
 		return err
 	}
-	return nil
 }
 
 // Release frees the slot unless Add used it.

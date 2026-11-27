@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -37,6 +38,10 @@ type RegistryOptions struct {
 	SMBIdle time.Duration
 	// Now is the clock (tests).
 	Now func() time.Time
+	// RouteRestricted reports whether the network policy refuses an open
+	// route now; it decides a source whose slot was reserved before
+	// CloseRestrictedRoutes ran. Without it such a source is refused.
+	RouteRestricted func(ctx context.Context, peer netip.Addr, onward []string) bool
 }
 
 var errUnavailable = fault.New(fault.SourceUnavailable, "")
@@ -83,6 +88,8 @@ type Registry struct {
 	opening map[sourceKey]*opening
 	peers   map[int64]map[uint64]bool
 	onClose []func(session, sourceID string)
+	// tailnetPass counts the CloseRestrictedRoutes passes.
+	tailnetPass uint64
 }
 
 // NewRegistry returns an empty registry.
@@ -130,7 +137,7 @@ func (r *Registry) Add(p principal.Principal, kind SourceKind, d Descriptor, b B
 	return slot.Add(d, b)
 }
 
-func (r *Registry) insert(p principal.Principal, kind SourceKind, d Descriptor, b Backend, release func()) error {
+func (r *Registry) insert(p principal.Principal, kind SourceKind, d Descriptor, b Backend, release func(), pass *uint64) error {
 	if p.UserID == 0 || p.SessionID == "" {
 		return errUnavailable
 	}
@@ -139,6 +146,9 @@ func (r *Registry) insert(p principal.Principal, kind SourceKind, d Descriptor, 
 	defer r.mu.Unlock()
 	if _, dup := r.sources[key]; dup {
 		return errUnavailable
+	}
+	if r.passMoved(kind, pass) {
+		return errPassMoved
 	}
 	s := &source{key: key, kind: kind, userID: p.UserID, desc: d, backend: b, quota: release, lastUsed: r.opts.Now(),
 		gone: make(chan struct{})}

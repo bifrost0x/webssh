@@ -24,10 +24,7 @@ func sftpArea() extension {
 
 func wireSFTP(sys *system) error {
 	opts := sftpOptions(sys.cfg.Files)
-	chmod := func(ctx context.Context) bool {
-		app, err := sys.settings.App(ctx)
-		return err == nil && app.RuntimeFeature("sftp_chmod_enabled").Enabled
-	}
+	chmod := sftpChmod(sys)
 	sessions := terminalFiles{sys.terminal}
 	sys.fileSources.RegisterKind(files.SourceSFTPSession, func(ctx context.Context, p principal.Principal, handle string) (files.Descriptor, files.Backend, error) {
 		o := opts
@@ -35,12 +32,25 @@ func wireSFTP(sys *system) error {
 		return sftp.SessionOpener(sessions, o)(ctx, p, handle)
 	})
 	sys.terminal.SetFileSources(sessions.fileSource(sys.fileSources))
-	area := &sftp.Area{
-		Quick:    &sftp.Quick{Dialer: sys.shells, Options: opts, Chmod: chmod},
+	sys.realtime.Mount(newSFTPArea(sys).Routes()...)
+	return nil
+}
+
+// newSFTPArea is the realtime area of Quick SFTP and the session sources.
+func newSFTPArea(sys *system) *sftp.Area {
+	sessions := terminalFiles{sys.terminal}
+	return &sftp.Area{
+		Quick:    &sftp.Quick{Dialer: sys.shells, Options: sftpOptions(sys.cfg.Files), Chmod: sftpChmod(sys)},
 		Registry: sys.fileSources, Connector: sessions, Sessions: sessions,
 	}
-	sys.realtime.Mount(area.Routes()...)
-	return nil
+}
+
+// sftpChmod is the runtime switch sftp_chmod_enabled.
+func sftpChmod(sys *system) func(context.Context) bool {
+	return func(ctx context.Context) bool {
+		app, err := sys.settings.App(ctx)
+		return err == nil && app.RuntimeFeature("sftp_chmod_enabled").Enabled
+	}
 }
 
 // sftpOptions are the protocol limits of the configuration.

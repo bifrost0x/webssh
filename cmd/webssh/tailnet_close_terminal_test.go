@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	pkgsftp "github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/bifrost0x/webssh/internal/netpolicy"
@@ -34,6 +35,7 @@ import (
 type sshHost struct {
 	addr *net.TCPAddr
 	key  ssh.PublicKey
+	root string // directory of the SFTP subsystem
 
 	mu       sync.Mutex
 	open     map[net.Conn]bool // accepted TCP connections
@@ -58,7 +60,7 @@ func startSSHHost(t *testing.T) *sshHost {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &sshHost{addr: l.Addr().(*net.TCPAddr), key: signer.PublicKey(), open: map[net.Conn]bool{}}
+	h := &sshHost{addr: l.Addr().(*net.TCPAddr), key: signer.PublicKey(), root: t.TempDir(), open: map[net.Conn]bool{}}
 	var wg sync.WaitGroup
 	// The terminal may still hold sessions when the test ends.
 	t.Cleanup(func() {
@@ -174,6 +176,20 @@ func (h *sshHost) session(nc ssh.NewChannel) {
 		case "shell":
 			_ = req.Reply(true, nil)
 			go echo()
+		case "subsystem":
+			var sub struct{ Name string }
+			if ssh.Unmarshal(req.Payload, &sub) != nil || sub.Name != "sftp" || h.root == "" {
+				_ = req.Reply(false, nil)
+				continue
+			}
+			_ = req.Reply(true, nil)
+			go func() {
+				server, err := pkgsftp.NewServer(ch, pkgsftp.WithServerWorkingDirectory(h.root))
+				if err == nil {
+					_ = server.Serve()
+				}
+				_ = ch.Close()
+			}()
 		case "exec":
 			var cmd struct{ Command string }
 			if ssh.Unmarshal(req.Payload, &cmd) != nil {
@@ -401,13 +417,43 @@ func TestTailnetBlockClosesTerminalSessions(t *testing.T) {
 // key and returns the outcome of the open.
 func (r *terminalRig) openDuringBlock(t *testing.T, target protocol.OpenTarget, promptHost string) (string, *protocol.Error) {
 	t.Helper()
+	return r.duringBlock(t, func() (string, *protocol.Error) { return r.open(t.Context(), 1, target) }, promptHost)
+}
+
+// quickDuringBlock is openDuringBlock for files.quick.open (Quick SFTP)
+// and returns the file source id.
+func (r *terminalRig) quickDuringBlock(t *testing.T, target protocol.OpenTarget, promptHost string) (string, *protocol.Error) {
+	t.Helper()
+	route := newSFTPArea(r.sys).Routes()[0]
+	if route.Type != protocol.TypeFilesQuickOpen {
+		t.Fatalf("route %s", route.Type)
+	}
+	target.AuthType, target.Password, target.Username = protocol.AuthPassword, "pw", "alice"
+	return r.duringBlock(t, func() (string, *protocol.Error) {
+		raw, perr := protocoltest.Call(t.Context(), route, r.peer, protocol.FilesQuickOpen{OpenTarget: target, ClientRequestID: "quick_1"})
+		if perr != nil {
+			return "", perr
+		}
+		var opened protocol.FilesQuickOpened
+		if err := json.Unmarshal(raw, &opened); err != nil {
+			return "", &protocol.Error{Message: err.Error()}
+		}
+		return opened.FileSource.SourceID, nil
+	}, promptHost)
+}
+
+// duringBlock runs open, turns the tailnet block on while the host key
+// prompt for promptHost is open, then trusts the key and returns the
+// outcome of open.
+func (r *terminalRig) duringBlock(t *testing.T, open func() (string, *protocol.Error), promptHost string) (string, *protocol.Error) {
+	t.Helper()
 	type result struct {
 		id   string
 		perr *protocol.Error
 	}
 	done := make(chan result, 1)
 	go func() {
-		id, perr := r.open(t.Context(), 1, target)
+		id, perr := open()
 		done <- result{id, perr}
 	}()
 	var prompt protocol.PromptHostKey
@@ -465,6 +511,35 @@ func TestTailnetBlockKeepsPendingAllowedTerminalOpen(t *testing.T) {
 	}
 	if st := r.sys.terminal.Stats(); st.Sessions != 1 || st.Reserved != 1 || len(r.closedEvents(t)) != 0 {
 		t.Fatalf("after the allowed open %s: %+v", id, st)
+	}
+	r.waitConns(t, 1)
+}
+
+// Quick SFTP as terminal.open: a source whose connection passed the
+// network policy before the block was turned on, while the host key
+// prompt of the node was open, is refused instead of registered on the
+// route the block now refuses; its quota slot is free and both
+// connections end. Negative: a pending source on an allowed route opens.
+func TestTailnetBlockRefusesPendingQuickSFTP(t *testing.T) {
+	r := newTerminalRig(t, "127.0.0.1")
+	id, perr := r.quickDuringBlock(t, r.viaJump(), tailnetNode)
+	if perr == nil || !strings.Contains(perr.Message, "requires Tailscale SSH") {
+		t.Fatalf("files.quick.open on a refused route: source %q, error %+v", id, perr)
+	}
+	r.waitConns(t, 0)
+	if _, export := get(t, r.admin, r.base+"/admin/api/audit/export"); !strings.Contains(export, "pool_connections=0") {
+		t.Fatalf("audit %s", export)
+	}
+}
+
+func TestTailnetBlockKeepsPendingAllowedQuickSFTP(t *testing.T) {
+	r := newTerminalRig(t)
+	id, perr := r.quickDuringBlock(t, r.direct(), "127.0.0.1")
+	if perr != nil {
+		t.Fatalf("files.quick.open on an allowed route: %+v", perr)
+	}
+	if _, _, err := r.sys.fileSources.Describe(r.user, id); err != nil {
+		t.Fatalf("source %s: %v", id, err)
 	}
 	r.waitConns(t, 1)
 }
