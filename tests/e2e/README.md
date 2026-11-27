@@ -64,7 +64,9 @@ Without the version in `-ldflags` the binary reports `dev`, and the
 account menu spec, which expects a release version, fails.
 `run-go-suite.js` runs the specs the Go server has to pass
 (`go-suite.json`). Every left-out test names its reason and the package
-that unlocks it, or the capability of the build it needs (`--with`).
+that unlocks it, the capability of the build it needs (`--with`), or the
+decision that drops what it checks (`"decision": "ADR 0005"`, such as long
+polling).
 `--workers N` runs the specs in parallel; specs marked `serial` change the
 stored settings of a seed account (`e2e_admin`) that other specs read and
 run afterwards on one worker. A package that builds an area adds its

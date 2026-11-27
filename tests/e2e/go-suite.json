@@ -1,5 +1,5 @@
 {
-  "description": "Specs of the main suite that must pass against the Go server, run with the e2e build (tests/e2e/README.md). Every M2 package adds its specs. An excluded test names its reason and the package of the M2 plan that unlocks it (package), or a capability of the build (requires). serial names the seed account whose stored settings a spec changes; with more than one worker those specs run afterwards on one worker. run-go-suite.js turns this file into Playwright invocations.",
+  "description": "Specs of the main suite that must pass against the Go server, run with the e2e build (tests/e2e/README.md). Every M2 package adds its specs. An excluded test names its reason and the package of the M2 plan that unlocks it (package), a capability of the build (requires), or the decision that drops what it checks (decision). serial names the seed account whose stored settings a spec changes; with more than one worker those specs run afterwards on one worker. run-go-suite.js turns this file into Playwright invocations.",
   "requires": {
     "passkeys": "passkeys (D1, internal/auth/webauthn); in the build since the third wave",
     "e2e_hooks": "the realtime shim maps the e2e_* hooks to the e2e. routes of the e2e build (D4); in the build since the third wave"
@@ -30,9 +30,7 @@
     {"file": "empty-states.spec.js", "exclude": []},
     {"file": "onboarding.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "management-dialogs-redesign.spec.js", "exclude": []},
-    {"file": "management-persistence.spec.js", "exclude": [
-      {"title": "command and command-set edits survive a reload at 1536px", "reason": "the preview notice (automation, saved passwords, host discovery) covers the actions menu of the duplicated set at 1536px; the notice goes with the last preview area", "package": "FE1"}
-    ]},
+    {"file": "management-persistence.spec.js", "exclude": []},
     {"file": "jump-host-edit.spec.js", "exclude": []},
     {"file": "host-draft-navigation.spec.js", "exclude": []},
     {"file": "quick-connect-redesign.spec.js", "exclude": []},
@@ -56,18 +54,16 @@
     {"file": "terminal-parser-bounds.spec.js", "exclude": []},
     {"file": "terminal-scroll.spec.js", "exclude": []},
     {"file": "terminal-load.spec.js", "requires": "e2e_hooks", "exclude": [
-      {"title": "20 active TUIs retain state without reconnecting over polling", "reason": "no long polling in the Go server (ADR 0005)", "package": "FE1"}
+      {"title": "20 active TUIs retain state without reconnecting over polling", "decision": "ADR 0005", "reason": "the Go server has no long polling; the realtime transport is the WebSocket endpoint (ADR 0005)"}
     ]},
     {"file": "post-connect-profiles.spec.js", "exclude": []},
     {"file": "terminal-windows.spec.js", "exclude": []},
     {"file": "pane-assignment.spec.js", "exclude": []},
     {"file": "workspace-restore.spec.js", "requires": "e2e_hooks", "exclude": [
-      {"title": "sessions over polling at", "reason": "no long polling in the Go server (ADR 0005)", "package": "FE1"},
+      {"title": "sessions over polling at", "decision": "ADR 0005", "reason": "the Go server has no long polling; the realtime transport is the WebSocket endpoint (ADR 0005)"},
       {"title": "sessions over websocket at", "reason": "the Go hook e2e.workspace_restore seeds no SFTP stand-in (workspace_restore.py fakes the probe, the home directory and the listing), so #sessionFilesMount stays empty; the command library of the restored sessions works", "package": "FS2"}
     ]},
-    {"file": "settings-layout.spec.js", "exclude": [
-      {"title": "settings sections share their content track and user actions remain reachable", "reason": "the preview toast of the 501 routes on the settings page (/admin/api/host-keys, /admin/api/backups/restore/status) covers the user action menu at 390 px once the preview notice lists fewer areas; it goes with the preview toast and banner", "package": "FE1"}
-    ]},
+    {"file": "settings-layout.spec.js", "exclude": []},
     {"file": "settings-preference-states.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "theme-system.spec.js", "exclude": []},
     {"file": "theme-live-settings.spec.js", "exclude": []},
@@ -75,9 +71,7 @@
     {"file": "terminal-appearance.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "i18n-locales.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "redesign-shell.spec.js", "serial": "e2e_admin", "exclude": []},
-    {"file": "layout.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "mobile login keeps every sign-in method and the primary action in the first viewport", "reason": "the preview notice bar lengthens the narrow login page (D4, visible change of the preview); the OIDC method is offered since ID2", "package": "FE1"}
-    ]},
+    {"file": "layout.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "admin-oidc.spec.js", "exclude": []},
     {"file": "complete-design.spec.js", "exclude": []},
     {"file": "design-system.spec.js", "exclude": []},
@@ -111,9 +105,7 @@
     {"file": "overview-composition.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-continue-panel.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-group-journey.spec.js", "serial": "e2e_admin", "exclude": []},
-    {"file": "overview-group-order.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "reordering preserves exact route assignments, host membership and session state", "reason": "after the test rewrites the workspace page (background scope) the Go page loses its realtime connection and key list; found in HO2, not a gap of the overview", "package": "FE1"}
-    ]},
+    {"file": "overview-group-order.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-map.spec.js", "exclude": []},
     {"file": "overview-map-persistence.spec.js", "exclude": []},
     {"file": "overview-mixed-routes.spec.js", "exclude": []},
@@ -131,9 +123,7 @@
     {"file": "credential-jump-auto.spec.js", "exclude": []},
     {"file": "host-resource-consistency.spec.js", "exclude": []},
     {"file": "automation-navigation.spec.js", "exclude": []},
-    {"file": "file-workspace.spec.js", "exclude": [
-      {"title": "file lists keep working space and reachable actions across viewport sizes", "reason": "the preview notice (host discovery) takes the top of the 390 px page, and the more menu has gained the permissions entry since W3, so Delete ends below the viewport; the notice goes with the last preview area", "package": "FE1"}
-    ]},
+    {"file": "file-workspace.spec.js", "exclude": []},
     {"file": "file-mutations.spec.js", "exclude": []},
     {"file": "permission-jobs.spec.js", "exclude": []},
     {"file": "automation-polling.spec.js", "exclude": []},
@@ -146,9 +136,7 @@
     {"file": "file-transfer-disconnect.spec.js", "exclude": []},
     {"file": "upload-destination-switch.spec.js", "exclude": []},
     {"file": "local-upload-read-error.spec.js", "exclude": []},
-    {"file": "trust-files-controls.spec.js", "exclude": [
-      {"title": "transfer history preserves old errors and cancellation at 390", "reason": "at 390 px the preview notice of the areas not built yet pushes the transfer queue out of the viewport; passes with the notice removed", "package": "FE1"}
-    ]},
+    {"file": "trust-files-controls.spec.js", "exclude": []},
     {"file": "closed-issue-regressions.spec.js", "exclude": []},
     {"file": "primary-workspace-navigation.spec.js", "exclude": []},
     {"file": "ux-refinements.spec.js", "exclude": []},
@@ -161,9 +149,7 @@
     {"file": "command-builder-width.spec.js", "exclude": []},
     {"file": "command-draft-unload.spec.js", "exclude": []},
     {"file": "editor-dismissal-regression.spec.js", "exclude": []},
-    {"file": "workspace-layout-regressions.spec.js", "exclude": [
-      {"title": "library and favorites scroll to the final card at 360px", "reason": "the preview notice takes about a quarter of the 529 px viewport, so the 48-card lists need more wheel gestures than the 30 s test budget allows (red also at load 14); the notice goes with the last preview area", "package": "FE1"}
-    ]},
+    {"file": "workspace-layout-regressions.spec.js", "exclude": []},
     {"file": "workspace-performance.spec.js", "exclude": []},
     {"file": "palette-navigation.spec.js", "exclude": []},
     {"file": "automation.spec.js", "exclude": []},
@@ -176,9 +162,7 @@
     {"file": "automation-library.spec.js", "exclude": []},
     {"file": "automation-library-safety.spec.js", "exclude": []},
     {"file": "automation-templates.spec.js", "exclude": []},
-    {"file": "automation-workspace.spec.js", "exclude": [
-      {"title": "workspace sequence and target inventory fit narrow and wide themes", "reason": "the preview notice (host discovery) takes the height the narrow layout measures (329.75 px against 240 at 360 px); the schedules part passes since W3", "package": "FE1"}
-    ]},
+    {"file": "automation-workspace.spec.js", "exclude": []},
     {"file": "automation-design.spec.js", "exclude": []},
     {"file": "automation-followthrough.spec.js", "exclude": []},
     {"file": "automation-import-race.spec.js", "exclude": []},
@@ -195,6 +179,14 @@
     {"file": "admin-audit-race.spec.js", "exclude": []},
     {"file": "support-report.spec.js", "exclude": []},
     {"file": "runtime-policies.spec.js", "serial": "e2e_admin", "exclude": []},
-    {"file": "admin-sign-in-protection.spec.js", "serial": "e2e_admin", "exclude": []}
+    {"file": "admin-sign-in-protection.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "polling-navigation.spec.js", "requires": "e2e_hooks", "exclude": [
+      {"title": "polling reconnects after an aborted request without a redundant close POST", "decision": "ADR 0005", "reason": "the Go server has no long polling; the WebSocket variant of the same test runs"},
+      {"title": "cancelled reload preserves the draft and a working polling channel", "decision": "ADR 0005", "reason": "the Go server has no long polling; the WebSocket variant of the same test runs"}
+    ]},
+    {"file": "landscape-shell.spec.js", "exclude": []},
+    {"file": "usability-orientation.spec.js", "exclude": []},
+    {"file": "notifications-dialog-focus.spec.js", "exclude": []},
+    {"file": "work-first-setup.spec.js", "exclude": []}
   ]
 }
