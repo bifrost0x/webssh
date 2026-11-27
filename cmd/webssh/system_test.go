@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bifrost0x/webssh/internal/backup"
 	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
@@ -107,7 +108,10 @@ func TestSystemServesThePreview(t *testing.T) {
 
 func TestMaintenanceAnswersOnlyTheProbes(t *testing.T) {
 	sys, ts := openTestSystem(t, nil)
-	sys.maintenance.Store(true)
+	leave, err := sys.maintenance.Enter(t.Context(), backup.MaintenanceRestore)
+	if err != nil {
+		t.Fatal(err)
+	}
 	jar, _ := cookiejar.New(nil)
 	c := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 	if resp, body := get(t, c, ts.URL+"/login"); resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(body, `"maintenance"`) {
@@ -118,6 +122,13 @@ func TestMaintenanceAnswersOnlyTheProbes(t *testing.T) {
 	}
 	if resp, body := get(t, c, ts.URL+"/ready"); resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(body, "maintenance") {
 		t.Fatalf("ready in maintenance: %d %s", resp.StatusCode, body)
+	}
+	leave()
+	if resp, body := get(t, c, ts.URL+"/ready"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("ready after maintenance: %d %s", resp.StatusCode, body)
+	}
+	if resp, _ := get(t, c, ts.URL+"/login"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("login after maintenance: %d", resp.StatusCode)
 	}
 }
 

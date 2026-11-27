@@ -100,3 +100,15 @@ func (s *Server) NotifyUser(userID int64, typ string, payload any) int {
 	}
 	return sent
 }
+
+// CloseAll closes every open connection with protocol.CloseMaintenance
+// and returns how many it closed. Unlike Shutdown it does not refuse new
+// upgrades; the caller keeps them out while it needs to (maintenance mode
+// answers every route but the probes with 503). It never blocks.
+func (s *Server) CloseAll(reason string) int {
+	conns := s.sessions.all()
+	for _, c := range conns {
+		c.closeWith(protocol.CloseMaintenance, reason)
+	}
+	return len(conns)
+}

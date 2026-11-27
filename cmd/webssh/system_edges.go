@@ -27,6 +27,7 @@ func (s *system) buildEdges(in bootInput) error {
 	}); err != nil {
 		return fmt.Errorf("realtime endpoint: %w", err)
 	}
+	s.maintenance.setCloser(s.realtime.CloseAll)
 	s.realtime.Mount(s.terminal.Routes()...)
 	s.realtime.Mount(s.hosts.Routes()...)
 	s.realtime.Mount(s.notes.Routes()...)
