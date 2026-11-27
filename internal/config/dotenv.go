@@ -311,6 +311,7 @@ func parseDotenv(data []byte, lookup LookupFunc) ([]EnvAssignment, []int, error)
 	var bad []int
 	values := map[string]*string{}
 	var order []string
+	budget := maxDotenvExpansion
 	for _, b := range parseDotenvStatements(text) {
 		if b.err {
 			bad = append(bad, b.line)
@@ -320,7 +321,10 @@ func parseDotenv(data []byte, lookup LookupFunc) ([]EnvAssignment, []int, error)
 		}
 		var result *string
 		if b.hasValue {
-			v := interpolateDotenv(b.value, lookup, values)
+			v, err := interpolateDotenv(b.value, lookup, values, &budget)
+			if err != nil {
+				return nil, bad, fmt.Errorf("%s (line %d): %w", pyRepr(b.key), b.line, err)
+			}
 			result = &v
 		}
 		if _, seen := values[b.key]; !seen {
