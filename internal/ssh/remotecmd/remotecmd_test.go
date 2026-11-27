@@ -146,3 +146,45 @@ func FuzzWord(f *testing.F) {
 		}
 	})
 }
+
+// partialExec writes output, then waits for the end of ctx.
+type partialExec struct{ out string }
+
+func (p partialExec) Exec(ctx context.Context, _ string, _ io.Reader, stdout, _ io.Writer) (int, error) {
+	_, _ = stdout.Write([]byte(p.out))
+	<-ctx.Done()
+	return -1, ctx.Err()
+}
+
+func TestRunKeepsTheOutputOfATimeout(t *testing.T) {
+	r, err := remotecmd.Run(t.Context(), partialExec{"cpu=1 2 3 4\n"}, remotecmd.Command{Line: "x", Timeout: 30 * time.Millisecond})
+	if fault.CodeOf(err) != fault.Timeout || string(r.Stdout) != "cpu=1 2 3 4\n" || r.ExitStatus != -1 {
+		t.Fatalf("%+v %v", r, err)
+	}
+}
+
+func TestRunMaxStderr(t *testing.T) {
+	f := &fakeExec{stderr: bytes.Repeat([]byte("e"), 10000)}
+	r, err := remotecmd.Run(t.Context(), f, remotecmd.Command{Line: "x", MaxStderr: 9000})
+	if err != nil || len(r.Stderr) != 9000 || !r.StderrTruncated {
+		t.Fatalf("%d %v %v", len(r.Stderr), r.StderrTruncated, err)
+	}
+	for _, bad := range []int{-1, remotecmd.MaxOutput + 1} {
+		if _, err := remotecmd.Run(t.Context(), &fakeExec{}, remotecmd.Command{Line: "x", MaxStderr: bad}); fault.CodeOf(err) != fault.InvalidValue {
+			t.Fatalf("MaxStderr %d: %v", bad, err)
+		}
+	}
+}
+
+func TestInert(t *testing.T) {
+	for _, ok := range []string{"nginx.service", "getty@tty1.service", "a:b", "x-y_z"} {
+		if !remotecmd.Inert(ok) {
+			t.Errorf("%q refused", ok)
+		}
+	}
+	for _, bad := range []string{"", "a b", "a;b", "a$b", "a'b", "a\nb", "ä"} {
+		if remotecmd.Inert(bad) {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}

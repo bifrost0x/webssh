@@ -30,3 +30,17 @@ func TestScript(t *testing.T) {
 		}
 	}
 }
+
+func TestProgram(t *testing.T) {
+	t.Parallel()
+	body := strings.Repeat("echo x\n", 2000) // larger than a Script
+	c, err := remotecmd.Program(body)
+	if err != nil || c.Line != `sh -c 'eval "$(cat)"'` || string(c.Stdin) != body {
+		t.Fatalf("Program = %v", err)
+	}
+	for _, bad := range []string{"", "a\x00b", "\xff", strings.Repeat("x", remotecmd.MaxStdin+1)} {
+		if _, err := remotecmd.Program(bad); !fault.Is(err, fault.InvalidValue) {
+			t.Errorf("Program(%q) = %v", bad[:min(len(bad), 8)], err)
+		}
+	}
+}
