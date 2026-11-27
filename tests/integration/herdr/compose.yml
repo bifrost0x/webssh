@@ -1,0 +1,28 @@
+# Disposable Herdr host for the Go lab test (cmd/webssh, build tag herdr).
+# Started only by run-go-lab.sh, which passes a password generated per run
+# and removes the project afterwards. The shared lab (tests/lab) is separate.
+services:
+  herdr:
+    build: .
+    environment:
+      HERDR_LAB_PASSWORD: ${HERDR_LAB_PASSWORD:?set by run-go-lab.sh}
+    # Replaces the image's fixed test password and host keys at every start.
+    command:
+      - sh
+      - -c
+      - >-
+        printf 'testuser:%s\nagentuser:%s\n' "$$HERDR_LAB_PASSWORD" "$$HERDR_LAB_PASSWORD" | chpasswd
+        && rm -f /etc/ssh/ssh_host_* && ssh-keygen -A >/dev/null
+        && exec /usr/sbin/sshd -D -e
+    ports:
+      - "127.0.0.1::22"
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, SYS_CHROOT, KILL, AUDIT_WRITE]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "ssh-keyscan -T 2 -p 22 127.0.0.1 >/dev/null 2>&1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
