@@ -112,10 +112,16 @@ func TestStrictGoArchivesRejected(t *testing.T) {
 			es := append([]craftedEntry{{hdr: tar.Header{Typeflag: tar.TypeDir, Name: "data/", Mode: 0o700}}}, fixed...)
 			return base, es
 		},
-		"absolute path":      func() (Manifest, []craftedEntry) { return withExtra("data//etc/cron.d/x", reg("data//etc/cron.d/x", []byte("x"))) },
-		"traversal":          func() (Manifest, []craftedEntry) { return withExtra("data/../escape", reg("data/../escape", []byte("x"))) },
-		"non-canonical path": func() (Manifest, []craftedEntry) { return withExtra("data/users/./x", reg("data/users/./x", []byte("x"))) },
-		"backslash path":     func() (Manifest, []craftedEntry) { return withExtra(`data/users\x`, reg(`data/users\x`, []byte("x"))) },
+		"absolute path": func() (Manifest, []craftedEntry) {
+			return withExtra("data//etc/cron.d/x", reg("data//etc/cron.d/x", []byte("x")))
+		},
+		"traversal": func() (Manifest, []craftedEntry) {
+			return withExtra("data/../escape", reg("data/../escape", []byte("x")))
+		},
+		"non-canonical path": func() (Manifest, []craftedEntry) {
+			return withExtra("data/users/./x", reg("data/users/./x", []byte("x")))
+		},
+		"backslash path": func() (Manifest, []craftedEntry) { return withExtra(`data/users\x`, reg(`data/users\x`, []byte("x"))) },
 		"go directory member": func() (Manifest, []craftedEntry) {
 			return withExtra("data/go/deleted_users/1-x/manifest.json", reg("data/go/deleted_users/1-x/manifest.json", []byte("{}")))
 		},
