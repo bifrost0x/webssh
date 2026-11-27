@@ -1,0 +1,343 @@
+{
+ "base": {
+  "jump_hosts": [
+   "{\"id\": \"j-used\", \"name\": \"Bastion\", \"host\": \"bastion.example\", \"port\": 22, \"username\": \"ops\", \"auth_type\": \"key\"}",
+   "{\"id\": \"j-free\", \"name\": \"Jump \\u00e9\\u4e2d\\ud83d\\ude00\", \"host\": \"free.example\", \"port\": 2222, \"username\": \"x\", \"auth_type\": \"password\"}"
+  ],
+  "profiles": [
+   "{\"id\": \"p1\", \"name\": \"Alpha\", \"host\": \"alpha.example\", \"port\": 22, \"username\": \"root\", \"jump_host_id\": \"j-used\", \"group\": \"Ops\", \"favorite\": true}",
+   "{\"id\": \"p2\", \"name\": \"Name with \\\"quotes\\\" and \\\\ and \\u2028\", \"host\": \"b\\u00fccher.example\", \"port\": 2200, \"username\": \"u\", \"sort_order\": 12345678901234567890, \"created_at\": \"2026-01-01T00:00:00\"}",
+   "{\"id\": \"p3\", \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"host\": \"c.example\", \"port\": 22, \"username\": \"\\u007f\\u0001\"}",
+   "{\"id\": \"p4\", \"name\": \"Via proxy\", \"host\": \"d.example\", \"port\": 22, \"socks_proxy_id\": \"s-used\", \"favorite\": false}"
+  ],
+  "socks_proxies": [
+   "{\"id\": \"s-used\", \"name\": \"Proxy\", \"host\": \"10.0.0.1\", \"port\": 1080, \"username\": \"\", \"auth_type\": \"none\", \"remote_dns\": true, \"created_at\": \"2026-01-01T00:00:00\"}",
+   "{\"id\": \"s-free\", \"name\": \"Other\\tproxy\", \"host\": \"p.example\", \"port\": 1081, \"username\": \"u\", \"auth_type\": \"password\", \"remote_dns\": false, \"created_at\": \"2026-01-02T00:00:00\"}"
+  ]
+ },
+ "cases": [
+  {
+   "after": {
+    "jump_hosts": [
+     "{\"id\": \"j-used\", \"name\": \"Bastion\", \"host\": \"bastion.example\", \"port\": 22, \"username\": \"ops\", \"auth_type\": \"key\"}",
+     "{\"id\": \"j-free\", \"name\": \"Jump \\u00e9\\u4e2d\\ud83d\\ude00\", \"host\": \"free.example\", \"port\": 2222, \"username\": \"x\", \"auth_type\": \"password\"}"
+    ],
+    "profiles": [
+     "{\"id\": \"p1\", \"name\": \"Alpha\", \"host\": \"alpha.example\", \"port\": 22, \"username\": \"root\", \"jump_host_id\": \"j-used\", \"group\": \"Ops\", \"favorite\": true}",
+     "{\"id\": \"p2\", \"name\": \"Name with \\\"quotes\\\" and \\\\ and \\u2028\", \"host\": \"b\\u00fccher.example\", \"port\": 2200, \"username\": \"u\", \"sort_order\": 12345678901234567890, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"p3\", \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"host\": \"c.example\", \"port\": 22, \"username\": \"\\u007f\\u0001\"}",
+     "{\"id\": \"p4\", \"name\": \"Via proxy\", \"host\": \"d.example\", \"port\": 22, \"socks_proxy_id\": \"s-used\", \"favorite\": false}"
+    ],
+    "socks_proxies": [
+     "{\"id\": \"s-used\", \"name\": \"Proxy\", \"host\": \"10.0.0.1\", \"port\": 1080, \"username\": \"\", \"auth_type\": \"none\", \"remote_dns\": true, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"s-free\", \"name\": \"Other\\tproxy\", \"host\": \"p.example\", \"port\": 1081, \"username\": \"u\", \"auth_type\": \"password\", \"remote_dns\": false, \"created_at\": \"2026-01-02T00:00:00\"}"
+    ]
+   },
+   "kind": "profiles",
+   "name": "malformed selector",
+   "result": {
+    "error": "Recovery selector not found; list the store again.",
+    "ok": false
+   },
+   "selector": "r1:01:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  {
+   "after": {
+    "jump_hosts": [
+     "{\"id\": \"j-used\", \"name\": \"Bastion\", \"host\": \"bastion.example\", \"port\": 22, \"username\": \"ops\", \"auth_type\": \"key\"}",
+     "{\"id\": \"j-free\", \"name\": \"Jump \\u00e9\\u4e2d\\ud83d\\ude00\", \"host\": \"free.example\", \"port\": 2222, \"username\": \"x\", \"auth_type\": \"password\"}"
+    ],
+    "profiles": [
+     "{\"id\": \"p1\", \"name\": \"Alpha\", \"host\": \"alpha.example\", \"port\": 22, \"username\": \"root\", \"jump_host_id\": \"j-used\", \"group\": \"Ops\", \"favorite\": true}",
+     "{\"id\": \"p2\", \"name\": \"Name with \\\"quotes\\\" and \\\\ and \\u2028\", \"host\": \"b\\u00fccher.example\", \"port\": 2200, \"username\": \"u\", \"sort_order\": 12345678901234567890, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"p3\", \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"host\": \"c.example\", \"port\": 22, \"username\": \"\\u007f\\u0001\"}",
+     "{\"id\": \"p4\", \"name\": \"Via proxy\", \"host\": \"d.example\", \"port\": 22, \"socks_proxy_id\": \"s-used\", \"favorite\": false}"
+    ],
+    "socks_proxies": [
+     "{\"id\": \"s-used\", \"name\": \"Proxy\", \"host\": \"10.0.0.1\", \"port\": 1080, \"username\": \"\", \"auth_type\": \"none\", \"remote_dns\": true, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"s-free\", \"name\": \"Other\\tproxy\", \"host\": \"p.example\", \"port\": 1081, \"username\": \"u\", \"auth_type\": \"password\", \"remote_dns\": false, \"created_at\": \"2026-01-02T00:00:00\"}"
+    ]
+   },
+   "kind": "profiles",
+   "name": "out of range",
+   "result": {
+    "error": "Recovery selector not found; list the store again.",
+    "ok": false
+   },
+   "selector": "r1:9:577679cc2da16fd81e41db1f1d209e20651c86ffad0c642040278a5c3643bb4c"
+  },
+  {
+   "after": {
+    "jump_hosts": [
+     "{\"id\": \"j-used\", \"name\": \"Bastion\", \"host\": \"bastion.example\", \"port\": 22, \"username\": \"ops\", \"auth_type\": \"key\"}",
+     "{\"id\": \"j-free\", \"name\": \"Jump \\u00e9\\u4e2d\\ud83d\\ude00\", \"host\": \"free.example\", \"port\": 2222, \"username\": \"x\", \"auth_type\": \"password\"}"
+    ],
+    "profiles": [
+     "{\"id\": \"p1\", \"name\": \"Alpha\", \"host\": \"alpha.example\", \"port\": 22, \"username\": \"root\", \"jump_host_id\": \"j-used\", \"group\": \"Ops\", \"favorite\": true}",
+     "{\"id\": \"p2\", \"name\": \"Name with \\\"quotes\\\" and \\\\ and \\u2028\", \"host\": \"b\\u00fccher.example\", \"port\": 2200, \"username\": \"u\", \"sort_order\": 12345678901234567890, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"p3\", \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"host\": \"c.example\", \"port\": 22, \"username\": \"\\u007f\\u0001\"}",
+     "{\"id\": \"p4\", \"name\": \"Via proxy\", \"host\": \"d.example\", \"port\": 22, \"socks_proxy_id\": \"s-used\", \"favorite\": false}"
+    ],
+    "socks_proxies": [
+     "{\"id\": \"s-used\", \"name\": \"Proxy\", \"host\": \"10.0.0.1\", \"port\": 1080, \"username\": \"\", \"auth_type\": \"none\", \"remote_dns\": true, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"s-free\", \"name\": \"Other\\tproxy\", \"host\": \"p.example\", \"port\": 1081, \"username\": \"u\", \"auth_type\": \"password\", \"remote_dns\": false, \"created_at\": \"2026-01-02T00:00:00\"}"
+    ]
+   },
+   "kind": "profiles",
+   "name": "wrong ordinal",
+   "result": {
+    "error": "Recovery selector not found; list the store again.",
+    "ok": false
+   },
+   "selector": "r1:1:577679cc2da16fd81e41db1f1d209e20651c86ffad0c642040278a5c3643bb4c"
+  },
+  {
+   "after": {
+    "jump_hosts": [
+     "{\"id\": \"j-used\", \"name\": \"Bastion\", \"host\": \"bastion.example\", \"port\": 22, \"username\": \"ops\", \"auth_type\": \"key\"}",
+     "{\"id\": \"j-free\", \"name\": \"Jump \\u00e9\\u4e2d\\ud83d\\ude00\", \"host\": \"free.example\", \"port\": 2222, \"username\": \"x\", \"auth_type\": \"password\"}"
+    ],
+    "profiles": [
+     "{\"id\": \"p1\", \"name\": \"Alpha\", \"host\": \"alpha.example\", \"port\": 22, \"username\": \"root\", \"jump_host_id\": \"j-used\", \"group\": \"Ops\", \"favorite\": true}",
+     "{\"id\": \"p2\", \"name\": \"Name with \\\"quotes\\\" and \\\\ and \\u2028\", \"host\": \"b\\u00fccher.example\", \"port\": 2200, \"username\": \"u\", \"sort_order\": 12345678901234567890, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"p3\", \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"host\": \"c.example\", \"port\": 22, \"username\": \"\\u007f\\u0001\"}",
+     "{\"id\": \"p4\", \"name\": \"Via proxy\", \"host\": \"d.example\", \"port\": 22, \"socks_proxy_id\": \"s-used\", \"favorite\": false}"
+    ],
+    "socks_proxies": [
+     "{\"id\": \"s-used\", \"name\": \"Proxy\", \"host\": \"10.0.0.1\", \"port\": 1080, \"username\": \"\", \"auth_type\": \"none\", \"remote_dns\": true, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"s-free\", \"name\": \"Other\\tproxy\", \"host\": \"p.example\", \"port\": 1081, \"username\": \"u\", \"auth_type\": \"password\", \"remote_dns\": false, \"created_at\": \"2026-01-02T00:00:00\"}"
+    ]
+   },
+   "kind": "jump-hosts",
+   "name": "jump host in use",
+   "result": {
+    "error": "Jump host is used by 1 profile",
+    "ok": false
+   },
+   "selector": "r1:0:d0b107ce4c41a5da4765192a6d124b48fc17b53f75c9086869bb7fc02c8bea4a"
+  },
+  {
+   "after": {
+    "jump_hosts": [
+     "{\"id\": \"j-used\", \"name\": \"Bastion\", \"host\": \"bastion.example\", \"port\": 22, \"username\": \"ops\", \"auth_type\": \"key\"}",
+     "{\"id\": \"j-free\", \"name\": \"Jump \\u00e9\\u4e2d\\ud83d\\ude00\", \"host\": \"free.example\", \"port\": 2222, \"username\": \"x\", \"auth_type\": \"password\"}"
+    ],
+    "profiles": [
+     "{\"id\": \"p1\", \"name\": \"Alpha\", \"host\": \"alpha.example\", \"port\": 22, \"username\": \"root\", \"jump_host_id\": \"j-used\", \"group\": \"Ops\", \"favorite\": true}",
+     "{\"id\": \"p2\", \"name\": \"Name with \\\"quotes\\\" and \\\\ and \\u2028\", \"host\": \"b\\u00fccher.example\", \"port\": 2200, \"username\": \"u\", \"sort_order\": 12345678901234567890, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"p3\", \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"host\": \"c.example\", \"port\": 22, \"username\": \"\\u007f\\u0001\"}",
+     "{\"id\": \"p4\", \"name\": \"Via proxy\", \"host\": \"d.example\", \"port\": 22, \"socks_proxy_id\": \"s-used\", \"favorite\": false}"
+    ],
+    "socks_proxies": [
+     "{\"id\": \"s-used\", \"name\": \"Proxy\", \"host\": \"10.0.0.1\", \"port\": 1080, \"username\": \"\", \"auth_type\": \"none\", \"remote_dns\": true, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"s-free\", \"name\": \"Other\\tproxy\", \"host\": \"p.example\", \"port\": 1081, \"username\": \"u\", \"auth_type\": \"password\", \"remote_dns\": false, \"created_at\": \"2026-01-02T00:00:00\"}"
+    ]
+   },
+   "kind": "socks-proxies",
+   "name": "proxy in use",
+   "result": {
+    "error": "SOCKS proxy is used by 1 profile",
+    "ok": false
+   },
+   "selector": "r1:0:0df86285d6d92f6aa9e83331ad4fd1b00b2e4358b17521f3989085eae8091dad"
+  },
+  {
+   "after": {
+    "jump_hosts": [
+     "{\"id\": \"j-used\", \"name\": \"Bastion\", \"host\": \"bastion.example\", \"port\": 22, \"username\": \"ops\", \"auth_type\": \"key\"}"
+    ],
+    "profiles": [
+     "{\"id\": \"p1\", \"name\": \"Alpha\", \"host\": \"alpha.example\", \"port\": 22, \"username\": \"root\", \"jump_host_id\": \"j-used\", \"group\": \"Ops\", \"favorite\": true}",
+     "{\"id\": \"p2\", \"name\": \"Name with \\\"quotes\\\" and \\\\ and \\u2028\", \"host\": \"b\\u00fccher.example\", \"port\": 2200, \"username\": \"u\", \"sort_order\": 12345678901234567890, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"p3\", \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"host\": \"c.example\", \"port\": 22, \"username\": \"\\u007f\\u0001\"}",
+     "{\"id\": \"p4\", \"name\": \"Via proxy\", \"host\": \"d.example\", \"port\": 22, \"socks_proxy_id\": \"s-used\", \"favorite\": false}"
+    ],
+    "socks_proxies": [
+     "{\"id\": \"s-used\", \"name\": \"Proxy\", \"host\": \"10.0.0.1\", \"port\": 1080, \"username\": \"\", \"auth_type\": \"none\", \"remote_dns\": true, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"s-free\", \"name\": \"Other\\tproxy\", \"host\": \"p.example\", \"port\": 1081, \"username\": \"u\", \"auth_type\": \"password\", \"remote_dns\": false, \"created_at\": \"2026-01-02T00:00:00\"}"
+    ]
+   },
+   "kind": "jump-hosts",
+   "name": "delete free jump host",
+   "result": {
+    "error": null,
+    "ok": true
+   },
+   "selector": "r1:1:91f4522aa5607ad9d2217599ba44aa366f0ddb38f116288d958ec82b1ed62cdb"
+  },
+  {
+   "after": {
+    "jump_hosts": [
+     "{\"id\": \"j-used\", \"name\": \"Bastion\", \"host\": \"bastion.example\", \"port\": 22, \"username\": \"ops\", \"auth_type\": \"key\"}"
+    ],
+    "profiles": [
+     "{\"id\": \"p1\", \"name\": \"Alpha\", \"host\": \"alpha.example\", \"port\": 22, \"username\": \"root\", \"jump_host_id\": \"j-used\", \"group\": \"Ops\", \"favorite\": true}",
+     "{\"id\": \"p2\", \"name\": \"Name with \\\"quotes\\\" and \\\\ and \\u2028\", \"host\": \"b\\u00fccher.example\", \"port\": 2200, \"username\": \"u\", \"sort_order\": 12345678901234567890, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"p3\", \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"host\": \"c.example\", \"port\": 22, \"username\": \"\\u007f\\u0001\"}",
+     "{\"id\": \"p4\", \"name\": \"Via proxy\", \"host\": \"d.example\", \"port\": 22, \"socks_proxy_id\": \"s-used\", \"favorite\": false}"
+    ],
+    "socks_proxies": [
+     "{\"id\": \"s-used\", \"name\": \"Proxy\", \"host\": \"10.0.0.1\", \"port\": 1080, \"username\": \"\", \"auth_type\": \"none\", \"remote_dns\": true, \"created_at\": \"2026-01-01T00:00:00\"}"
+    ]
+   },
+   "kind": "socks-proxies",
+   "name": "delete free proxy",
+   "result": {
+    "error": null,
+    "ok": true
+   },
+   "selector": "r1:1:f9552338a35ed89a66d3e3e58fd9661ddc4017a68c62618e6a83eafe67eb0d69"
+  },
+  {
+   "after": {
+    "jump_hosts": [
+     "{\"id\": \"j-used\", \"name\": \"Bastion\", \"host\": \"bastion.example\", \"port\": 22, \"username\": \"ops\", \"auth_type\": \"key\"}"
+    ],
+    "profiles": [
+     "{\"id\": \"p2\", \"name\": \"Name with \\\"quotes\\\" and \\\\ and \\u2028\", \"host\": \"b\\u00fccher.example\", \"port\": 2200, \"username\": \"u\", \"sort_order\": 12345678901234567890, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"p3\", \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"host\": \"c.example\", \"port\": 22, \"username\": \"\\u007f\\u0001\"}",
+     "{\"id\": \"p4\", \"name\": \"Via proxy\", \"host\": \"d.example\", \"port\": 22, \"socks_proxy_id\": \"s-used\", \"favorite\": false}"
+    ],
+    "socks_proxies": [
+     "{\"id\": \"s-used\", \"name\": \"Proxy\", \"host\": \"10.0.0.1\", \"port\": 1080, \"username\": \"\", \"auth_type\": \"none\", \"remote_dns\": true, \"created_at\": \"2026-01-01T00:00:00\"}"
+    ]
+   },
+   "kind": "profiles",
+   "name": "delete profile",
+   "result": {
+    "error": null,
+    "ok": true
+   },
+   "selector": "r1:0:577679cc2da16fd81e41db1f1d209e20651c86ffad0c642040278a5c3643bb4c"
+  },
+  {
+   "after": {
+    "jump_hosts": [
+     "{\"id\": \"j-used\", \"name\": \"Bastion\", \"host\": \"bastion.example\", \"port\": 22, \"username\": \"ops\", \"auth_type\": \"key\"}"
+    ],
+    "profiles": [
+     "{\"id\": \"p2\", \"name\": \"Name with \\\"quotes\\\" and \\\\ and \\u2028\", \"host\": \"b\\u00fccher.example\", \"port\": 2200, \"username\": \"u\", \"sort_order\": 12345678901234567890, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"p3\", \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"host\": \"c.example\", \"port\": 22, \"username\": \"\\u007f\\u0001\"}",
+     "{\"id\": \"p4\", \"name\": \"Via proxy\", \"host\": \"d.example\", \"port\": 22, \"socks_proxy_id\": \"s-used\", \"favorite\": false}"
+    ],
+    "socks_proxies": [
+     "{\"id\": \"s-used\", \"name\": \"Proxy\", \"host\": \"10.0.0.1\", \"port\": 1080, \"username\": \"\", \"auth_type\": \"none\", \"remote_dns\": true, \"created_at\": \"2026-01-01T00:00:00\"}"
+    ]
+   },
+   "kind": "profiles",
+   "name": "stale selector",
+   "result": {
+    "error": "Recovery selector not found; list the store again.",
+    "ok": false
+   },
+   "selector": "r1:2:5b2f92b30dae7a77812f5c74b2dc677161f2da8a10749322d4b930ea0ee2eccf"
+  },
+  {
+   "after": {
+    "jump_hosts": [],
+    "profiles": [
+     "{\"id\": \"p2\", \"name\": \"Name with \\\"quotes\\\" and \\\\ and \\u2028\", \"host\": \"b\\u00fccher.example\", \"port\": 2200, \"username\": \"u\", \"sort_order\": 12345678901234567890, \"created_at\": \"2026-01-01T00:00:00\"}",
+     "{\"id\": \"p3\", \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"host\": \"c.example\", \"port\": 22, \"username\": \"\\u007f\\u0001\"}",
+     "{\"id\": \"p4\", \"name\": \"Via proxy\", \"host\": \"d.example\", \"port\": 22, \"socks_proxy_id\": \"s-used\", \"favorite\": false}"
+    ],
+    "socks_proxies": [
+     "{\"id\": \"s-used\", \"name\": \"Proxy\", \"host\": \"10.0.0.1\", \"port\": 1080, \"username\": \"\", \"auth_type\": \"none\", \"remote_dns\": true, \"created_at\": \"2026-01-01T00:00:00\"}"
+    ]
+   },
+   "kind": "jump-hosts",
+   "name": "delete used jump host after profile",
+   "result": {
+    "error": null,
+    "ok": true
+   },
+   "selector": "r1:0:d0b107ce4c41a5da4765192a6d124b48fc17b53f75c9086869bb7fc02c8bea4a"
+  }
+ ],
+ "final_summaries": {
+  "jump-hosts": [],
+  "profiles": [
+   {
+    "host": "b\u00fccher.example",
+    "id": "p2",
+    "name": "Name with \"quotes\" and \\ and \ufffd",
+    "selector": "r1:0:b40a5e364a25f414481ab226984ddea893e16645f04edc10265ab4dca522c70d"
+   },
+   {
+    "host": "c.example",
+    "id": "p3",
+    "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "selector": "r1:1:61fb381f2d6902d67010ac1c380db79c5966c21165c3df5d1bb9e287138138e6"
+   },
+   {
+    "host": "d.example",
+    "id": "p4",
+    "name": "Via proxy",
+    "selector": "r1:2:42f4525ab609df561c8acd211ac3241cced4639b27da04d2220256efd5ed3f41"
+   }
+  ],
+  "socks-proxies": [
+   {
+    "host": "10.0.0.1",
+    "id": "s-used",
+    "name": "Proxy",
+    "selector": "r1:0:0df86285d6d92f6aa9e83331ad4fd1b00b2e4358b17521f3989085eae8091dad"
+   }
+  ]
+ },
+ "summaries": {
+  "jump-hosts": [
+   {
+    "host": "bastion.example",
+    "id": "j-used",
+    "name": "Bastion",
+    "selector": "r1:0:d0b107ce4c41a5da4765192a6d124b48fc17b53f75c9086869bb7fc02c8bea4a"
+   },
+   {
+    "host": "free.example",
+    "id": "j-free",
+    "name": "Jump \u00e9\u4e2d\ud83d\ude00",
+    "selector": "r1:1:91f4522aa5607ad9d2217599ba44aa366f0ddb38f116288d958ec82b1ed62cdb"
+   }
+  ],
+  "profiles": [
+   {
+    "host": "alpha.example",
+    "id": "p1",
+    "name": "Alpha",
+    "selector": "r1:0:577679cc2da16fd81e41db1f1d209e20651c86ffad0c642040278a5c3643bb4c"
+   },
+   {
+    "host": "b\u00fccher.example",
+    "id": "p2",
+    "name": "Name with \"quotes\" and \\ and \ufffd",
+    "selector": "r1:1:a2d4c4b73387a252aab658540dd74bbadb73d0d1c339321b06e0cf85fa8f3864"
+   },
+   {
+    "host": "c.example",
+    "id": "p3",
+    "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "selector": "r1:2:5b2f92b30dae7a77812f5c74b2dc677161f2da8a10749322d4b930ea0ee2eccf"
+   },
+   {
+    "host": "d.example",
+    "id": "p4",
+    "name": "Via proxy",
+    "selector": "r1:3:fc2c396ce663faa712ffae1e061a33060475c1d6bd3b25b813d364d8f6da803b"
+   }
+  ],
+  "socks-proxies": [
+   {
+    "host": "10.0.0.1",
+    "id": "s-used",
+    "name": "Proxy",
+    "selector": "r1:0:0df86285d6d92f6aa9e83331ad4fd1b00b2e4358b17521f3989085eae8091dad"
+   },
+   {
+    "host": "p.example",
+    "id": "s-free",
+    "name": "Other\ufffdproxy",
+    "selector": "r1:1:f9552338a35ed89a66d3e3e58fd9661ddc4017a68c62618e6a83eafe67eb0d69"
+   }
+  ]
+ }
+}

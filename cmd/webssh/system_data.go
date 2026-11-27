@@ -30,6 +30,19 @@ func bootstrapConfig(lookup config.LookupFunc, log *slog.Logger) (config.Config,
 	if err != nil {
 		return config.Config{}, err
 	}
+	switch done, err := completeRotation(context.Background(), cfg); {
+	case err != nil:
+		return config.Config{}, fmt.Errorf("complete the interrupted secret rotation: %w", err)
+	case done:
+		log.Warn("secret rotation", "message", "an interrupted rotation of SECRET_KEY was completed: "+
+			"the new secret from the Go directory is now in DATA_DIR/secret_key")
+		if cfg, warnings, err = config.Bootstrap(lookup, func(dir string) error {
+			_, err := platform.PrepareDataDir(dir)
+			return err
+		}); err != nil {
+			return config.Config{}, err
+		}
+	}
 	for _, w := range warnings {
 		log.Warn("configuration", "kind", string(w.Kind), "variable", w.Variable, "message", w.Message)
 	}

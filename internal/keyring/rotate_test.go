@@ -1,6 +1,7 @@
 package keyring
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 )
@@ -46,5 +47,11 @@ func TestRotation(t *testing.T) {
 	}
 	if _, err := rt.Reseal(TOTP, AAD{"x", "y", "z"}, sealed); !errors.Is(err, ErrDecrypt) {
 		t.Fatalf("reseal for another record: %v", err)
+	}
+	if h := rt.OldHeader(); !bytes.Equal(h, sealed[:headerSize]) || bytes.Equal(h, resealed[:headerSize]) {
+		t.Fatalf("old header %x: sealed %x, resealed %x", h, sealed[:headerSize], resealed[:headerSize])
+	}
+	if rt.To() != to {
+		t.Fatal("To is not the new ring")
 	}
 }

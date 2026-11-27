@@ -59,6 +59,9 @@ type cliCase struct {
 	Tool  string    `json:"tool"` // "flask" or "ldap"
 	Files []string  `json:"files,omitzero"`
 	Steps []cliStep `json:"steps"`
+	// PyEnv is set for the Python run only: what the container entrypoint
+	// exports and the Go command derives itself.
+	PyEnv []string `json:"py_env,omitzero"`
 }
 
 type cliResult struct {
@@ -72,6 +75,7 @@ const resetDeviation = "the running server ends SSH sessions only at a restart u
 func cliCases() []cliCase {
 	pw := func(args ...string) []string { return append([]string{"create-admin"}, args...) }
 	fb := func(args ...string) []string { return append([]string{"issue-factor-bootstrap"}, args...) }
+	cs := func(args ...string) []string { return append([]string{"connection-store"}, args...) }
 	return []cliCase{
 		{Name: "missing username", Tool: "flask", Steps: []cliStep{{Args: pw()}}},
 		{Name: "unknown option", Tool: "flask", Steps: []cliStep{{Args: pw("--foo")}}},
@@ -121,6 +125,28 @@ func cliCases() []cliCase {
 			{Args: []string{"reset-password", "--username", "admin1"}, Stdin: "password9\npassword9\n", Deviation: resetDeviation},
 			{Args: []string{"reset-password", "--username", "admin1"}, Stdin: "password9\n"},
 		}},
+		{Name: "connection-store group", Tool: "flask", Steps: []cliStep{{Args: cs()}, {Args: cs("--help")}, {Args: cs("bogus")},
+			{Args: cs("--foo")}, {Args: cs("list", "--help")}, {Args: cs("delete", "--help")}}},
+		{Name: "connection-store usage", Tool: "flask", Steps: []cliStep{{Args: cs("list")}, {Args: cs("list", "--username", "x")},
+			{Args: cs("list", "--username", "x", "--kind", "bad")}, {Args: cs("delete", "--username", "x", "--kind", "profiles")},
+			{Args: cs("list", "--username", "x", "--kind", "profiles", "--confirm-offline=yes")}}},
+		{Name: "connection-store offline", Tool: "flask", Steps: []cliStep{{Args: cs("list", "--username", "x", "--kind", "profiles")},
+			{Args: cs("delete", "--username", "x", "--kind", "jump-hosts", "--selector", "s")}}},
+		{Name: "connection-store records", Tool: "flask", Files: []string{"good"}, Steps: []cliStep{
+			{Args: pw("--username", "admin1", "--password-file", "{tmp}/good")},
+			{Args: cs("list", "--username", "nobody", "--kind", "profiles", "--confirm-offline")},
+			{Args: cs("list", "--username", "admin1", "--kind", "profiles", "--confirm-offline")},
+			{Args: cs("list", "--username", "admin1", "--kind", "jump-hosts", "--confirm-offline")},
+			{Args: cs("list", "--username", "admin1", "--kind", "socks-proxies", "--confirm-offline")},
+			{Args: cs("delete", "--username", "admin1", "--kind", "profiles", "--selector", "r1:0:"+strings.Repeat("0", 64), "--confirm-offline")},
+			{Args: cs("delete", "--username", "admin1", "--kind", "socks-proxies", "--selector", "x", "--confirm-offline")},
+			{Args: cs("delete", "--username", "ADMIN1", "--kind", "socks-proxies", "--selector", "x", "--confirm-offline")},
+		}},
+		{Name: "rotate usage", Tool: "flask", Steps: []cliStep{{Args: []string{"rotate-secret-key", "--help"}},
+			{Args: []string{"rotate-secret-key", "--confirm-offline=yes"}}, {Args: []string{"rotate-secret-key", "extra"}},
+			{Args: []string{"rotate-secret-key", "--bogus"}}, {Args: []string{"rotate-secret-key"}}}},
+		{Name: "rotate environment secret", Tool: "flask", PyEnv: []string{"WEBSSH_SECRET_KEY_SOURCE=environment"},
+			Steps: []cliStep{{Args: []string{"rotate-secret-key", "--confirm-offline"}}}},
 		{Name: "ldap no command", Tool: "ldap", Steps: []cliStep{{Args: []string{"--secret-dir", "{tmp}/s"}}}},
 		{Name: "ldap help", Tool: "ldap", Steps: []cliStep{{Args: []string{"--help"}}, {Args: []string{"--secret-dir", "{tmp}/s", "set-password", "--help"}},
 			{Args: []string{"--secret-dir", "{tmp}/s", "install-ca", "--help"}}, {Args: []string{"--secret-dir", "{tmp}/s", "remove", "--help"}},
@@ -258,7 +284,7 @@ func pythonCLI(t *testing.T, c cliCase, step cliStep, tmp, dataDir string) cliRe
 		cmd = exec.CommandContext(t.Context(), filepath.Join(venv, "python"), append([]string{filepath.Join(root, "deployment", "ldap_secret_cli.py")}, substitute(step.Args, tmp)...)...) // #nosec G204 -- test oracle
 	}
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "DATA_DIR="+dataDir, "SECRET_KEY="+testSecret, "PYTHONWARNINGS=ignore")
+	cmd.Env = append(append(os.Environ(), "DATA_DIR="+dataDir, "SECRET_KEY="+testSecret, "PYTHONWARNINGS=ignore"), c.PyEnv...)
 	cmd.Stdin = strings.NewReader(step.Stdin)
 	// A new session has no controlling terminal: getpass reads standard
 	// input, as under "docker compose exec -T".

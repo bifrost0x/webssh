@@ -24,11 +24,24 @@ import (
 // loadConfig resolves DATA_DIR and SECRET_KEY like the entrypoint and
 // reads the configuration.
 func loadConfig() (config.Config, error) {
-	cfg, _, err := config.Bootstrap(os.LookupEnv, func(dir string) error {
-		_, err := platform.PrepareDataDir(dir)
-		return err
-	})
-	return cfg, err
+	read := func() (config.Config, error) {
+		cfg, _, err := config.Bootstrap(os.LookupEnv, func(dir string) error {
+			_, err := platform.PrepareDataDir(dir)
+			return err
+		})
+		return cfg, err
+	}
+	cfg, err := read()
+	if err != nil {
+		return cfg, err
+	}
+	switch done, err := completeRotation(context.Background(), cfg); {
+	case err != nil:
+		return cfg, fmt.Errorf("complete the interrupted secret rotation: %w", err)
+	case done:
+		return read()
+	}
+	return cfg, nil
 }
 
 // migrationOptions are the options of the legacy migration for cfg; the
@@ -63,6 +76,7 @@ func requireCompleteRegistry(r *legacy.Registry) error {
 // goData is the Go database with the services the administrator commands
 // use.
 type goData struct {
+	cfg      config.Config
 	db       *store.DB
 	ring     *keyring.Ring
 	accounts *accounts.Service
@@ -112,7 +126,7 @@ func openGoData(ctx context.Context, cfg config.Config) (*goData, error) {
 	if errors.Is(dbErr, fs.ErrNotExist) && legacyErr == nil {
 		return nil, errNotMigrated
 	}
-	g := &goData{}
+	g := &goData{cfg: cfg}
 	st, err := legacy.Start(ctx, o)
 	var se *legacy.StopError
 	switch {

@@ -20,6 +20,7 @@ record() {
 	"$PYTHON" -I "$@" >/dev/null
 }
 record internal/hosts/testdata/oracle.py internal/hosts/testdata/oracle.json
+record internal/hosts/testdata/recovery_oracle.py internal/hosts/testdata/recovery_oracle.json
 record internal/settings/testdata/oracle.py internal/settings/testdata/oracle.json
 record internal/ssh/hostkey/testdata/golden.py internal/ssh/hostkey/testdata/golden.json
 (cd internal/qrcode/testdata && echo "recording internal/qrcode" && "$PYTHON" -I python_vectors.py >/dev/null)

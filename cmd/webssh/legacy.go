@@ -30,6 +30,8 @@ var legacyRunners = map[string]adminRun{
 	"create-admin":           createAdmin,
 	"reset-password":         resetPassword,
 	"issue-factor-bootstrap": issueFactorBootstrap,
+	"connection-store":       connectionStore,
+	"rotate-secret-key":      rotateSecretKey,
 }
 
 // legacyApps are the values of flask --app that select the WebSSH
