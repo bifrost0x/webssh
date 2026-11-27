@@ -229,3 +229,18 @@ func TestLabSavedPasswordWithoutPrompt(t *testing.T) {
 		t.Fatalf("id -un = %q", got)
 	}
 }
+
+// A saved password whose guard refuses is not sent to the lab server
+// through the gateway strategy; the attempt ends with the guard's code.
+func TestLabSavedPasswordGuardRefuses(t *testing.T) {
+	l := lab(t)
+	svc := l.Services["ssh-modern"]
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	guard := refusing()
+	_, err := labDial(ctx, t, l, client.Target{Hop: client.Hop{Host: svc.Host, Port: svc.Port, User: "pwuser",
+		Auth: client.Auth{Password: l.secret(t, "ssh-pwuser"), Guard: guard}}}, newBrowser())
+	if fault.CodeOf(err) != fault.CredentialTargetChanged || guard.calls.Load() != 1 {
+		t.Fatalf("err %v, guard calls %d", err, guard.calls.Load())
+	}
+}

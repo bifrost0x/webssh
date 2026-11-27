@@ -336,6 +336,16 @@ func TestLabSOCKS(t *testing.T) {
 	if got := whoami(t, r, tgt); got != "pwuser" {
 		t.Fatalf("through socks-auth with login: %q", got)
 	}
+	// A saved proxy password is sent only while its guard accepts it.
+	tgt.Proxy.Guard = labGuard{}
+	if got := whoami(t, r, tgt); got != "pwuser" {
+		t.Fatalf("through socks-auth with a guarded login: %q", got)
+	}
+	tgt.Proxy.Guard = labGuard{fault.New(fault.CredentialTargetChanged, "")}
+	if _, err := r.dialer.Dial(t.Context(), tgt, r.ix); code(err) != fault.CredentialTargetChanged {
+		t.Fatalf("refusing guard on the proxy login: %v", err)
+	}
+	tgt.Proxy.Guard = nil
 	tgt.Proxy.Password = "wrong"
 	_, err = r.dialer.Dial(t.Context(), tgt, r.ix)
 	if he, _ := errors.AsType[*client.HopError](err); he == nil || he.Role != client.RoleSOCKS || code(err) != fault.SOCKSAuthFailed {
@@ -602,3 +612,7 @@ func dialWhoami(t *testing.T, r *rig, tgt client.Target, ix client.Interaction) 
 	}
 	return strings.SplitN(text[i+4:], "=", 2)[0], nil
 }
+
+type labGuard struct{ err error }
+
+func (g labGuard) Check(context.Context) error { return g.err }
