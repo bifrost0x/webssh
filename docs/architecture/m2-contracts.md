@@ -1278,3 +1278,57 @@ added to `store.Owners`.
   entity and removes the row.
 - Test hooks stay in the build tag `e2e` and the type namespace `e2e.`
   (M1 contracts, "End-to-end harness").
+
+## Automation schedules and permission jobs (AU2)
+
+### Schedules
+
+`internal/automation`, compiled in `schedule_contract.go`. A schedule is
+an approved, recurring run of a runbook (`app/automation_schedule.py`).
+It keeps the frozen review as its approval (`automation_schedules`,
+owner `automation`, migration `ScheduleSchemaVersion` of `ScheduleSQL`)
+and runs at the slots of its cron expression without a signed-in
+session.
+
+- The approval binds to the account tuple (incarnation, sign-in
+  generation, the installation's sign-out generation
+  `session.Service.Epoch`), the automation policy revision
+  (`settings.App.AutomationRevision`, `automation_enabled_revision`), the
+  frozen runbook and targets with their fingerprints and key digests, and
+  the saved passwords of its password hops (`vault.ScheduleBinding`:
+  incarnation, `credentials_enabled_revision`, per hop the assignment
+  generation and the credential version). A run starts and continues only
+  while all of them hold; a locked or deleted account, a global sign-out,
+  a password change, a policy change, a changed target, key or saved
+  password ends the approval (`needs_review`). Migrated approvals bind to
+  the same values (migration specification 4.3).
+- The run side is the consumer interface `ScheduleWorkflows` (AU1:
+  `Review`, `Current`, `PrepareManual`, `StartScheduled`). A dispatched
+  run gets a `ScheduledRun` with `Check`, `Password` and `Finish`; a
+  `*NotDispatchedError` with `busy`, `unavailable` or `storage_limit`
+  skips the slot, any other code pauses the schedule for review, any other
+  error pauses it with an unknown outcome and is never retried.
+- `Schedules.Tick` is the job `automation.schedules` of `internal/jobs`
+  (every 5 seconds, singleton). Claims older than 1860 seconds pause their
+  schedule with `unknown`; a slot found 60 seconds late is `missed`, a
+  slot whose run still holds its claim `overlap`.
+- `Schedules.CancelRun(ctx, userID, scheduleID, claimID)` fences a
+  running scheduled run without revoking later slots (AU1's cancel).
+- Routes (`SchedulesHTTP`, area `schedules`): `GET /api/automation/schedules`,
+  `POST /api/automation/schedules/preview`, `POST /api/automation/schedules`
+  (step-up `automation.schedule` with the intent token as target),
+  `POST …/{schedule_id}/pause`, `POST …/{schedule_id}/preview-run`,
+  `DELETE …/{schedule_id}`. Answers and status codes are those of
+  `app/automation_routes.py`.
+
+### Error codes (schedules)
+
+| Code | HTTP status | Default message |
+|---|---|---|
+| `disabled` | 403 | Automation is turned off. |
+
+### Step-up actions (schedules)
+
+| Action | Used by |
+|---|---|
+| `automation.schedule` | `internal/automation` |
