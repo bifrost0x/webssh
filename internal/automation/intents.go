@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -27,7 +28,10 @@ type review struct {
 	targets    []Frozen
 	keyDigests map[string]string
 	bindings   map[string]string
-	expires    time.Time
+	// check is the validation of the schedule a manual run was prepared
+	// from (run now), nil for a plain review.
+	check   func(context.Context) error
+	expires time.Time
 }
 
 func (r *review) confirmation() string { return strconv.Itoa(len(r.targets)) }

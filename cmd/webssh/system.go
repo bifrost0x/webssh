@@ -143,8 +143,11 @@ type system struct {
 	jobs     *jobs.Registry // wire_jobs.go
 	// automation is the run engine; the schedules start their runs on it.
 	automation *automation.Service // wire_automation.go
-	edge       *httpapi.Handler
-	pages      *pages
+	// automationHTTP holds the HTTPS rule of the automation routes
+	// (AUTOMATION_ALLOW_INSECURE_LOOPBACK); the schedule routes share it.
+	automationHTTP *automation.HTTP
+	edge           *httpapi.Handler
+	pages          *pages
 
 	// The file workspace (wire_files.go); backend areas register their
 	// source kinds on fileSources.

@@ -254,19 +254,24 @@ func (s *Service) Preview(ctx context.Context, userID int64, sessionID string, b
 	if err != nil {
 		return nil, err
 	}
-	r := &review{userID: userID, sessionID: sessionID, book: f.Runbook, targets: f.Targets,
-		keyDigests: f.KeyDigests, bindings: f.Bindings}
+	return s.remember(&review{userID: userID, sessionID: sessionID, book: f.Runbook, targets: f.Targets,
+		keyDigests: f.KeyDigests, bindings: f.Bindings})
+}
+
+// remember registers a review and returns the answer of preview-run:
+// intent, runbook, targets, confirmation and expires_in.
+func (s *Service) remember(r *review) (jsontext.Value, error) {
 	token, err := s.intents.remember(r, s.o.Now())
 	if err != nil {
 		return nil, err
 	}
-	targets := make([]jsontext.Value, len(f.Targets))
-	for i, t := range f.Targets {
+	targets := make([]jsontext.Value, len(r.targets))
+	for i, t := range r.targets {
 		targets[i] = pyjson.Object(t.display())
 	}
 	return pyjson.Object([]pyjson.Member{
 		{Name: "intent", Value: pyjson.String(token)},
-		{Name: "runbook", Value: f.Runbook.Value()},
+		{Name: "runbook", Value: r.book.Value()},
 		{Name: "targets", Value: pyjson.Array(targets)},
 		{Name: "confirmation", Value: pyjson.String(r.confirmation())},
 		{Name: "expires_in", Value: jsontext.Value("300")},

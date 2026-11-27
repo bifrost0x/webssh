@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/netpolicy"
+	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/principal/principaltest"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
 	"github.com/bifrost0x/webssh/internal/ssh/hostkey"
@@ -195,7 +196,47 @@ func TestLabWorkflows(t *testing.T) {
 	if shell[1].Status != StatusSucceeded || !strings.HasSuffix(shell[1].Stdout, "|-c|"+ownLine+"|\n") {
 		t.Errorf("the login shell did not get the step as its command: %+v", shell[1])
 	}
+	labScheduledRun(t, svc, first)
 	_ = db.Read(ctx, func(tx *store.Tx) error { return nil })
+}
+
+// labScheduledRun runs a runbook the way a due schedule does, through
+// the run side of the schedules (Workflows): review, the check of the
+// approval, then the start without a session against ssh-modern.
+func labScheduledRun(t *testing.T, svc *Service, b Runbook) {
+	t.Helper()
+	ctx := t.Context()
+	w := svc.Workflows()
+	snap, err := w.Review(ctx, principal.Principal{UserID: owner, SessionID: "s"},
+		jsontext.Value(`{"runbook_id":"`+b.ID+`","profile_ids":["lab"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Current(ctx, owner, snap); err != nil {
+		t.Fatalf("a fresh approval does not hold: %v", err)
+	}
+	checks := 0
+	finished := make(chan string, 1)
+	err = w.StartScheduled(ctx, ScheduledRun{UserID: owner, ScheduleID: "lab-schedule", ClaimID: "lab-claim-1", Snapshot: snap,
+		Check:  func(context.Context) error { checks++; return nil },
+		Finish: func(_ context.Context, status string) { finished <- status }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case status := <-finished:
+		if status != StatusSucceeded || checks == 0 {
+			t.Fatalf("scheduled run: %s after %d checks", status, checks)
+		}
+	case <-time.After(60 * time.Second):
+		t.Fatal("the scheduled run did not finish")
+	}
+	waitIdle(t, svc)
+	runs, err := svc.History(ctx, owner)
+	if err != nil || len(runs) == 0 || runs[0].ScheduleID == nil || *runs[0].ScheduleID != "lab-schedule" ||
+		runs[0].Targets[0].Steps[0].Stdout != "pwuser\n" {
+		t.Fatalf("history of the scheduled run: %+v, %v", runs, err)
+	}
 }
 
 func waitIdle(t *testing.T, s *Service) {

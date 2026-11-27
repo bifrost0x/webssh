@@ -61,6 +61,8 @@ type job struct {
 	scheduled *Scheduled
 	// consume removes the review intent once the run is certain to start.
 	consume func() error
+	// check is the validation of the schedule a manual run comes from.
+	check func(context.Context) error
 }
 
 func (s *Service) newRecord(j job) Run {
@@ -149,7 +151,12 @@ func (s *Service) Start(ctx context.Context, userID int64, sessionID, token, con
 	if err := s.validate(ctx, userID, f); err != nil {
 		return Run{}, err
 	}
-	run, err := s.dispatch(ctx, job{userID: userID, sessionID: sessionID, frozen: f, consume: func() error {
+	if r.check != nil {
+		if err := r.check(ctx); err != nil {
+			return Run{}, Fail("preview_changed")
+		}
+	}
+	run, err := s.dispatch(ctx, job{userID: userID, sessionID: sessionID, frozen: f, check: r.check, consume: func() error {
 		_, err := s.intents.get(token, userID, sessionID, s.o.Now(), true)
 		return err
 	}})

@@ -158,7 +158,7 @@ func readBody(w http.ResponseWriter, r *http.Request) (jsontext.Value, error) {
 var automationStatus = map[fault.Code]int{
 	fault.AuthenticationNeeded: 401, fault.AutomationDisabled: 403, fault.HTTPSRequired: 403,
 	fault.StepUpRequired: 403, fault.Busy: 429, fault.NotFound: 404, fault.InvalidIntent: 409,
-	fault.PreviewChanged: 409, fault.VaultLocked: 423, fault.Unavailable: 503, fault.CredentialsDisabled: 403,
+	fault.PreviewChanged: 409, fault.HostKeyRequired: 409, fault.VaultLocked: 423, fault.Unavailable: 503, fault.CredentialsDisabled: 403,
 }
 
 // hostsError is implemented by the review failure that names the saved

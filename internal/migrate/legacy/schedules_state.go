@@ -2,10 +2,14 @@ package legacy
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json/jsontext"
 	"errors"
 	"maps"
 	"slices"
+
+	"golang.org/x/crypto/ssh"
 
 	"github.com/bifrost0x/webssh/internal/automation"
 	"github.com/bifrost0x/webssh/internal/pyjson"
@@ -178,6 +182,34 @@ func (st *legacyState) keyDigests(src *Source, userID int64, targets []jsontext.
 			return nil, false
 		}
 		out[memberText(h, "id")] = keyDigest(keys.Keys[i].PEM)
+	}
+	return out, true
+}
+
+// publicKeyDigests is the digest the run side of internal/automation
+// binds a key with: SHA-256 of the public key in SSH wire form, for every
+// key hop of the targets.
+func (st *legacyState) publicKeyDigests(src *Source, userID int64, targets []jsontext.Value) (map[string]string, bool) {
+	keys, err := src.SSHKeys(userID)
+	if err != nil {
+		return nil, false
+	}
+	out := map[string]string{}
+	for _, h := range connectionHops(targets) {
+		if memberText(h, "auth_type") != "key" {
+			continue
+		}
+		id := memberText(h, "key_id")
+		i := slices.IndexFunc(keys.Keys, func(k SSHKey) bool { return k.ID == id })
+		if id == "" || i < 0 {
+			return nil, false
+		}
+		signer, err := ssh.ParsePrivateKey(keys.Keys[i].PEM)
+		if err != nil {
+			return nil, false
+		}
+		sum := sha256.Sum256(signer.PublicKey().Marshal())
+		out[memberText(h, "id")] = hex.EncodeToString(sum[:])
 	}
 	return out, true
 }

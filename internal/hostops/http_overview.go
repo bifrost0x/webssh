@@ -56,7 +56,7 @@ func (h *OverviewHTTP) status(ctx context.Context, p principal.Principal) (any, 
 	return statusResponse{
 		Hosts:       rows,
 		GeneratedAt: float64(now().UnixMicro()) / 1e6,
-		Available:   map[string]bool{"readiness": true, "automation": false, "reachability": h.Reach != nil},
+		Available:   map[string]bool{"readiness": true, "automation": true, "reachability": h.Reach != nil},
 	}, nil
 }
 

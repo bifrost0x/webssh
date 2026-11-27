@@ -37,6 +37,9 @@ func (rs *runState) check(ctx context.Context) bool {
 	if rs.j.scheduled != nil && rs.j.scheduled.Check != nil && rs.j.scheduled.Check(ctx) != nil {
 		return false
 	}
+	if rs.j.check != nil && rs.j.check(ctx) != nil {
+		return false
+	}
 	if len(rs.j.frozen.Bindings) == 0 {
 		return true
 	}

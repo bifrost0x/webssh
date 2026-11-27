@@ -94,6 +94,16 @@ func (s *schedulesStep) Read(ctx context.Context, src *Source) error {
 			continue
 		}
 		valid, reason := st.validGrant(ctx, src, row.UserID, s.epoch, g)
+		if valid {
+			// Go binds a key by the digest of its public key (the run side
+			// of internal/automation); the Python digest of the decrypted
+			// key text was just checked against the same key.
+			if digests, ok := st.publicKeyDigests(src, row.UserID, g.Targets); ok {
+				g.KeyDigests = digests
+			} else {
+				valid, reason = false, "key_changed"
+			}
+		}
 		in := automation.ImportedSchedule{ID: row.ID, UserID: row.UserID, Revision: row.Revision, Enabled: row.Enabled,
 			Cron: row.Cron, Zone: row.Timezone, NextAt: row.NextAt, LastStatus: row.LastStatus, Book: g.Book,
 			Targets: g.Targets, KeyDigests: g.KeyDigests, Binding: g.Binding, Policy: g.Policy, Stale: !valid,

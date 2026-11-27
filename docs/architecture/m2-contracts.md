@@ -1443,6 +1443,105 @@ added to `store.Owners`.
 - Test hooks stay in the build tag `e2e` and the type namespace `e2e.`
   (M1 contracts, "End-to-end harness").
 
+## Automation runs (AU1)
+
+`internal/automation`, runbooks, reviews and runs (M2 plan, AU1).
+
+### Step-up actions (automation)
+
+| Action | Used by |
+|---|---|
+| `automation.run` | `internal/automation` |
+
+`automation.run` is in the audience of every signed-in account
+(`internal/auth/stepup/audience.go`). The target is the token of the
+review intent; the automation checks that the intent belongs to the user
+and the session and that the typed confirmation matches before it
+consumes the grant. The page asks for it as in the Python release
+(`static/js/automation.js`). The schedules add `automation.schedule`
+(AU2).
+
+### Store owner
+
+`automation`, one migration list in `automation.Schema()`: version 1
+holds `automation_runbooks`, `automation_runbook_steps` and
+`automation_runs` (AU1), version 2 `automation_schedules` (AU2). The run
+history is one JSON document per run in `automation_runs` (member order
+of the Python file, size in `py_size`), not three tables (AU1-2).
+
+### Saved-password binding
+
+`(*vault.Service).Binding(ctx, userID, resourceID, t) (Status, token,
+error)` (`internal/vault/cred_binding.go`) is `credential_status` and
+`generations` of the Python release in one call: the state of the
+assignment for the target `t` the caller reviewed (`ready`, `changed`,
+`missing`, `disabled`) and, when ready, an opaque token that changes with
+every new or changed assignment, a replaced password and every change of
+the saved-password switch. Runs and schedules keep the token of the
+review and stop when it changes. It reveals nothing about the secret.
+
+### Run interface (for the schedules)
+
+Compiled in `internal/automation/scheduled.go` and `review.go`:
+
+```go
+func (s *Service) Freeze(ctx, userID int64, runbookID string, profileIDs, groups []string) (Reviewed, error)
+func (s *Service) StartScheduled(ctx, sc Scheduled) (Run, error)   // failures are *NotDispatched
+func (s *Service) Runbook(ctx, userID int64, id string) (Runbook, error)
+func (s *Service) Cancel(ctx, userID int64, runID string, manualOnly bool) error
+func (s *Service) SetSchedules(r ScheduleRuns)
+func (b Runbook) Digest() string                                  // digest() of automation_store.py
+
+type Scheduled struct {
+	UserID              int64
+	ScheduleID, ClaimID string
+	Reviewed            Reviewed
+	Check  func(ctx context.Context) error            // the schedule's grant; stops the run
+	Finish func(ctx context.Context, status string) error
+}
+type ScheduleRuns interface {
+	CancelRun(ctx context.Context, userID int64, scheduleID, claimID string) error
+}
+```
+
+- `Freeze` is the review without an intent: runbook, targets with their
+  jump hosts, trusted host keys, bound saved passwords and readable keys,
+  with the same errors as the review route (`host_key_required` names the
+  hosts).
+- `StartScheduled` validates the frozen run against the current runbook,
+  hosts, keys and password bindings, then dispatches it like a manual run
+  (one per user, four in all, the `background_job` quota). The record
+  carries `schedule_id` and `claim_id`; `Finish` gets the final status
+  once it is stored.
+- `Cancel` of a scheduled run that is not active in this process calls
+  `CancelRun`, so its claim settles.
+
+`(*Service).Workflows()` implements `ScheduleWorkflows` of the schedules
+over this interface (`schedule_workflows.go`): a `Snapshot` keeps the
+targets in the form of the Python grant (the saved host's resource with
+`route_fingerprint`, the jump host's resource in `route`), so migrated and
+new approvals are checked alike: the runbook stored as frozen, every
+target and jump host with its frozen `profile_fingerprint`, every key with
+its frozen digest (SHA-256 of the public key; the migration turns the
+digests of valid Python grants, SHA-256 of the decrypted key, into this
+form). A manual run of a schedule (`PrepareManual`) carries the schedule's
+check into the run.
+
+### Steps
+
+A step is the exec request itself (`remotecmd.Shell`, see "Remote
+commands"): unchanged for the login shell of the target account, with
+sudo `sudo -n -- sh -c <shlex quoted>`. An exec request without a
+confirmed start is `unknown`/`acknowledgement_lost`.
+
+### Error codes (automation runs)
+
+| Code | HTTP status | Default message |
+|---|---|---|
+| `host_key_required` | 409 | Verify the host key in an interactive connection first. |
+| `unsupported_target` | 400 | This host cannot be used for automation. |
+| `key_unavailable` | 400 | The SSH key of a host cannot be read. |
+
 ## Automation schedules and permission jobs (AU2)
 
 ### Schedules
@@ -1450,7 +1549,8 @@ added to `store.Owners`.
 `internal/automation`, compiled in `schedule_contract.go`. A schedule is
 an approved, recurring run of a runbook (`app/automation_schedule.py`).
 It keeps the frozen review as its approval (`automation_schedules`,
-owner `automation`, migration `ScheduleSchemaVersion` of `ScheduleSQL`)
+owner `automation`, version `ScheduleSchemaVersion` (2) of
+`automation.Schema()`)
 and runs at the slots of its cron expression without a signed-in
 session.
 
@@ -1466,8 +1566,9 @@ session.
   a password change, a policy change, a changed target, key or saved
   password ends the approval (`needs_review`). Migrated approvals bind to
   the same values (migration specification 4.3).
-- The run side is the consumer interface `ScheduleWorkflows` (AU1:
-  `Review`, `Current`, `PrepareManual`, `StartScheduled`). A dispatched
+- The run side is the consumer interface `ScheduleWorkflows`, provided
+  by `(*automation.Service).Workflows()` (`Review`, `Current`,
+  `PrepareManual`, `StartScheduled`). A dispatched
   run gets a `ScheduledRun` with `Check`, `Password` and `Finish`; a
   `*NotDispatchedError` with `busy`, `unavailable` or `storage_limit`
   skips the slot, any other code pauses the schedule for review, any other

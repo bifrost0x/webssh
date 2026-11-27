@@ -48,11 +48,12 @@ func automationArea() extension {
 			}
 			sys.automation = svc
 			cfg := sys.cfg
-			(&automation.HTTP{Service: svc, HTTPS: httpapi.ReachedOverHTTPS,
+			sys.automationHTTP = &automation.HTTP{Service: svc, HTTPS: httpapi.ReachedOverHTTPS,
 				InsecureLoopback: cfg.Debug && cfg.Profile == config.ProfileHomelab && cfg.Features.AutomationInsecureLoopback,
 				Proxied:          cfg.Proxies.Hops > 0,
 				Index:            func(r *http.Request) string { return httpapi.BasePath(r) + "/" },
-				Logger:           sys.log}).Register(sys.edge.Mux())
+				Logger:           sys.log}
+			sys.automationHTTP.Register(sys.edge.Mux())
 			unsubscribe := sys.sessions.Subscribe(svc.Revoked)
 			sys.closers = append(sys.closers, func() error {
 				unsubscribe()

@@ -81,6 +81,11 @@ func (h *HTTP) secure(r *http.Request) error {
 	return Fail("https_required")
 }
 
+// Secure reports whether r passes the HTTPS check of the automation
+// routes, the loopback exception included; the schedule routes use it
+// too.
+func (h *HTTP) Secure(r *http.Request) bool { return h.secure(r) == nil }
+
 func loopback(remote string) bool {
 	host, _, err := net.SplitHostPort(remote)
 	if err != nil {

@@ -116,7 +116,7 @@ func TestOverviewHTTP(t *testing.T) {
 	u := principaltest.User(1)
 	code, body, hdr := get(&u, "/api/overview/status")
 	const want = `{"hosts":[{"id":"p1","state":"action","route":"direct","host_key":"unknown","auth":"prompt"}],` +
-		`"generated_at":1700000000.25,"available":{"automation":false,"reachability":false,"readiness":true}}`
+		`"generated_at":1700000000.25,"available":{"automation":true,"reachability":false,"readiness":true}}`
 	if code != 200 || body != want || hdr.Get("Cache-Control") != "no-store" {
 		t.Errorf("%d %s", code, body)
 	}

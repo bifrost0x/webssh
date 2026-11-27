@@ -26,10 +26,9 @@ import (
 // schedulesArea wires the area "schedules" (AU2): automation schedules and permission jobs (internal/automation).
 // AU2 fills in the hooks; no other package edits this file.
 //
-// The schedules need the run side of automation (AU1) to review and run;
-// scheduleWorkflows returns it once that area is wired. Until then the
-// schedules can be listed, paused and deleted, and no due slot is touched,
-// so migrated schedules keep their approval.
+// The schedules review and run through the run side of automation
+// (scheduleWorkflows); without it they can be listed, paused and deleted,
+// and no due slot is touched, so migrated schedules keep their approval.
 func schedulesArea() extension {
 	return extension{
 		name: "schedules",
@@ -40,9 +39,23 @@ func schedulesArea() extension {
 	}
 }
 
-// scheduleWorkflows returns the run side of automation; the automation
-// area (AU1) provides it.
-var scheduleWorkflows = func(*system) automation.ScheduleWorkflows { return nil }
+// scheduleWorkflows returns the run side of automation, which the
+// automation area (wired before this one) provides.
+func scheduleWorkflows(sys *system) automation.ScheduleWorkflows {
+	if sys.automation == nil {
+		return nil
+	}
+	return sys.automation.Workflows()
+}
+
+// scheduleCancel settles the claim of a scheduled run that the run side
+// cancels while it is not active in this process.
+type scheduleCancel struct{ s *automation.Schedules }
+
+func (c scheduleCancel) CancelRun(ctx context.Context, userID int64, scheduleID, claimID string) error {
+	_, err := c.s.CancelRun(ctx, userID, scheduleID, claimID)
+	return err
+}
 
 func wireSchedules(sys *system) error {
 	draining := func() bool { return sys.maintenance.Load() }
@@ -54,7 +67,14 @@ func wireSchedules(sys *system) error {
 	if err != nil {
 		return err
 	}
-	(&automation.SchedulesHTTP{Schedules: sched, Secure: httpapi.ReachedOverHTTPS, Logger: sys.log}).Register(sys.edge.Mux())
+	secure := httpapi.ReachedOverHTTPS
+	if sys.automationHTTP != nil {
+		secure = sys.automationHTTP.Secure
+	}
+	(&automation.SchedulesHTTP{Schedules: sched, Secure: secure, Logger: sys.log}).Register(sys.edge.Mux())
+	if sys.automation != nil {
+		sys.automation.SetSchedules(scheduleCancel{sched})
+	}
 	if sched.Runs() {
 		if err := sys.jobs.Register("automation.schedules", jobs.Spec{Every: automation.ScheduleTickInterval, Singleton: true,
 			Timeout: time.Minute}, sched.Tick); err != nil {
