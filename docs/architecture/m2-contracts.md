@@ -1140,6 +1140,22 @@ and `backup_download` (MAC). New store owners: `authgithub`, `authldap`,
   `operations.ConnectionRef(id)` = hex `sha256("admin-connection:"+id)`
   and `operations.SessionRef(id)` = hex `sha256("admin-ssh:"+id)`, tested
   against Python vectors. Raw ids never reach the browser.
+  Additive for the view (OP3, W3 integration): `operations.Sockets`
+  (capacity and refusals of the realtime endpoint) and
+  `operations.Usernames` (owner names of the listed items, one lookup per
+  id); `realtime.Server.OpenConnections`, `DisconnectConnection(id)` and
+  `Capacity`; `terminal.Manager.AdminSessions` and `AdminDisconnect(id)`
+  (a tmux session behind it stays on the host). `hello` carries
+  `connection_id`, the opaque id of the connection (the Socket.IO sid of
+  the Python release), which the shim exposes as `socket.id`. A connection
+  an administrator ends closes with 4003 and the reason
+  `disconnected_by_administrator`; the page does not reconnect. Transfers
+  come from `transfer.Manager.Active` and `Cancel` (adapter `transferOps`
+  in `cmd/webssh/wire_operations.go`): only pending, running and
+  cancelling transfers are listed, and a cancel is accepted for a pending
+  (`cancelled`) or running (`cancelling`) one, as `cancel_for_admin`.
+  A change of `tailscale_ssh_restrict_tailnet_routes` drops the stored
+  reachability answers (`hostops.Reachability.Clear`).
 - **Integration switches** (C-ASET-05) are the existing
   `settings.App.RuntimeFeature(name)` with `FeatureStatus{Enabled, Saved,
   Source}`; `Source` keeps the Python values `compose` (locked by an
