@@ -21,10 +21,11 @@ FILES = {
 # SHA-256 of the complete UTF-8 text, with universal newline normalization.
 # Apache: https://www.apache.org/licenses/LICENSE-2.0.txt
 # THIRD-PARTY-NOTICES: the retained MIT terms with the current project
-# attribution, then the go-smb2 BSD-2-Clause notice (third_party/go-smb2/LICENSE).
+# attribution, the go-smb2 BSD-2-Clause notice (third_party/go-smb2/LICENSE),
+# then the licenses of the Go modules linked into the binary.
 LICENSE_DIGESTS = {
     "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "THIRD-PARTY-NOTICES": "204b84e61e55fc61af9bcd5f9b749e088b000471961e3bad946f3966a1420c48",
+    "THIRD-PARTY-NOTICES": "ad2b27d224cb7f427ec603e8e7560c53a2d2d4aff17394bd73d991e0de5096f5",
 }
 
 

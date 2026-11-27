@@ -2,18 +2,20 @@
 # Container checks for the Go image (deploy/docker/Dockerfile).
 #
 #   tests/image/check.sh            build both targets, then check
-#   BUILD=0 tests/image/check.sh    check existing webssh-go:m1 and :m1-debug
+#   BUILD=0 tests/image/check.sh    check existing webssh:local and :local-debug
 #   TRIVY=1 tests/image/check.sh    also scan the release image with Trivy
 #
 # Every run uses the restrictions of docker-compose.hardened.yml. The debug
 # image (the same image plus BusyBox) inspects files the release image has
-# no tools for. Only containers and volumes named webssh-go-check-* are
-# created, and removed again.
+# no tools for. Section 7 starts the unchanged Compose files of the Python
+# release against this image. Only containers, volumes and Compose projects
+# named webssh-go-check* are created, and removed again.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 
-IMG=${IMG:-webssh-go:m1}
-DEBUG_IMG=${DEBUG_IMG:-webssh-go:m1-debug}
+IMG=${IMG:-webssh:local}
+DEBUG_IMG=${DEBUG_IMG:-webssh:local-debug}
+VERSION=${VERSION:-3.4.0}
 BUSYBOX=busybox:1.37-musl@sha256:f6a95d611e0a8780fabdb2aec43e31275b2720dfefa3e41b16835bfc42454478
 TRIVY_IMG=aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
 P=webssh-go-check
@@ -21,13 +23,21 @@ HARD=(--read-only --cap-drop ALL --security-opt no-new-privileges:true --pids-li
       --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777)
 pass=0 fail=0
 BIND=""
+OVERRIDE=""
 
 ok()    { echo "PASS $*"; pass=$((pass + 1)); }
 bad()   { echo "FAIL $*"; fail=$((fail + 1)); }
 check() { local name=$1; shift; if "$@"; then ok "$name"; else bad "$name"; fi; }
 
+compose() { docker compose -p "$P" --project-directory . "$@"; }
+
 cleanup() {
   docker rm -f "$P-run" "$P-port" "$P-u99" "$P-u99b" "$P-tz" >/dev/null 2>&1
+  if [ -n "$OVERRIDE" ] && [ -f "$OVERRIDE" ]; then
+    compose -f docker-compose.yml -f docker-compose.hardened.yml -f docker-compose.ldap.yml -f "$OVERRIDE" \
+      --profile ldap-tools down -v --remove-orphans >/dev/null 2>&1
+    rm -f "$OVERRIDE"
+  fi
   docker volume rm -f "$P-data" "$P-data99" >/dev/null 2>&1
   if [ -n "$BIND" ] && [ -d "$BIND" ]; then
     # The bind directory belongs to 99:100 inside the user namespace; remove
@@ -41,8 +51,8 @@ cleanup
 
 if [ "${BUILD:-1}" = 1 ]; then
   rev=$(git rev-parse HEAD)
-  docker build -q -f deploy/docker/Dockerfile --target release --build-arg VCS_REF="$rev" -t "$IMG" . >/dev/null || exit 1
-  docker build -q -f deploy/docker/Dockerfile --target debug --build-arg VCS_REF="$rev" -t "$DEBUG_IMG" . >/dev/null || exit 1
+  docker build -q -f deploy/docker/Dockerfile --target release --build-arg VERSION="$VERSION" --build-arg VCS_REF="$rev" -t "$IMG" . >/dev/null || exit 1
+  docker build -q -f deploy/docker/Dockerfile --target debug --build-arg VERSION="$VERSION" --build-arg VCS_REF="$rev" -t "$DEBUG_IMG" . >/dev/null || exit 1
 fi
 
 wait_healthy() {
@@ -60,11 +70,16 @@ wait_healthy() {
 inspect_volume() { docker run --rm "${HARD[@]}" -v "$1:/app/data" --entrypoint /bin/sh "$DEBUG_IMG" -c "$2"; }
 
 echo "== 1 image configuration"
-cfg=$(docker image inspect "$IMG" -f '{{.Config.User}}|{{json .Config.Entrypoint}}|{{json .Config.Cmd}}|{{json .Config.Healthcheck.Test}}')
+cfg=$(docker image inspect "$IMG" -f '{{.Config.User}}|{{json .Config.Entrypoint}}|{{json .Config.Cmd}}|{{json .Config.Healthcheck}}|{{.Config.WorkingDir}}|{{json .Config.ExposedPorts}}|{{json .Config.Volumes}}')
 echo "$cfg"
-check "user 1000:1000, exec-form healthcheck, serve on 0.0.0.0:5000" \
-  test "$cfg" = '1000:1000|["/app/webssh"]|["serve","--bind","0.0.0.0:5000"]|["CMD","/app/webssh","healthcheck"]'
-check "release image has no shell" bash -c "! docker run --rm --entrypoint /bin/sh '$IMG' -c true >/dev/null 2>&1"
+# The timing equals the HEALTHCHECK of the Python image (30s, 5s, 10s, 3).
+check "user 1000:1000, exec-form healthcheck with the Python timing, serve on 0.0.0.0:5000, port and volume as before" \
+  test "$cfg" = '1000:1000|["/app/webssh"]|["serve","--bind","0.0.0.0:5000"]|{"Test":["CMD","/app/webssh","healthcheck"],"Interval":30000000000,"Timeout":5000000000,"StartPeriod":10000000000,"Retries":3}|/app|{"5000/tcp":{}}|{"/app/data":{}}'
+desc=$(docker image inspect "$IMG" -f '{{index .Config.Labels "org.opencontainers.image.description"}} {{index .Config.Labels "org.opencontainers.image.version"}}')
+echo "$desc"
+check "labels carry no preview marker" bash -c "! grep -qiE 'preview|-m[0-9]' <<<\"\$1\"" _ "$desc"
+shell_out=$(docker run --rm --entrypoint /bin/sh "$IMG" -c true 2>&1); shell_code=$?
+check "release image has no shell: /bin/sh refuses commands" bash -c "[ $shell_code -eq 2 ] && grep -q 'has no shell' <<<\"\$1\"" _ "$shell_out"
 
 echo "== 2 default user, hardened, named volume"
 docker run -d --name "$P-run" "${HARD[@]}" --health-interval 1s -v "$P-data:/app/data" "$IMG" >/dev/null
@@ -81,6 +96,13 @@ for _ in 1 2 3; do
   fi
 done
 check "/ready answers 200 from the host" bash -c "wait_() { for _ in \$(seq 40); do curl -sf -o /dev/null 'http://$hostport/ready' && return 0; sleep 0.25; done; return 1; }; wait_"
+code_of() { curl -s -o /dev/null -w '%{http_code}' "http://$hostport$1"; }
+assets_ok() {
+  [ "$(code_of /static/images/theme-backgrounds/carbon-glass.webp)" = 200 ] &&
+  [ "$(code_of /static/images/theme-backgrounds/carbon-glass.png)" = 404 ] &&
+  [ "$(code_of /static/vendor/terminal-fonts/NerdSymbols-Regular.woff2)" = 200 ]
+}
+check "theme backgrounds are served as WebP, the PNG originals are not in the image" assets_ok
 docker rm -f "$P-port" >/dev/null
 pid=$(docker inspect -f '{{.State.Pid}}' "$P-run")
 grep -E '^(Uid|Gid|CapEff|CapBnd|NoNewPrivs)' "/proc/$pid/status"
@@ -95,8 +117,11 @@ check "root file system is read-only, /app/data and /tmp are writable" \
   inspect_volume "$P-data" '! touch /app/x 2>/dev/null && ! touch /etc/x 2>/dev/null && touch /app/data/.w /tmp/.w && rm /app/data/.w'
 check "/app/data, logs and keys are 0700 and owned by 1000:1000" \
   inspect_volume "$P-data" 'for d in /app/data /app/data/logs /app/data/keys; do [ "$(stat -c "%a %u:%g" $d)" = "700 1000:1000" ] || exit 1; done'
-check "binary root-owned 0555, entrypoint.sh links to it, CA bundle present" \
-  inspect_volume "$P-data" '[ "$(stat -c "%a %u:%g" /app/webssh)" = "555 0:0" ] && [ "$(readlink /app/entrypoint.sh)" = webssh ] && [ "$(grep -c "BEGIN CERTIFICATE" /etc/ssl/certs/ca-certificates.crt)" -gt 100 ]'
+check "binary root-owned 0555, entrypoint.sh and python link to it, CA bundle and notices present" \
+  inspect_volume "$P-data" '[ "$(stat -c "%a %u:%g" /app/webssh)" = "555 0:0" ] && [ "$(readlink /app/entrypoint.sh)" = webssh ] && [ "$(readlink /usr/local/bin/python)" = /app/webssh ] && [ "$(readlink /usr/local/bin/python3)" = /app/webssh ] && [ "$(grep -c "BEGIN CERTIFICATE" /etc/ssl/certs/ca-certificates.crt)" -gt 100 ] && grep -q "pkg/sftp" /app/THIRD-PARTY-NOTICES && [ -s /app/LICENSE ] && [ -s /app/NOTICE ]'
+check "/run/webssh-auth is 0700 and owned by 1000:1000, so a new LDAP secret volume is seeded for the service" \
+  inspect_volume "$P-data" '[ "$(stat -c "%a %u:%g" /run/webssh-auth)" = "700 1000:1000" ]'
+check "the debug image has a real shell" bash -c "[ \"\$(docker run --rm --entrypoint /bin/sh '$DEBUG_IMG' -c 'echo ok')\" = ok ]"
 
 echo "== 3 graceful shutdown as PID 1"
 start=$(date +%s%N)
@@ -153,10 +178,48 @@ version=$(docker run --rm "${HARD[@]}" "$IMG" version)
 label=$(docker image inspect "$IMG" -f '{{index .Config.Labels "org.opencontainers.image.revision"}}')
 echo "version: $version, revision label: $label"
 check "version reports the release version and the revision of the label" bash -c \
-  "[[ \"\$1\" == 3.4.0-m1* ]] && { [ \"\$2\" = unknown ] || [[ \"\$1\" == *\"(\${2:0:7})\" ]]; }" _ "$version" "$label"
+  "[[ \"\$1\" == \"\$3\"* ]] && { [ \"\$2\" = unknown ] || [ \"\$1\" = \"\$3 (\${2:0:7})\" ]; }" _ "$version" "$label" "$VERSION"
+
+echo "== 7 unchanged Compose files of the Python release"
+# Only the image, the container name, the published port and the health
+# check interval are overridden; the health check command stays the one of
+# docker-compose.yml (CMD-SHELL with python).
+OVERRIDE=$(mktemp "${TMPDIR:-/tmp}/webssh-go-check.XXXXXX.yml")
+cat >"$OVERRIDE" <<YAML
+services:
+  webssh:
+    image: $IMG
+    container_name: $P-compose
+    ports: !reset []
+    healthcheck:
+      interval: 1s
+  ldap-tools:
+    image: $IMG
+YAML
+base=(-f docker-compose.yml -f docker-compose.hardened.yml -f "$OVERRIDE")
+compose "${base[@]}" up -d --quiet-pull webssh >/dev/null 2>&1 || compose "${base[@]}" logs webssh 2>&1 | tail -5
+test_kind=$(docker inspect -f '{{index .Config.Healthcheck.Test 0}}' "$P-compose" 2>/dev/null)
+check "docker-compose.yml with docker-compose.hardened.yml becomes healthy through its own CMD-SHELL health check" \
+  bash -c "[ '$test_kind' = CMD-SHELL ] && wait_() { for _ in \$(seq 60); do [ \"\$(docker inspect -f '{{.State.Health.Status}}' '$P-compose')\" = healthy ] && return 0; sleep 0.5; done; return 1; }; wait_"
+# The exec-form health checks of docker-compose.yml before 3.3.
+py_ready="import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '5000') + '/ready', timeout=2).read(1)"
+py_tcp="import socket; s=socket.create_connection(('127.0.0.1', 5000), 2); s.close()"
+check "the older exec-form health checks (python -c ...) pass through PATH" bash -c \
+  "docker exec '$P-compose' python -c \"\$1\" && docker exec '$P-compose' python -c \"\$2\"" _ "$py_ready" "$py_tcp"
+check "other python programs and shell commands are refused" bash -c \
+  "! docker exec '$P-compose' python -c 'print(1)' 2>/dev/null && ! docker exec '$P-compose' sh -c 'id' 2>/dev/null"
+compose "${base[@]}" down -v >/dev/null 2>&1
+ldap=(-f docker-compose.yml -f docker-compose.ldap.yml -f "$OVERRIDE" --profile ldap-tools)
+set_out=$(printf 'synthetic-%s\n' "$RANDOM$RANDOM" | compose "${ldap[@]}" run --rm -T ldap-tools set-password --stdin 2>&1); set_code=$?
+status_out=$(compose "${ldap[@]}" run --rm -T ldap-tools status 2>&1)
+echo "$set_out" | tail -1; echo "$status_out" | grep ldap_
+mode=$(docker run --rm -v "${P}_webssh_auth_secrets:/v:ro" "$BUSYBOX" stat -c '%a %u:%g' /v /v/ldap_bind_password 2>&1 | tr '\n' ' ')
+echo "secret volume: $mode"
+check "ldap-tools of docker-compose.ldap.yml stores the secret on a fresh volume (0700/0600, 1000:1000)" bash -c \
+  "[ $set_code -eq 0 ] && grep -q 'stored securely' <<<\"\$1\" && grep -q 'ldap_bind_password: present' <<<\"\$2\" && [ \"\$3\" = '700 1000:1000 600 1000:1000 ' ]" _ "$set_out" "$status_out" "$mode"
 
 if [ "${TRIVY:-0}" = 1 ]; then
-  echo "== 7 Trivy"
+  echo "== 8 Trivy"
   TAR=$(mktemp "${TMPDIR:-/tmp}/webssh-go-check.XXXXXX.tar")
   docker save -o "$TAR" "$IMG"
   check "Trivy: no vulnerabilities, secrets or misconfigurations in the release image" \

@@ -1,5 +1,6 @@
 # Build context of deploy/docker/Dockerfile (repository root). Only the Go
-# module and the frontend assets are sent; everything else, including .git,
+# module with the SMB client fork, the frontend assets, their staging script and the license files
+# are sent; everything else, including .git,
 # data directories, virtual environments, node_modules and the Python
 # application, stays out.
 *
@@ -8,6 +9,11 @@
 !cmd/
 !internal/
 !static/
+!third_party/go-smb2/
+!scripts/stage-webassets.sh
+!LICENSE
+!NOTICE
+!THIRD-PARTY-NOTICES
 
 # Tests and their fixtures are not part of the build.
 **/*_test.go

@@ -4,14 +4,14 @@
   with the homelab profile in docker-compose.yml; tests/test_unraid_template.py
   enforces this. ExtraParams runs the image as nobody:users, the owner Unraid
   gives to appdata folders it creates for a template, without capabilities
-  and without setuid privilege gains.
+  and without setuid privilege gains. There is no Shell entry: the image has
+  no shell, and administrator commands run as "/app/webssh <command>".
 -->
 <Container version="2">
   <Name>WebSSH</Name>
   <Repository>ghcr.io/bifrost0x/webssh:latest</Repository>
   <Registry>https://github.com/bifrost0x/webssh/pkgs/container/webssh</Registry>
   <Network>bridge</Network>
-  <Shell>bash</Shell>
   <Privileged>false</Privileged>
   <Support>https://forums.unraid.net/topic/201292-support-bifrost0x-webssh/</Support>
   <Project>https://github.com/bifrost0x/webssh</Project>

@@ -141,6 +141,8 @@ def test_template_runs_as_the_unraid_appdata_owner_without_secrets():
 
     # Only the user switch and restrictions; never root, privileges or devices.
     assert root.findtext('ExtraParams') == EXTRA_PARAMS
+    # The image has no shell; an Unraid console entry would only fail.
+    assert root.find('Shell') is None
     assert (root.findtext('PostArgs') or '') == ''
     assert 'SECRET_KEY' not in variables
     for name, entry in variables.items():

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"path/filepath"
 	"slices"
 )
@@ -20,9 +21,13 @@ func isPythonShim(argv0 string) bool {
 
 // runPythonShim accepts exactly "python /app/deployment/ldap_secret_cli.py
 // <command> …" and runs `webssh ldap-secret <command> …` with the usage
-// lines of the Python script. Every other argument vector is refused: the
-// image has no Python.
-func runPythonShim(args []string, s streams) int {
+// lines of the Python script, and the health check programs of the Python
+// Compose files (healthshim.go). Every other argument vector is refused:
+// the image has no Python.
+func runPythonShim(ctx context.Context, args []string, s streams) int {
+	if h, ok := parsePythonHealth(args); ok {
+		return runLegacyHealth(ctx, h, s)
+	}
 	if len(args) == 0 || args[0] != ldapHelperPath {
 		write(s.stderr, "webssh: this image has no Python; \"python\" only accepts \""+ldapHelperPath+
 			" <command>\" (use \"/app/webssh ldap-secret <command>\")\n")
