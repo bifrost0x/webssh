@@ -153,7 +153,7 @@ func TestHostContextValidation(t *testing.T) {
 		`{"revision":1,"notes":"","directories":[],"command_set":[]}`:            false,
 		`{"revision":1,"notes":"","directories":["/a\u0007"],"command_sets":[]}`: false,
 	} {
-		_, _, _, valid := hostContext(pyjson.Member{Name: "p", Value: []byte(in)})
+		_, _, _, _, valid := hostContext(pyjson.Member{Name: "p", Value: []byte(in)})
 		if valid != want {
 			t.Errorf("%s: valid %v", in, valid)
 		}

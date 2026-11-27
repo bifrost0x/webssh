@@ -6,5 +6,6 @@ import "github.com/bifrost0x/webssh/internal/store"
 func Schema() store.Schema {
 	return store.Schema{Owner: "hostops", Migrations: []store.Migration{
 		{Version: 1, SQL: notesTableSQL},
+		{Version: 2, SQL: contextTableSQL},
 	}}
 }

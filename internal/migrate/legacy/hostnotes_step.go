@@ -9,21 +9,32 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/bifrost0x/webssh/internal/hostops"
 	"github.com/bifrost0x/webssh/internal/pyjson"
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-// hostNotesStep migrates the notes of entity E28, users/user_N/
-// host_context.json, into hostops_notes with the context's revision
-// (D-11, specification 4.5). The directories and command-set references
-// of a host context follow with the command sets in a later build; until
-// then they stay in the legacy file and are reported. Contexts of
-// profiles that no longer exist stay in place: Python never shows them.
+// hostNotesStep migrates entity E28, users/user_N/host_context.json: the
+// notes into hostops_notes and the directories and command-set references
+// into hostops_host_context, both with the context's revision, so an edit
+// with the last revision the page saw still succeeds (D-11, specification
+// 4.5). The references are kept as stored; the command sets they name are
+// entity E27. Contexts of profiles that no longer exist stay in place:
+// Python never shows them.
 type hostNotesStep struct {
-	notes   []note
-	kept    []KeptPath
-	pending int // contexts with directories or command-set references
-	orphans int
+	notes    []note
+	contexts []hostContextRecord
+	kept     []KeptPath
+	orphans  int
+}
+
+// hostContextRecord is the rest of one migrated host context.
+type hostContextRecord struct {
+	userID      int64
+	profileID   string
+	directories []string
+	commandSets []string
+	revision    int64
 }
 
 // maxHostContexts is MAX_HOST_CONTEXTS of app/host_context.py.
@@ -31,18 +42,7 @@ const maxHostContexts = 2000
 
 func (*hostNotesStep) Entity() string { return "E28" }
 
-// countHostContextsLeft counts the host contexts whose directories or
-// command-set references stay in the legacy file, and those of deleted
-// profiles: the part of E28 a later phase migrates.
-func countHostContextsLeft(ctx context.Context, src *Source) (int, error) {
-	var s hostNotesStep
-	if err := s.Read(ctx, src); err != nil {
-		return 0, err
-	}
-	return s.pending + s.orphans, nil
-}
-
-func (*hostNotesStep) Version() int { return 1 }
+func (*hostNotesStep) Version() int { return 2 }
 
 func (s *hostNotesStep) Read(ctx context.Context, src *Source) error {
 	rows, err := src.AccountRows(ctx)
@@ -103,7 +103,7 @@ func (s *hostNotesStep) readContexts(userID int64, raw jsontext.Value, profiles 
 	}
 	keptFile := false
 	for _, c := range contexts {
-		body, revision, refs, ok := hostContext(c)
+		body, revision, dirs, sets, ok := hostContext(c)
 		if !ok || utf8.RuneCountInString(c.Name) > 128 {
 			return invalid
 		}
@@ -112,16 +112,13 @@ func (s *hostNotesStep) readContexts(userID int64, raw jsontext.Value, profiles 
 			keptFile = true
 			continue
 		}
-		if refs {
-			s.pending++
-			keptFile = true
-		}
+		s.contexts = append(s.contexts, hostContextRecord{userID: userID, profileID: c.Name, directories: dirs, commandSets: sets, revision: revision})
 		if body != "" {
 			s.notes = append(s.notes, note{userID: userID, profileID: c.Name, body: body, revision: revision})
 		}
 	}
 	if keptFile {
-		s.kept = append(s.kept, KeptPath{Path: userDir(userID) + "/host_context.json", Reason: "host_context_directories_and_orphans"})
+		s.kept = append(s.kept, KeptPath{Path: userDir(userID) + "/host_context.json", Reason: "host_context_of_deleted_profiles"})
 	}
 	return nil
 }
@@ -140,32 +137,31 @@ func equalsOne(v jsontext.Value) bool {
 }
 
 // hostContext checks one context like _valid_content and returns its
-// notes, revision and whether it holds directories or command sets.
-func hostContext(c pyjson.Member) (body string, revision int64, refs, ok bool) {
+// notes, revision, directories and command-set references.
+func hostContext(c pyjson.Member) (body string, revision int64, dirs, sets []string, ok bool) {
 	members, isObject := pyjson.Members(c.Value)
 	if !isObject || len(members) != 4 {
-		return "", 0, false, false
+		return "", 0, nil, nil, false
 	}
-	var dirs, sets []string
 	seen := 0
 	for _, m := range members {
 		switch m.Name {
 		case "revision":
 			n, valid := Number(string(m.Value)).Int64()
 			if m.Value.Kind() != '0' || !valid || n < 1 {
-				return "", 0, false, false
+				return "", 0, nil, nil, false
 			}
 			revision, seen = n, seen+1
 		case "notes":
 			text, valid := pyString(m.Value)
 			if m.Value.Kind() != '"' || !valid || utf8.RuneCountInString(text) > 100000 {
-				return "", 0, false, false
+				return "", 0, nil, nil, false
 			}
 			body, seen = text, seen+1
 		case "directories", "command_sets":
 			list, valid := stringList(m.Value)
 			if !valid {
-				return "", 0, false, false
+				return "", 0, nil, nil, false
 			}
 			if m.Name == "directories" {
 				dirs = list
@@ -176,19 +172,19 @@ func hostContext(c pyjson.Member) (body string, revision int64, refs, ok bool) {
 		}
 	}
 	if seen != 4 {
-		return "", 0, false, false
+		return "", 0, nil, nil, false
 	}
 	for _, d := range dirs {
 		if !strings.HasPrefix(d, "/") || len(d) > 4096 || strings.IndexFunc(d, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
-			return "", 0, false, false
+			return "", 0, nil, nil, false
 		}
 	}
 	for _, r := range sets {
 		if n := utf8.RuneCountInString(r); n == 0 || n > 128 {
-			return "", 0, false, false
+			return "", 0, nil, nil, false
 		}
 	}
-	return body, revision, len(dirs) > 0 || len(sets) > 0, true
+	return body, revision, dirs, sets, true
 }
 
 // stringList is a list of at most 20 distinct strings.
@@ -209,19 +205,45 @@ func stringList(v jsontext.Value) ([]string, bool) {
 }
 
 func (s *hostNotesStep) Write(ctx context.Context, tx *store.Tx, _ Sealer) error {
-	return importNotes(ctx, tx, s.notes)
+	if err := importNotes(ctx, tx, s.notes); err != nil {
+		return err
+	}
+	for _, c := range s.contexts {
+		if err := hostops.ImportContext(ctx, tx, c.userID, c.profileID, c.directories, c.commandSets, c.revision); err != nil {
+			return &StepError{UserID: c.userID, Record: c.profileID, Err: err}
+		}
+	}
+	return nil
 }
 
+// Verify reads every migrated context back through the store of
+// internal/hostops: notes, directories, references and revision equal.
 func (s *hostNotesStep) Verify(ctx context.Context, tx *store.Tx, _ Opener) error {
-	return verifyNotes(ctx, tx, s.notes)
+	if err := verifyNotes(ctx, tx, s.notes); err != nil {
+		return err
+	}
+	for _, c := range s.contexts {
+		got, found, err := hostops.ContextTx(ctx, tx, c.userID, c.profileID)
+		if err != nil {
+			return &StepError{UserID: c.userID, Record: c.profileID, Err: err}
+		}
+		if !found || got.Revision != c.revision || !slices.Equal(got.Directories, nonNilList(c.directories)) ||
+			!slices.Equal(got.CommandSets, nonNilList(c.commandSets)) {
+			return &StepError{UserID: c.userID, Record: c.profileID, Err: errors.New("legacy: migrated host context differs")}
+		}
+	}
+	return nil
+}
+
+func nonNilList(list []string) []string {
+	if list == nil {
+		return []string{}
+	}
+	return list
 }
 
 func (s *hostNotesStep) Report() StepReport {
-	r := StepReport{Entity: "E28", Version: 1, Read: len(s.notes), Written: len(s.notes), KeptInPlace: s.kept}
-	if s.pending > 0 {
-		r.Warnings = append(r.Warnings, Warning{Code: "host_context_pending", Count: s.pending,
-			Message: "directories and command-set references of host contexts stay in the legacy file until the command sets are migrated"})
-	}
+	r := StepReport{Entity: "E28", Version: 2, Read: len(s.contexts), Written: len(s.contexts), KeptInPlace: s.kept}
 	if s.orphans > 0 {
 		r.Notes = append(r.Notes, "host contexts of deleted profiles stay in the legacy file; the Python release never showed them")
 	}

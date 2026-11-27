@@ -112,7 +112,6 @@ func RegisterM1(r *Registry, m M1) error {
 	} else {
 		errs = append(errs, r.KeepInPlace("A01", "D6", countPersistentSessions))
 	}
-	errs = append(errs, r.PartlyPending("E28", "B6", countHostContextsLeft))
 	for _, p := range pendingEntities(m.BackupTempDir) {
 		errs = append(errs, r.KeepInPlace(p.entity, p.phase, p.count))
 	}
