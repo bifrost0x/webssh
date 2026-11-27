@@ -22,8 +22,10 @@ USERNAME = 'lab_owner'
 PASSWORD = 'lab-owner-password-1'
 
 
-def lab_environment(data_dir, work_dir):
+def lab_environment(data_dir, work_dir, tmux=False):
     env = runtime.environment(data_dir, work_dir)
+    if tmux:
+        env['TMUX_ENABLED'] = 'true'
     env.update({
         'BLOCK_INTERNAL_SSH': 'false',
         'PROXY_JUMP_REMOTE_DNS_ALLOWLIST': 'ssh-inner.lab.test',
@@ -49,7 +51,39 @@ def _host_key(runtime_dir, service):
     return paramiko.Ed25519Key(data=base64.b64decode(data))
 
 
-def _generate(lab):
+def _persistent_tmux(application, user, modern, password, profile_id):
+    """Open a persistent tmux terminal on ssh-modern as the release does,
+    leave a mark in its shell and detach, as a server restart does: tmux
+    keeps running and ssh_sessions keeps the row for the reconnect offer."""
+    import time
+
+    from app import ssh_manager
+    from app.models import SSHSession, db
+
+    session_id, error = ssh_manager.create_ssh_connection(
+        modern['host'], modern['port'], 'pwuser', password=password, app=application, user_id=user.id,
+        use_tmux=True, profile_id=profile_id)
+    if error:
+        raise RuntimeError(str(error))
+    session = ssh_manager.get_session(session_id)
+    name = session['tmux_session_name']
+    ok, error = ssh_manager.send_ssh_input(session_id, 'export MG13MARK=from-python\r')
+    if not ok:
+        raise RuntimeError(str(error))
+    time.sleep(1)
+    db.session.add(SSHSession(
+        session_id=session_id, user_id=user.id, host=modern['host'], port=modern['port'], username='pwuser',
+        is_persistent=True, auth_type='password', profile_id=profile_id, reconnect_route_known=True,
+        tmux_session_name=name, display_name='Lab tmux', connected=True))
+    db.session.commit()
+    ssh_manager.close_session(session_id, kill_tmux=False)
+    row = SSHSession.query.filter_by(session_id=session_id).one()
+    row.connected = False
+    db.session.commit()
+    return name
+
+
+def _generate(lab, tmux=False):
     import config
     from app.app_settings import set_automation_enabled, set_credentials_enabled
     from app.auth import register_user
@@ -119,6 +153,7 @@ def _generate(lab):
         schedule = schedules.apply(user.id, auth_id, preview['intent'], '2')
         facts = {
             'user_id': user.id, 'username': USERNAME, 'password': PASSWORD,
+            'tmux': _persistent_tmux(application, user, modern, pw, profiles['direct']['id']) if tmux else None,
             'profiles': {name: p['id'] for name, p in profiles.items()},
             'runbook_id': book['id'], 'schedule_id': schedule['id'],
             'secret_key': application.config['SECRET_KEY'],
@@ -131,17 +166,19 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', required=True, type=Path)
     parser.add_argument('--lab', required=True, type=Path)
+    parser.add_argument('--tmux', action='store_true',
+                        help='also leave a persistent tmux session on ssh-modern')
     args = parser.parse_args(argv)
     lab = json.loads(args.lab.read_text(encoding='utf-8'))
     data_dir = args.out.resolve()
     data_dir.mkdir(mode=0o700)
     with tempfile.TemporaryDirectory() as work:
-        runtime.apply_environment(lab_environment(data_dir, work))
+        runtime.apply_environment(lab_environment(data_dir, work, tmux=args.tmux))
         runtime.reload_config()
         runtime.import_application_modules()
         (data_dir / 'secret_key').write_text(runtime.secret_key() + '\n', encoding='ascii')
         (data_dir / 'secret_key').chmod(0o600)
-        facts = _generate(lab)
+        facts = _generate(lab, tmux=args.tmux)
     json.dump(facts, sys.stdout)
 
 
