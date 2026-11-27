@@ -22,6 +22,8 @@ test('every mapped event targets a type of the v1 catalog', () => {
         'commands.set.resolve', 'commands.set.save', 'commands.set.duplicate', 'commands.set.delete',
         'commands.set.convert',
         'transfer.prepare', 'transfer.cancel', 'transfer.copy',
+        'permissions.get', 'permissions.set', 'permissions.job.prepare', 'permissions.job.get',
+        'permissions.job.apply', 'permissions.job.cancel',
     ]);
     const mapped = new Set(Object.values(catalog.REQUESTS).map(entry => entry.type));
     assert.deepEqual([...mapped].sort(), [...v1].sort());
@@ -191,15 +193,15 @@ test('events without a v1 type are answered locally and reported to the notice',
     const seen = [];
     socket.on('error', data => seen.push(['error', data]));
     const sent = ws.sent.length;
-    socket.timeout(10000).emit('get_file_permissions', {}, (error, ack) => seen.push(['timed', error, ack.code]));
-    socket.emit('get_file_permissions', {source_id: 'src', request_id: 'r2', path: '/'});
+    socket.timeout(10000).emit('request_not_built', {}, (error, ack) => seen.push(['timed', error, ack.code]));
+    socket.emit('request_not_built', {source_id: 'src', request_id: 'r2', path: '/'});
     await tick();
     assert.equal(ws.sent.length, sent, 'nothing reaches the server');
     assert.deepEqual(plain(seen), [
         ['timed', null, 'not_available_in_preview'],
         ['error', {success: false, code: 'not_available_in_preview', error: 'Not available in this preview yet.', source_id: 'src', request_id: 'r2', path: '/'}],
     ]);
-    assert.deepEqual(reported, ['files', 'files']);
+    assert.deepEqual(reported, ['other', 'other']);
     socket.disconnect();
 });
 
@@ -240,7 +242,7 @@ test('the unavailable message follows the page language', async () => {
     const window = loadShim({i18n: {t: key => (key === 'previewNotice.notAvailable' ? 'In dieser Vorschau noch nicht verfügbar.' : key)}});
     const {socket} = await connected(window);
     let message;
-    socket.emit('get_file_permissions', {}, ack => { message = ack.error; });
+    socket.emit('request_not_built', {}, ack => { message = ack.error; });
     await tick();
     assert.equal(message, 'In dieser Vorschau noch nicht verfügbar.');
     socket.disconnect();
@@ -367,5 +369,35 @@ test('insights, the inventory and Herdr reach the server and answer as Python di
         ['inventory', {success: false, session_id: '', request_id: '', error: 'Runtime inventory unavailable'}],
     ]);
     assert.deepEqual(plain(herdr), {success: false, agents: [], truncated: false, reason: 'not_enabled'});
+    socket.disconnect();
+});
+
+test('permission jobs reach the server and answer as the Python events', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const seen = [];
+    socket.on('file_permissions_job', data => seen.push(['job', data]));
+    socket.on('file_permissions_changed', data => seen.push(['changed', data]));
+    socket.on('error', data => seen.push(['error', data]));
+    socket.emit('prepare_file_permissions', {source_id: 'src', request_id: 'r1', paths: ['/a'], recursive: true, file_mode: '640', directory_mode: '750', extra: 1});
+    const prepare = ws.lastRequest('permissions.job.prepare');
+    assert.deepEqual(prepare.p, {source_id: 'src', request_id: 'r1', paths: ['/a'], recursive: true, file_mode: '640', directory_mode: '750'});
+    ws.reply(prepare.id, {job_id: 'j1', state: 'scanning'});
+    await tick();
+    socket.emit('apply_file_permissions_job', {source_id: 'src', request_id: 'r2', job_id: 'j1', paths: ['/b'], file_mode: '777'});
+    const apply = ws.lastRequest('permissions.job.apply');
+    assert.deepEqual(apply.p, {source_id: 'src', request_id: 'r2', job_id: 'j1'});
+    ws.fail(apply.id, {code: 'busy', message: 'Another permission change is still running. Try again in a moment.'});
+    await tick();
+    socket.emit('set_file_permissions', {source_id: 'src', request_id: 'r3', path: '/a', mode: '640', expected_metadata: 't'});
+    const set = ws.lastRequest('permissions.set');
+    ws.fail(set.id, {code: 'MODE_MISMATCH', message: 'x', details: {actual_mode: '600'}});
+    await tick();
+    assert.deepEqual(plain(seen), [
+        ['job', {job_id: 'j1', state: 'scanning', operation: 'prepare_file_permissions', source_id: 'src', request_id: 'r1'}],
+        ['error', {success: false, code: 'BUSY', error: 'Another permission change is still running. Try again in a moment.',
+            operation: 'apply_file_permissions_job', source_id: 'src', request_id: 'r2'}],
+        ['error', {actual_mode: '600', success: false, code: 'MODE_MISMATCH', error: 'x', operation: 'set_file_permissions', source_id: 'src', request_id: 'r3'}],
+    ]);
     socket.disconnect();
 });

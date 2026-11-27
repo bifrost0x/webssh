@@ -26,7 +26,10 @@ const M2_REQUESTS = ['ssh_gateway_answer', 'ssh_gateway_input', 'ssh_gateway_ack
     'list_commands', 'add_command', 'update_command', 'delete_command', 'list_command_sets',
     'resolve_command_set_parameters', 'save_command_set', 'duplicate_command_set', 'delete_command_set',
     'convert_legacy_command_set',
-    'prepare_transfer', 'cancel_transfer', 'transfer_server_to_server'];
+    'prepare_transfer', 'cancel_transfer', 'transfer_server_to_server',
+
+    'get_file_permissions', 'set_file_permissions', 'prepare_file_permissions', 'get_file_permissions_job',
+    'apply_file_permissions_job', 'cancel_file_permissions_job'];
 const M1_UNAVAILABLE = ['list_commands', 'list_command_sets', 'list_smb_shares', 'probe_session_sftp',
     'request_session_insights', 'request_session_runtime_inventory'];
 // Areas built in M2 move their events from the unavailable replies to the
@@ -43,12 +46,12 @@ test('the split table equals the table of M1 plus the areas built since', () => 
     // A built area has no feature of the preview notice any more.
     assert.equal(catalog.featureOf('smb_list'), 'other');
     assert.equal(catalog.featureOf('quick_sftp_open'), 'other');
-    assert.equal(catalog.featureOf('get_file_permissions'), 'files');
+    assert.equal(catalog.featureOf('get_file_permissions'), 'other');
     assert.equal(catalog.featureOf('prepare_transfer'), 'other');
     assert.equal(catalog.featureOf('ssh_gateway_quick_cancel'), 'other');
     assert.equal(catalog.featureOf('list_profiles'), 'other');
-    const features = new Set(M1_FEATURES.filter(f => f !== 'smb' && f !== 'commands' && f !== 'commandSets'));
-    for (const event of ['get_file_permissions', 'request_session_insights', 'request_herdr_snapshot']) {
+    const features = new Set(M1_FEATURES.filter(f => !['files', 'smb', 'commands', 'commandSets'].includes(f)));
+    for (const event of ['request_session_insights', 'request_herdr_snapshot']) {
         assert.ok(features.has(catalog.featureOf(event)), event);
     }
 });

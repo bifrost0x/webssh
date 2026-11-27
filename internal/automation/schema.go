@@ -12,7 +12,8 @@ import "github.com/bifrost0x/webssh/internal/store"
 // order the Python release wrote, so an export of a migrated run is the
 // same text. seq orders the history, the highest first. py_size is the
 // size the record takes in the Python file (indented), which the size
-// limit of the history counts.
+// limit of the history counts. Version 2 adds the schedules
+// (ScheduleSQL).
 func Schema() store.Schema {
 	return store.Schema{Owner: "automation", Migrations: []store.Migration{{
 		Version: 1,
@@ -45,5 +46,5 @@ CREATE TABLE automation_runs (
 	PRIMARY KEY (user_id, id),
 	UNIQUE (user_id, seq)
 ) STRICT`,
-	}}}
+	}, {Version: ScheduleSchemaVersion, SQL: ScheduleSQL}}}
 }

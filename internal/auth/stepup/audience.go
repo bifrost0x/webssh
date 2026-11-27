@@ -47,4 +47,7 @@ var accountActions = []principal.Action{
 	// The target is the review intent of the run; the automation binds
 	// it to the user and the session.
 	principal.ActionAutomationRun,
+	// The target is the token of the schedule intent; the schedules bind
+	// the intent to the user and the session.
+	principal.ActionAutomationSchedule,
 }

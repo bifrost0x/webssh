@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"strings"
 
+	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/pyjson"
 	"github.com/bifrost0x/webssh/internal/store"
@@ -107,7 +108,7 @@ func (h *HTTP) gate(r *http.Request) (principal.Principal, error) {
 	}
 	on, err := h.Service.o.Switches.AutomationEnabled(r.Context())
 	if err != nil || !on {
-		return principal.Principal{}, Fail("disabled")
+		return principal.Principal{}, Fail(string(fault.AutomationDisabled))
 	}
 	if err := h.secure(r); err != nil {
 		return principal.Principal{}, err

@@ -1,6 +1,10 @@
 package automation
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/bifrost0x/webssh/internal/fault"
+)
 
 // Error is an AutomationError of the Python release: a code the page
 // knows. Hosts names the user's own saved hosts whose host key still
@@ -45,19 +49,19 @@ func notDispatched(err error) error {
 // status is the status map of automation_routes.py failure(); every
 // other code answers 400.
 var status = map[string]int{
-	"authentication_required": 401,
-	"disabled":                403,
-	"https_required":          403,
-	"step_up_required":        403,
-	"busy":                    429,
-	"not_found":               404,
-	"invalid_intent":          409,
-	"preview_changed":         409,
-	"vault_locked":            423,
-	"unavailable":             503,
-	"credentials_disabled":    403,
-	"host_key_required":       409,
-	"run_active":              409,
+	"authentication_required":        401,
+	string(fault.AutomationDisabled): 403,
+	"https_required":                 403,
+	"step_up_required":               403,
+	"busy":                           429,
+	"not_found":                      404,
+	"invalid_intent":                 409,
+	"preview_changed":                409,
+	"vault_locked":                   423,
+	"unavailable":                    503,
+	"credentials_disabled":           403,
+	"host_key_required":              409,
+	"run_active":                     409,
 	// The storage handlers of the blueprint.
 	"storage_unavailable": 409,
 }

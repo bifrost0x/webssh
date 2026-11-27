@@ -1402,3 +1402,104 @@ added to `store.Owners`.
   entity and removes the row.
 - Test hooks stay in the build tag `e2e` and the type namespace `e2e.`
   (M1 contracts, "End-to-end harness").
+
+## Automation schedules and permission jobs (AU2)
+
+### Schedules
+
+`internal/automation`, compiled in `schedule_contract.go`. A schedule is
+an approved, recurring run of a runbook (`app/automation_schedule.py`).
+It keeps the frozen review as its approval (`automation_schedules`,
+owner `automation`, migration `ScheduleSchemaVersion` of `ScheduleSQL`)
+and runs at the slots of its cron expression without a signed-in
+session.
+
+- The approval binds to the account tuple (incarnation, sign-in
+  generation, the installation's sign-out generation
+  `session.Service.Epoch`), the automation policy revision
+  (`settings.App.AutomationRevision`, `automation_enabled_revision`), the
+  frozen runbook and targets with their fingerprints and key digests, and
+  the saved passwords of its password hops (`vault.ScheduleBinding`:
+  incarnation, `credentials_enabled_revision`, per hop the assignment
+  generation and the credential version). A run starts and continues only
+  while all of them hold; a locked or deleted account, a global sign-out,
+  a password change, a policy change, a changed target, key or saved
+  password ends the approval (`needs_review`). Migrated approvals bind to
+  the same values (migration specification 4.3).
+- The run side is the consumer interface `ScheduleWorkflows` (AU1:
+  `Review`, `Current`, `PrepareManual`, `StartScheduled`). A dispatched
+  run gets a `ScheduledRun` with `Check`, `Password` and `Finish`; a
+  `*NotDispatchedError` with `busy`, `unavailable` or `storage_limit`
+  skips the slot, any other code pauses the schedule for review, any other
+  error pauses it with an unknown outcome and is never retried.
+- `Schedules.Tick` is the job `automation.schedules` of `internal/jobs`
+  (every 5 seconds, singleton). Claims older than 1860 seconds pause their
+  schedule with `unknown`; a slot found 60 seconds late is `missed`, a
+  slot whose run still holds its claim `overlap`.
+- `Schedules.CancelRun(ctx, userID, scheduleID, claimID)` fences a
+  running scheduled run without revoking later slots (AU1's cancel).
+- Routes (`SchedulesHTTP`, area `schedules`): `GET /api/automation/schedules`,
+  `POST /api/automation/schedules/preview`, `POST /api/automation/schedules`
+  (step-up `automation.schedule` with the intent token as target),
+  `POST …/{schedule_id}/pause`, `POST …/{schedule_id}/preview-run`,
+  `DELETE …/{schedule_id}`. Answers and status codes are those of
+  `app/automation_routes.py`.
+
+### Error codes (schedules)
+
+| Code | HTTP status | Default message |
+|---|---|---|
+| `disabled` | 403 | Automation is turned off. |
+
+### Step-up actions (schedules)
+
+| Action | Used by |
+|---|---|
+| `automation.schedule` | `internal/automation` |
+
+### Permission jobs
+
+`internal/automation`, compiled in `permjob_contract.go`
+(`app/permission_jobs.py`, C-SFTP-07). The file sources come through the
+consumer interface `PermSources` (`cmd/webssh` adapts
+`files.Registry.Resolve` with `files.CapChmod`; `files.Backend.Stat`
+without following, `OpenListing`, `Chmod`) and are usable only while the
+admin switch `sftp_chmod_enabled` (`SFTP_CHMOD_ENABLED`) is on, read on
+every request.
+
+- A job belongs to the user, the browser session, the realtime connection
+  and the source that prepared it; one active job per user and per
+  source (`CONFLICT`), two scans or applies at once (`BUSY`), quota
+  `background_job`. Closing the connection or ending the session cancels
+  it.
+- The scan freezes every object (files and directories with separate
+  modes, links counted and skipped, set-id and sticky bits refused) and
+  the state of every parent; at most 10 000 objects, depth 64, 4 MiB of
+  names, 90 seconds. The plan expires after 120 seconds (`EXPIRED`).
+- Apply changes exactly the plan, files first, then directories from the
+  deepest up, within 300 seconds; it stops at the first object or parent
+  whose state differs (`METADATA_CHANGED`), keeps what was changed and is
+  never retried. A reopened source is `METADATA_CHANGED`.
+- A single change (`permissions.set`) needs the metadata token of its
+  inspection (`permissions.get`, 60 seconds, HMAC with a key held only
+  in memory); a mismatch after the change is `MODE_MISMATCH` with
+  `details.actual_mode`.
+- The job workers belong to `PermissionJobs` and end with `Shutdown`; they
+  are not jobs of `internal/jobs`, whose runs take no arguments.
+
+### Message types (permissions)
+
+Defined by AU2. Payload types are in `payload_permissions.go` of
+`internal/realtime/protocol`; the shim file `realtime-shim-files.js` maps
+the Socket.IO events of today to them. Failures carry the upper-case file
+codes (`INVALID_REQUEST` and `BUSY` are mapped from `invalid_request` and
+`busy` in the shim).
+
+| Type | Direction | Owner | Payload | Socket.IO today | Spec |
+|---|---|---|---|---|---|
+| `permissions.get` | client | `internal/automation` | `PermissionsGet` → permission state with `path`, `metadata_token` | `get_file_permissions` → `file_permissions` | 30 s |
+| `permissions.set` | client | `internal/automation` | `PermissionsSet` → permission state with `old_mode`, `path` | `set_file_permissions` → `file_permissions_changed` | mutates, 60 s |
+| `permissions.job.prepare` | client | `internal/automation` | `PermissionsJobPrepare` → job state | `prepare_file_permissions` → `file_permissions_job` | mutates, payload 24 MiB + 64 KiB |
+| `permissions.job.get` | client | `internal/automation` | `PermissionsJob` → job state | `get_file_permissions_job` → `file_permissions_job` | 30 s |
+| `permissions.job.apply` | client | `internal/automation` | `PermissionsJob` → job state | `apply_file_permissions_job` → `file_permissions_job` | mutates |
+| `permissions.job.cancel` | client | `internal/automation` | `PermissionsJob` → job state | `cancel_file_permissions_job` → `file_permissions_job` | 30 s |

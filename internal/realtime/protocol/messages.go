@@ -179,6 +179,13 @@ var v1 = []MessageType{
 	{TypeTransferCopy, ClientRequest, "internal/transfer"},
 	{TypeTransferProgress, ServerEvent, "internal/transfer"},
 	{TypeTransferFinished, ServerEvent, "internal/transfer"},
+	// Area "permissions" (AU2, payload_permissions.go).
+	{TypePermissionsGet, ClientRequest, "internal/automation"},
+	{TypePermissionsSet, ClientRequest, "internal/automation"},
+	{TypePermissionsJobPrepare, ClientRequest, "internal/automation"},
+	{TypePermissionsJobGet, ClientRequest, "internal/automation"},
+	{TypePermissionsJobApply, ClientRequest, "internal/automation"},
+	{TypePermissionsJobCancel, ClientRequest, "internal/automation"},
 }
 
 // V1 returns the catalog of schema v1.

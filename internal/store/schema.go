@@ -43,7 +43,7 @@ var Owners = []string{
 	"smb",
 	// M2: the command library and command sets (CM1).
 	"commands",
-	// M2: automation runbooks and run history (AU1).
+	// M2: automation runbooks and run history (AU1) and its schedules (AU2).
 	"automation",
 }
 
