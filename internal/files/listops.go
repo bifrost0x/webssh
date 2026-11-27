@@ -69,7 +69,7 @@ func (s *Service) listPath(ctx context.Context, r resolved, dir string) (string,
 	if dir == "" || dir == "." {
 		return r.b.Home(ctx)
 	}
-	return Clean(dir)
+	return s.clean(dir)
 }
 
 // readPage reads one page; offset is the number of entries already read,

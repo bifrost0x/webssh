@@ -6,9 +6,8 @@
 // ipaddress and urlsplit, and a configuration fails to start exactly where
 // config.py raises, with the same message. Unusual spellings that keep
 // their Python meaning, such as " true" (false) or "1_000", are reported
-// as warnings. Variables this preview does not act on are validated and
-// reported as accepted without effect; variables without meaning in Go,
-// such as the Gunicorn settings, are reported as obsolete (D-16).
+// as warnings. Variables without meaning in Go, such as the Gunicorn
+// settings, are validated and reported as obsolete (D-16).
 //
 // The container start follows entrypoint.sh: ResolveDataDir canonicalizes
 // DATA_DIR like os.path.realpath, ResolveSecretKey picks SECRET_KEY or
@@ -17,8 +16,12 @@
 //
 // Beyond config.py the package reads TRUSTED_PROXY_CIDRS (D-19), the
 // REQUESTS_CA_BUNDLE and CURL_CA_BUNDLE trust anchors, HOST and PORT, and
-// reports a TZ the Go runtime cannot load. The preview refuses the
-// production profile.
+// reports a TZ the Go runtime cannot load. The production profile enforces
+// the rules of validate_security_config.
+//
+// ReadDotenv and LoadDotenv read the .env file of the installation with
+// the semantics of python-dotenv, as config.py does before it reads the
+// environment.
 //
 // The differential tests compare the package with config.py and
 // entrypoint.sh of the Python release; see oracle_test.go.

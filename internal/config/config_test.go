@@ -17,6 +17,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +44,17 @@ func loadErr(t *testing.T, extra map[string]string) *Error {
 		t.Fatalf("Load error %v, want *Error", err)
 	}
 	return ce
+}
+
+// warningFor reports a warning of kind about variable; an empty kind or
+// variable matches any.
+func warningFor(warns []Warning, kind WarningKind, variable string) bool {
+	for _, w := range warns {
+		if (kind == "" || w.Kind == kind) && (variable == "" || w.Variable == variable) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasWarning(warns []Warning, kind WarningKind, variable, fragment string) bool {
@@ -82,18 +94,54 @@ func TestDefaults(t *testing.T) {
 	}
 }
 
-func TestProductionIsRefused(t *testing.T) {
-	e := loadErr(t, map[string]string{
+func TestProductionProfile(t *testing.T) {
+	c, warns := mustLoad(t, map[string]string{
 		"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com",
-		"BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1",
+		"BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1", "TRUSTED_PROXY_CIDRS": "172.31.250.10",
 	})
-	if e.Variable != "DEPLOYMENT_PROFILE" || !strings.Contains(e.Message, "not supported by this preview") {
-		t.Errorf("error %+v", e)
+	if c.Profile != ProfileProduction || c.Features.HostDiscovery || c.Accounts.BootstrapRegistrationEnabled || !c.Cookies.Secure {
+		t.Errorf("production values %+v %+v", c.Features, c.Accounts)
+	}
+	for _, w := range warns {
+		if w.Kind == WarnSecurity || w.Kind == WarnProxy {
+			t.Errorf("unexpected warning %v", w)
+		}
 	}
 	// An unsafe production configuration keeps the Python message.
-	e = loadErr(t, map[string]string{"DEPLOYMENT_PROFILE": "production"})
-	if !strings.HasPrefix(e.Message, "SECURITY ERROR: unsafe production profile: ") {
+	e := loadErr(t, map[string]string{"DEPLOYMENT_PROFILE": "production"})
+	if !strings.HasPrefix(e.Message, "SECURITY ERROR: unsafe production profile: ") || e.Variable != "DEPLOYMENT_PROFILE" {
 		t.Errorf("error %+v", e)
+	}
+	for name, value := range map[string]string{
+		"DEBUG": "true", "CORS_ORIGINS": "http://ssh.example.com", "ALLOW_CORS_WILDCARD": "true",
+		"SOCKETIO_ALLOW_ANY_ORIGIN": "true", "SESSION_COOKIE_SECURE": "false", "REGISTRATION_ENABLED": "true",
+		"BOOTSTRAP_REGISTRATION_ENABLED": "true", "BLOCK_INTERNAL_SSH": "false", "TAILSCALE_SSH_ENABLED": "true",
+	} {
+		env := map[string]string{
+			"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com",
+			"BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "0",
+		}
+		env[name] = value
+		if e := loadErr(t, env); !strings.HasPrefix(e.Message, "SECURITY ERROR: ") {
+			t.Errorf("%s=%s: %+v", name, value, e)
+		}
+	}
+}
+
+// Condition H1: in production TRUSTED_PROXIES without TRUSTED_PROXY_CIDRS
+// is reported as a missing required setting.
+func TestProductionProxyCIDRs(t *testing.T) {
+	env := map[string]string{
+		"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com",
+		"BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1",
+	}
+	_, warns := mustLoad(t, env)
+	if !hasWarning(warns, WarnProxy, "TRUSTED_PROXY_CIDRS", "required beside TRUSTED_PROXIES in the production profile") {
+		t.Errorf("no H1 warning: %v", warns)
+	}
+	env["TRUSTED_PROXIES"] = "0"
+	if _, warns = mustLoad(t, env); warningFor(warns, WarnProxy, "") {
+		t.Errorf("warning without proxies: %v", warns)
 	}
 }
 
@@ -156,20 +204,69 @@ func TestQuirkWarnings(t *testing.T) {
 
 func TestUsageWarnings(t *testing.T) {
 	_, warns := mustLoad(t, map[string]string{
-		"HOST_DISCOVERY_ENABLED": "true", "OIDC_ENABLED": "false", "LDAP_ENABLED": "false", "GUNICORN_THREADS": "64", "RATELIMIT_STORAGE_URL": "redis://cache:6379/0",
-		"SMB_ENABLED": " ", "TOTP_ENABLED": "true",
+		"HOST_DISCOVERY_ENABLED": "true", "OIDC_ENABLED": "false", "GUNICORN_THREADS": "64", "RATELIMIT_STORAGE_URL": "redis://cache:6379/0",
+		"SMB_ENABLED": " ", "TRANSFER_TEMP_DIR": "/srv/tmp", "BACKUP_RECOVERY_DURABLE": "false", "SERVER_OPERATIONS_ENABLED": "true",
 	})
-	if !hasWarning(warns, WarnNoEffect, "HOST_DISCOVERY_ENABLED", "without effect") || hasWarning(warns, WarnNoEffect, "OIDC_ENABLED", "") ||
-		hasWarning(warns, WarnNoEffect, "LDAP_ENABLED", "") || !hasWarning(warns, WarnObsolete, "GUNICORN_THREADS", "") ||
-		!hasWarning(warns, WarnObsolete, "RATELIMIT_STORAGE_URL", "restart") {
-		t.Errorf("warns %v", warns)
+	for name, fragment := range map[string]string{
+		"GUNICORN_THREADS": "no meaning", "RATELIMIT_STORAGE_URL": "restart",
+		"TRANSFER_TEMP_DIR": "streams folder downloads", "BACKUP_RECOVERY_DURABLE": "no longer needed",
+	} {
+		if !hasWarning(warns, WarnObsolete, name, fragment) {
+			t.Errorf("%s not reported: %v", name, warns)
+		}
 	}
-	if hasWarning(warns, WarnNoEffect, "SMB_ENABLED", "") || hasWarning(warns, WarnNoEffect, "TOTP_ENABLED", "") {
-		t.Errorf("blank or used variable reported: %v", warns)
+	for _, name := range []string{"HOST_DISCOVERY_ENABLED", "OIDC_ENABLED", "SMB_ENABLED", "SERVER_OPERATIONS_ENABLED"} {
+		if warningFor(warns, WarnObsolete, name) {
+			t.Errorf("used variable %s reported: %v", name, warns)
+		}
 	}
-	_, warns = mustLoad(t, map[string]string{"RATELIMIT_STORAGE_URL": "memory://"})
-	if hasWarning(warns, WarnObsolete, "RATELIMIT_STORAGE_URL", "") {
-		t.Errorf("default storage reported: %v", warns)
+	_, warns = mustLoad(t, map[string]string{"RATELIMIT_STORAGE_URL": "memory://", "BACKUP_RECOVERY_DURABLE": "true"})
+	if warningFor(warns, WarnObsolete, "") {
+		t.Errorf("default values reported: %v", warns)
+	}
+}
+
+// Every variable is either acted on or obsolete; the preview category of
+// accepted variables without effect is gone.
+func TestEveryVariableHasEffect(t *testing.T) {
+	for name, u := range variables {
+		if u != used && u != obsolete && u != internal {
+			t.Errorf("%s has usage %d", name, u)
+		}
+	}
+	for _, name := range []string{"SMB_ENABLED", "TAILSCALE_SSH_ENABLED", "HOST_DISCOVERY_ENABLED", "SERVER_OPERATIONS_ENABLED",
+		"QUOTA_TRANSFER_GLOBAL", "FILE_CONTROL_MAX_PATH_BYTES", "AUDIT_LOG_MAX_BYTES", "SMB_MAX_SAVED_SHARES", "PYTHON_DOTENV_DISABLED"} {
+		if variables[name] != used {
+			t.Errorf("%s is not used", name)
+		}
+	}
+}
+
+// The registry knows every variable config.py names.
+func TestRegistryCoversConfigPy(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join(repoRoot, "config.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	quotaKinds := map[string]bool{"SSH_SESSION": true, "QUICK_CONNECTION": true, "TRANSFER": true, "TEMP_BYTES": true, "BACKGROUND_JOB": true}
+	names := regexp.MustCompile(`['"]([A-Z][A-Z0-9_]{3,})['"]`).FindAllSubmatch(src, -1)
+	if len(names) < 150 {
+		t.Fatalf("only %d names in config.py", len(names))
+	}
+	for _, m := range names {
+		name := string(m[1])
+		if _, ok := variables[name]; !ok && !quotaKinds[name] {
+			t.Errorf("config.py names %s, the registry does not", name)
+		}
+	}
+}
+
+func TestFilePathLimit(t *testing.T) {
+	for raw, want := range map[string]int{"4096": 4096, "512": 512, "2048": 2048, "16384": 4096} {
+		c, _ := mustLoad(t, map[string]string{"FILE_CONTROL_MAX_PATH_BYTES": raw})
+		if c.Files.MaxPathBytes != want {
+			t.Errorf("%q: %d, want %d", raw, c.Files.MaxPathBytes, want)
+		}
 	}
 }
 
@@ -184,7 +281,7 @@ func TestExplicit(t *testing.T) {
 // 'café.example'.encode('idna')).
 func TestSOCKSInternationalizedName(t *testing.T) {
 	c, warns := mustLoad(t, map[string]string{"SOCKS_REMOTE_DNS_ALLOWLIST": "bastion.example,Caf\u00e9.example"})
-	if fmt.Sprint(c.Network.SOCKSRemoteDNS) != "[bastion.example xn--caf-dma.example]" || hasWarning(warns, WarnNoEffect, "SOCKS_REMOTE_DNS_ALLOWLIST", "") {
+	if fmt.Sprint(c.Network.SOCKSRemoteDNS) != "[bastion.example xn--caf-dma.example]" || warningFor(warns, "", "SOCKS_REMOTE_DNS_ALLOWLIST") {
 		t.Errorf("names %v warns %v", c.Network.SOCKSRemoteDNS, warns)
 	}
 }
@@ -355,7 +452,7 @@ func TestCABundle(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "bad.pem"), "not a certificate", 0o600)
 
 	c, warns := mustLoad(t, map[string]string{"REQUESTS_CA_BUNDLE": "", "CURL_CA_BUNDLE": filepath.Join(dir, "ca.pem")})
-	if c.CABundle.Variable != "CURL_CA_BUNDLE" || hasWarning(warns, WarnNoEffect, "CURL_CA_BUNDLE", "") {
+	if c.CABundle.Variable != "CURL_CA_BUNDLE" || warningFor(warns, "", "CURL_CA_BUNDLE") {
 		t.Errorf("bundle %+v", c.CABundle)
 	}
 	block, _ := pem.Decode(cert)

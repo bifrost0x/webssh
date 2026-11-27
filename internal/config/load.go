@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// pending holds values this preview validates like the Python release but
-// does not act on. validate_security_config needs some of them.
+// pending holds raw values validate_security_config needs beside the
+// parsed ones.
 type pending struct {
 	oidcEnabled, ldapEnabled, smbEnabled, tailscaleEnabled bool
 	oidcIssuer, oidcRedirectURI, rawApplicationRoot        string
@@ -25,8 +25,8 @@ type ldapSettings struct {
 // Load reads the configuration from the environment as config.py of the
 // Python release sees it, that is after ResolveDataDir and
 // ResolveSecretKey (Bootstrap runs all three). It fails where the Python
-// release fails to start, with the same message, and where this preview
-// refuses a configuration. The warnings are meant for the startup log.
+// release fails to start, with the same message, and where the Go release
+// refuses a value it adds (TRUSTED_PROXY_CIDRS). The warnings are meant for the startup log.
 func Load(lookup LookupFunc) (Config, []Warning, error) {
 	c, warns, _, err := load(lookup)
 	return c, warns, err
@@ -48,7 +48,7 @@ func load(lookup LookupFunc) (Config, []Warning, map[string]any, error) {
 		return Config{}, p.warns, p.view, p.err
 	}
 	c.explicit = explicitKeys(lookup)
-	previewChecks(p, &c, lookup)
+	goChecks(p, &c, lookup)
 	if p.failed() {
 		return Config{}, p.warns, p.view, p.err
 	}

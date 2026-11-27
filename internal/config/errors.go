@@ -3,7 +3,7 @@ package config
 import "fmt"
 
 // Error is a configuration the Python release refuses to start with, or a
-// value this preview refuses. Message is the operator-facing text; for
+// value the Go release refuses. Message is the operator-facing text; for
 // values the Python release rejects it is the Python message.
 type Error struct {
 	// Variable names the environment variable at fault, when there is one.
@@ -33,9 +33,6 @@ const (
 	// written in an unusual way, for example " true", which counts as
 	// false (decision D-14).
 	WarnQuirk WarningKind = "quirk"
-	// WarnNoEffect marks a documented variable that this preview accepts
-	// but does not act on yet (decision D-16).
-	WarnNoEffect WarningKind = "no_effect"
 	// WarnObsolete marks a variable that has no meaning in the Go release,
 	// for example the Gunicorn settings (decision D-16).
 	WarnObsolete WarningKind = "obsolete"
@@ -47,6 +44,9 @@ const (
 	WarnTimeZone WarningKind = "timezone"
 	// WarnSecret reports how the application secret was found.
 	WarnSecret WarningKind = "secret"
+	// WarnDotenv reports what the .env file of the installation added and
+	// the statements python-dotenv would skip.
+	WarnDotenv WarningKind = "dotenv"
 )
 
 // Warning is one startup message for the log. It never contains secret

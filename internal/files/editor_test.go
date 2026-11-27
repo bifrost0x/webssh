@@ -345,3 +345,25 @@ func TestPublicSource(t *testing.T) {
 		t.Fatalf("got  %s\nwant %s", raw, want)
 	}
 }
+
+// FILE_CONTROL_MAX_PATH_BYTES lowers the path limit of every operation.
+func TestPathLimit(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, files.Options{MaxPathBytes: 512})
+	ctx := context.Background()
+	c := caller(alice)
+	long := "/" + strings.Repeat("d", 520)
+	f.b.PutFile(long, []byte("x"))
+	_, err := f.svc.Mkdir(ctx, c, f.id, long+"x")
+	wantCode(t, err, fault.InvalidRequest)
+	_, err = f.svc.List(ctx, c, f.id, "r", long, "")
+	wantCode(t, err, fault.InvalidRequest)
+	_, err = f.svc.OpenEdit(ctx, c, f.id, long)
+	wantCode(t, err, fault.InvalidRequest)
+	wantCode(t, f.svc.Delete(ctx, c, f.id, long), fault.InvalidRequest)
+	_, err = f.svc.CreateFile(ctx, c, f.id, "/"+strings.Repeat("d", 500), strings.Repeat("n", 20))
+	wantCode(t, err, fault.InvalidRequest)
+	if _, err := f.svc.Mkdir(ctx, c, f.id, "/"+strings.Repeat("d", 511)); err != nil {
+		t.Fatalf("path at the limit: %v", err)
+	}
+}

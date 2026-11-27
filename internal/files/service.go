@@ -41,6 +41,9 @@ type Options struct {
 	MaxPreviewBytes      int64 // MAX_PREVIEW_SIZE
 	MaxPreviewTailLines  int64 // MAX_PREVIEW_TAIL_LINES
 	MaxSupportedFileSize int64 // MAX_SUPPORTED_FILE_SIZE
+	// MaxPathBytes is FILE_CONTROL_MAX_PATH_BYTES: paths longer than it
+	// are refused; at most and by default MaxPathBytes.
+	MaxPathBytes int
 
 	// HandoffInline is the largest editor or image answer sent through
 	// the realtime connection; larger ones are fetched over HTTP within
@@ -65,6 +68,9 @@ func (o *Options) defaults() {
 	setInt(&o.SnapshotsPerUser, DefaultSnapshotsUser)
 	setInt(&o.SnapshotsTotal, DefaultSnapshotsGlobal)
 	setInt(&o.MaxMembers, DefaultMaxMembers)
+	if o.MaxPathBytes <= 0 || o.MaxPathBytes > MaxPathBytes {
+		o.MaxPathBytes = MaxPathBytes
+	}
 	if o.SnapshotTTL <= 0 {
 		o.SnapshotTTL = DefaultSnapshotTTL
 	}
@@ -198,4 +204,20 @@ func baseName(p string) string {
 		return b
 	}
 	return "/"
+}
+
+// clean is Clean within the configured path limit.
+func (s *Service) clean(raw string) (string, error) {
+	if len(raw) > s.opts.MaxPathBytes {
+		return "", errPath
+	}
+	return Clean(raw)
+}
+
+// cleanTarget is CleanTarget within the configured path limit.
+func (s *Service) cleanTarget(raw string) (string, error) {
+	if len(raw) > s.opts.MaxPathBytes {
+		return "", errPath
+	}
+	return CleanTarget(raw)
 }

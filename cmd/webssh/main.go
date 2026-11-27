@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/bifrost0x/webssh/internal/buildinfo"
+	"github.com/bifrost0x/webssh/internal/config"
 )
 
 // streams are the standard streams of one command run.
@@ -74,6 +75,14 @@ func usage() string {
 
 func main() {
 	s := streams{stdin: os.Stdin, stdout: os.Stdout, stderr: os.Stderr}
+	path, err := config.DotenvFile()
+	if err != nil {
+		write(s.stderr, "webssh: "+err.Error()+"\n")
+		os.Exit(1)
+	}
+	if !loadDotenv(os.Args, path, s.stderr) {
+		os.Exit(1)
+	}
 	os.Exit(dispatch(context.Background(), os.Args, s))
 }
 

@@ -31,7 +31,7 @@ func (s *Service) tooLargeToEdit() error {
 // Nothing is cut: a file above MAX_EDITOR_FILE_SIZE or with binary
 // content is refused, so a later save cannot shorten or damage it.
 func (s *Service) OpenEdit(ctx context.Context, c Caller, sourceID, path string) (EditDocument, error) {
-	p, err := Clean(path)
+	p, err := s.clean(path)
 	if err != nil {
 		return EditDocument{}, err
 	}
@@ -92,7 +92,7 @@ func (s *Service) Save(ctx context.Context, c Caller, req SaveRequest) (Saved, e
 		return Saved{}, fault.New(fault.InvalidRequest, "Invalid replacement strategy.")
 	}
 	req.Strategy = string(strategy)
-	p, err := CleanTarget(req.Path)
+	p, err := s.cleanTarget(req.Path)
 	if err != nil {
 		return Saved{}, err
 	}

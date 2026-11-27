@@ -58,14 +58,17 @@ func settingsEnvironment(cfg config.Config, lookup config.LookupFunc) settings.E
 	return env
 }
 
-// tourDeployment are the deployment facts of the introduction tour. The
-// capabilities this preview does not offer are reported false, so the
-// tour does not point at them.
-func tourDeployment(cfg config.Config, tmux bool) settings.TourDeployment {
+// tourDeployment are the deployment facts of the introduction tour, the
+// configuration values as in the Python release; the runtime switches
+// replace chmod, server operations and tmux. tmux is false where the
+// build cannot run tmux sessions.
+func tourDeployment(cfg config.Config, lookup config.LookupFunc, tmux bool) settings.TourDeployment {
 	return settings.TourDeployment{
 		Values: map[string]bool{
-			"SMB_ENABLED": false, "SFTP_CHMOD_ENABLED": false, "SERVER_OPERATIONS_ENABLED": false,
-			"TMUX_ENABLED": tmux && cfg.Features.Tmux.Value, "TAILSCALE_SSH_ENABLED": false,
+			"SMB_ENABLED":               cfg.SMB.Enabled,
+			"SFTP_CHMOD_ENABLED":        envSwitch(lookup, "SFTP_CHMOD_ENABLED", false),
+			"SERVER_OPERATIONS_ENABLED": envSwitch(lookup, "SERVER_OPERATIONS_ENABLED", false),
+			"TMUX_ENABLED":              tmux && cfg.Features.Tmux.Value, "TAILSCALE_SSH_ENABLED": cfg.Network.TailscaleSSHEnabled,
 			"OIDC_ENABLED": cfg.OIDC.Enabled, "LDAP_ENABLED": cfg.LDAP.Enabled,
 			"TOTP_ENABLED": cfg.Features.TOTP, "WEBAUTHN_ENABLED": cfg.Features.WebAuthn,
 			"BOOTSTRAP_REGISTRATION_ENABLED": cfg.Accounts.BootstrapRegistrationEnabled,

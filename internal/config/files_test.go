@@ -10,7 +10,7 @@ func TestFileLimits(t *testing.T) {
 	want := Files{
 		MaxEditorBytes: 5 << 20, EditorBytesPerMinute: 20 << 20, ControlBytesPerMin: 2 << 20,
 		ListingPageSize: 500, SnapshotTTL: time.Minute, SnapshotsTotal: 8, SnapshotsPerUser: 4,
-		MaxTransferMembers: 10000, MaxPreviewBytes: 512000, MaxPreviewTailLines: 10000, MaxSupportedFileSize: 1 << 30,
+		MaxTransferMembers: 10000, MaxPreviewBytes: 512000, MaxPreviewTailLines: 10000, MaxSupportedFileSize: 1 << 30, MaxPathBytes: 4096,
 		SFTP: SFTP{MaxPacketBytes: 1 << 20, MaxHandleBytes: 16 << 10, MaxNameBytes: 4096, MaxMetadataBytes: 4 << 20,
 			OperationTimeout: 30 * time.Second},
 		Transfers: Transfers{MaxUpload: 100 << 20, MaxDownload: 100 << 20, MaxArchive: 500 << 20},

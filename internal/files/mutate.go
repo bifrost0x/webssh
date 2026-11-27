@@ -16,7 +16,7 @@ var (
 
 // Mkdir creates one directory (create_directory).
 func (s *Service) Mkdir(ctx context.Context, c Caller, sourceID, dir string) (string, error) {
-	p, err := CleanTarget(dir)
+	p, err := s.cleanTarget(dir)
 	if err != nil {
 		return "", err
 	}
@@ -33,13 +33,13 @@ func (s *Service) Mkdir(ctx context.Context, c Caller, sourceID, dir string) (st
 // CreateFile creates an empty file name in parent and never replaces an
 // existing one (create_file).
 func (s *Service) CreateFile(ctx context.Context, c Caller, sourceID, parent, name string) (string, error) {
-	dir, err := Clean(parent)
+	dir, err := s.clean(parent)
 	if err != nil {
 		return "", err
 	}
 	p, err := Join(dir, name)
 	if err == nil {
-		p, err = CleanTarget(p)
+		p, err = s.cleanTarget(p)
 	}
 	if err != nil {
 		return "", err
@@ -63,8 +63,8 @@ func (s *Service) CreateFile(ctx context.Context, c Caller, sourceID, parent, na
 // into its own subtree is refused; on a case-insensitive source the names
 // compare case-folded.
 func (s *Service) Rename(ctx context.Context, c Caller, sourceID, oldPath, newPath string) error {
-	from, err1 := CleanTarget(oldPath)
-	to, err2 := CleanTarget(newPath)
+	from, err1 := s.cleanTarget(oldPath)
+	to, err2 := s.cleanTarget(newPath)
 	if err1 != nil || err2 != nil {
 		return errMove
 	}
@@ -111,7 +111,7 @@ func same(a, b string, fold bool) bool {
 // the default budget (delete_item). The root of a source is never
 // deleted.
 func (s *Service) Delete(ctx context.Context, c Caller, sourceID, target string) error {
-	p, err := CleanTarget(target)
+	p, err := s.cleanTarget(target)
 	if err != nil {
 		return err
 	}

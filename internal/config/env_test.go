@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"maps"
 	"math/rand/v2"
 	"slices"
@@ -53,6 +52,7 @@ var scenarios = []map[string]string{
 	{"CORS_ORIGINS": "*", "ALLOW_CORS_WILDCARD": "true"},
 	{"DEBUG": "true"},
 	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com,https://b.example", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "0", "SESSION_COOKIE_SECURE": "true"},
 }
 
 // fixedEnvCases pin the behaviour named in the plan and in config.py.
@@ -113,6 +113,22 @@ var fixedEnvCases = []map[string]string{
 	{"DEPLOYMENT_PROFILE": "PRODUCTİON"},
 	{"DEPLOYMENT_PROFILE": "staging"},
 	{"DEPLOYMENT_PROFILE": "production"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1", "DEBUG": "true"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1", "REGISTRATION_ENABLED": "true", "BOOTSTRAP_REGISTRATION_ENABLED": "true"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1", "SESSION_COOKIE_SECURE": "false", "ALLOW_CORS_WILDCARD": "true", "SOCKETIO_ALLOW_ANY_ORIGIN": "true"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "http://ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://u@ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com/", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com, ", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "*", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "false", "TRUSTED_PROXIES": "1"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1", "TAILSCALE_SSH_ENABLED": "true"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1", "TAILSCALE_SSH_ENABLED": "true", "TAILSCALE_SSH_ALLOWED_TARGETS": "bad host", "TAILSCALE_SSH_INTERFACE": ""},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1", "TAILSCALE_SSH_ENABLED": "true", "TAILSCALE_SSH_ALLOWED_TARGETS": "host.example:22"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1", "WEBAUTHN_ENABLED": "true", "WEBAUTHN_ORIGIN": "http://localhost", "WEBAUTHN_RP_ID": "localhost"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1", "OIDC_ENABLED": "true", "OIDC_ISSUER": "https://idp.example", "OIDC_REDIRECT_URI": "http://localhost/oidc/callback"},
+	{"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com", "BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1", "HOST_DISCOVERY_ENABLED": "true", "SECRET_KEY": "short"},
 	{"HOST_DISCOVERY_ENABLED": " "},
 	{"HOST_DISCOVERY_ENABLED": "", "DEPLOYMENT_PROFILE": "production"},
 	{"REGISTRATION_ENABLED": "true", "BOOTSTRAP_REGISTRATION_ENABLED": "false"},
@@ -194,7 +210,6 @@ func lookupMap(env map[string]string) LookupFunc {
 func compareEnv(t *testing.T, env map[string]string, py pythonAnswer) bool {
 	t.Helper()
 	c, warns, view, err := load(lookupMap(env))
-	production := pyLower(pyStrip(env["DEPLOYMENT_PROFILE"])) == "production"
 	fail := func(format string, args ...any) bool {
 		t.Errorf("env %q: "+format, append([]any{env}, args...)...)
 		return false
@@ -205,13 +220,6 @@ func compareEnv(t *testing.T, env map[string]string, py pythonAnswer) bool {
 		}
 		if exactPythonError(py) && err.Error() != py.Error {
 			return fail("Go error %q, Python %q", err, py.Error)
-		}
-		return true
-	}
-	if production {
-		var ce *Error
-		if !errors.As(err, &ce) || ce.Variable != "DEPLOYMENT_PROFILE" {
-			return fail("production profile not refused: %v", err)
 		}
 		return true
 	}
