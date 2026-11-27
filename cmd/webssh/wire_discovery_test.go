@@ -81,3 +81,38 @@ func TestDiscoveryOverHTTP(t *testing.T) {
 		t.Fatalf("status: %d %s", resp.StatusCode, body)
 	}
 }
+
+// The administrator switches host_discovery_users and
+// host_reachability_users (OP3) are what the discovery and reachability
+// routes (HO2) check: turning them on lets a plain account in, turning
+// them off shuts it out again.
+func TestDiscoveryPermissionFollowsTheAdminSwitches(t *testing.T) {
+	sys, ts := openTestSystem(t, nil)
+	signUp(t, ts.URL, "admin1", "first-password-1")
+	if _, err := sys.accounts.Create(t.Context(), accounts.CreateRequest{Username: "user2", Password: "second-password-2", ByAdmin: true}); err != nil {
+		t.Fatal(err)
+	}
+	user := signIn(t, ts.URL, "user2", "second-password-2")
+	reach := func() int {
+		status, _ := apiCall(t, user, ts.URL, http.MethodPost, "/api/overview/reachability", nil, "")
+		return status
+	}
+	scan := func() int {
+		status, _ := apiCall(t, user, ts.URL, http.MethodPost, "/api/discovery/scans", map[string]any{"network": "127.0.0.1", "ports": []int{1}}, "")
+		return status
+	}
+	if reach() != http.StatusForbidden || scan() != http.StatusForbidden {
+		t.Fatal("a plain account may use discovery before the switches are on")
+	}
+	for _, on := range []bool{true, false} {
+		if _, err := sys.settings.UpdateAdmin(t.Context(), map[string]any{"host_discovery_users": on, "host_reachability_users": on}); err != nil {
+			t.Fatal(err)
+		}
+		if got := reach() != http.StatusForbidden; got != on {
+			t.Errorf("reachability with the switch %v: allowed %v", on, got)
+		}
+		if got := scan() != http.StatusForbidden; got != on {
+			t.Errorf("discovery with the switch %v: allowed %v", on, got)
+		}
+	}
+}
