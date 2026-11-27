@@ -1,0 +1,2 @@
+go test fuzz v1
+string("systemd_state=running\nsystemd_total=7\nsystemd_active=0\nsystemd_failed=0\nsystemd_returned=3\nsystemd_service=0|loaded|active|0|\xc4\nsystemd_service=\nsystemd_service=")
