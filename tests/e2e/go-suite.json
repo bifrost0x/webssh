@@ -19,9 +19,7 @@
     {"file": "branding.spec.js", "exclude": []},
     {"file": "admin-step-up-cancel.spec.js", "exclude": []},
     {"file": "admin-feature-recovery.spec.js", "exclude": []},
-    {"file": "admin-functional-flows.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "backup creation, verification and restore cancellation work at", "reason": "online backups (C-BAK, /admin/api/backups answers 501)", "package": "OP1"}
-    ]},
+    {"file": "admin-functional-flows.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "admin-keyboard-auth.spec.js", "exclude": []},
     {"file": "admin-deep-links.spec.js", "exclude": []},
     {"file": "admin-pending-state.spec.js", "serial": "e2e_admin", "exclude": [
@@ -79,9 +77,7 @@
     {"file": "settings-layout.spec.js", "exclude": [
       {"title": "settings sections share their content track and user actions remain reachable", "reason": "the preview toast of the 501 routes on the settings page (/admin/api/host-keys, /admin/api/backups/restore/status) covers the user action menu at 390 px once the preview notice lists fewer areas; it goes with the preview toast and banner", "package": "FE1"}
     ]},
-    {"file": "settings-preference-states.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "cancelled admin authentication is localized and leaves backup creation usable", "reason": "backup creation (C-BAK)", "package": "OP1"}
-    ]},
+    {"file": "settings-preference-states.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "theme-system.spec.js", "exclude": []},
     {"file": "theme-live-settings.spec.js", "exclude": []},
     {"file": "account-theme-matrix.spec.js", "exclude": []},
@@ -109,9 +105,9 @@
     ]},
     {"file": "host-context.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "profile-exchange.spec.js", "serial": "e2e_admin", "exclude": []},
-    {"file": "customer-workflows.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "recovery guidance names omitted credentials and current owned hosts on mobile", "reason": "GET /api/account/recovery-check is a preview answer without hosts until backup and restore are built (C-BAK)", "package": "OP1"}
-    ]},
+    {"file": "customer-workflows.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "recovery-review-notice.spec.js", "exclude": []},
+    {"file": "socks-proxy-recovery.spec.js", "exclude": []},
     {"file": "workspace-preset-regressions.spec.js", "exclude": []},
     {"file": "host-toolbar-layout.spec.js", "exclude": []},
     {"file": "containment-refinements.spec.js", "exclude": []},

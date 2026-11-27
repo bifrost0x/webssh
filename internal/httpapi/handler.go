@@ -55,6 +55,9 @@ type Handler struct {
 
 	mux    *http.ServeMux
 	access map[string]Access
+	// streamed are the routes whose body the handler reads itself
+	// (StreamBody).
+	streamed map[string]bool
 
 	finish    sync.Once
 	finishErr error
@@ -203,7 +206,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	setDeadlines(w, h.log)
 	var body []byte
-	if unsafeMethod(r.Method) && access != AccessUserStream {
+	if unsafeMethod(r.Method) && !h.streamed[patternKey(pattern)] {
 		b, ok, err := readBody(w, r, h.bodyLimit(r.URL.Path))
 		if err != nil {
 			// The client stopped sending or the read deadline passed.

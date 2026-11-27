@@ -53,6 +53,9 @@ func wireTransfers(sys *system) error {
 	mux.HandleFunc(transfer.RouteDownload, m.DownloadHTTP)
 	mux.HandleFunc(transfer.RouteFolderDownload, m.FolderHTTP)
 	mux.HandleFunc(transfer.RouteUpload, m.UploadHTTP)
+	if err := sys.edge.StreamBody(transfer.RouteUpload); err != nil {
+		return err
+	}
 	sys.realtime.OnOpen(func(p protocol.Peer) { m.PeerOpened(p.Principal().UserID, p.ID()) })
 	sys.realtime.OnClose(func(p protocol.Peer) { m.PeerClosed(p.Principal().UserID, p.ID()) })
 	unsubscribe := sys.sessions.Subscribe(m.Revoke)

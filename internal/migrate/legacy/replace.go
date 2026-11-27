@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bifrost0x/webssh/internal/backup"
 	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/store"
+	"github.com/bifrost0x/webssh/internal/vault"
 )
 
 // Replaced is the outcome of Replace.
@@ -28,9 +30,10 @@ type Replaced struct {
 // database (S7) and a data directory without a complete legacy source.
 //
 // The replaced database is kept in go/replaced-<UTC>/ and named in the new
-// record and the report. In M1 it is kept as a verified byte copy of the
-// cleanly closed database; the Go backup format of internal/backup
-// (D-03) replaces the copy once it exists. In S9 the database cannot be
+// record and the report, as a verified Go backup (internal/backup, D-03,
+// reason "replaced") without SECRET_KEY and material: go/ is part of
+// every Python export, so it opens only with this installation's
+// SECRET_KEY and material (I-22). In S9 the database cannot be
 // read, so it is moved there byte for byte together with every material
 // file that does not match it, and new material is created afterwards, so
 // that Go never creates material while a Go database exists (I-27).
@@ -112,17 +115,36 @@ func setAside(ctx context.Context, l layout, o Options, ev evaluation) (string, 
 	if err != nil {
 		return "", err
 	}
-	kept := filepath.Join(dir, keyring.DatabaseName)
 	if ev.state == S9 {
-		return kept, moveUnreadable(l, dir, o.Secret, ev.keyID, o.now())
+		return filepath.Join(dir, keyring.DatabaseName), moveUnreadable(l, dir, o.Secret, ev.keyID, o.now())
 	}
 	// Close the database cleanly, so that no -wal or -shm file belongs
-	// to it (section 5.4 step 2), then keep a verified copy; the rename of
-	// the activation replaces the original atomically.
+	// to it (section 5.4 step 2), then keep a verified backup; the rename
+	// of the activation replaces the original atomically.
 	if err := closeCleanly(ctx, l.database); err != nil {
 		return "", err
 	}
-	return kept, copyVerified(l.database, kept)
+	return keepReplaced(ctx, l, dir, o, ev.keyID)
+}
+
+// keepReplaced writes the Go backup of the cleanly closed database into
+// dir and verifies it with the installation's SECRET_KEY and material,
+// including one sealed SSH key when there is one.
+func keepReplaced(ctx context.Context, l layout, dir string, o Options, keyID string) (string, error) {
+	_, material, err := keyring.MaterialLocation(l.dataDir, true)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, backup.ArchiveName(o.now()))
+	if err := backup.WriteFile(path, backup.Contents{Database: l.database, KeyID: keyID, Release: o.Release,
+		Reason: backup.ReasonReplaced, Now: o.now()}); err != nil {
+		return "", err
+	}
+	if _, err := backup.VerifyWith(ctx, path, backup.VerifyOptions{Secret: []byte(o.Secret), Material: material,
+		Probes: []backup.Probe{vault.ProbeSealed}}); err != nil {
+		return "", errors.Join(err, os.Remove(path))
+	}
+	return path, nil
 }
 
 // moveUnreadable moves the database and its side files into dir, byte

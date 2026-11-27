@@ -202,8 +202,10 @@ func (l layout) stateReplacedDir(now time.Time) (string, error) {
 	return dir, nil
 }
 
-// replacedDatabases lists the databases --replace kept in go/replaced-*/.
+// replacedDatabases lists the databases --replace kept in go/replaced-*/:
+// Go backups, and the byte copies of earlier releases and of S9.
 func (l layout) replacedDatabases() []string {
 	found, _ := filepath.Glob(filepath.Join(l.goDir, replacedPrefx+"*", keyring.DatabaseName))
-	return found
+	archives, _ := filepath.Glob(filepath.Join(l.goDir, replacedPrefx+"*", "webssh-backup-*.tar"))
+	return append(found, archives...)
 }

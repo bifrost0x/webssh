@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/principal"
 )
 
@@ -115,6 +116,42 @@ type LegacyRestore struct {
 	// another data/secret_key is restored with the rules of the migration
 	// specification (5.6), never by overwriting the environment value.
 	SecretKey []byte
+	// EnvironmentSecret says SECRET_KEY came from the environment. Only
+	// then does it decrypt the legacy records of an archive that carries
+	// its own data/secret_key (specification 5.6 step 4).
+	EnvironmentSecret bool
+	// Ring is the active keyring; the restored secrets are sealed with it.
+	Ring *keyring.Ring
+	// RecoverySnapshot keeps the remote credentials of the archive
+	// (`backup restore --recovery-snapshot`); otherwise they are dropped
+	// and the recovery check notice is set, as for an export.
+	RecoverySnapshot bool
+	// RestoredAt is the time of the restore (recovery check notice).
+	RestoredAt time.Time
+}
+
+// Summary describes a verified archive the way the administration shows
+// it (_archive_summary of the Python release).
+type Summary struct {
+	Kind                      ArchiveKind
+	FormatVersion             int
+	DataSchemaVersion         int
+	CurrentDataSchemaVersion  int
+	CreatedAt                 string
+	Legacy                    bool
+	FileCount                 int
+	TotalUncompressedSize     int64
+	Compatible                bool
+	CompatibilityReason       string
+	IncludesSecretKey         bool
+	IncludesRemoteCredentials bool
+}
+
+// LegacyInspector verifies a Python backup without restoring it (the
+// upload check and `webssh backup verify`), with the reading rules of the
+// restore. Implemented beside LegacyRestorer in internal/migrate/legacy.
+type LegacyInspector interface {
+	InspectLegacy(ctx context.Context, archive io.ReaderAt, size int64, limits Limits) (Summary, error)
 }
 
 // LegacyOutcome is the result of a legacy restore: the staged database
@@ -122,6 +159,8 @@ type LegacyRestore struct {
 type LegacyOutcome struct {
 	Database string
 	Report   string
+	// Kind is the archive's format (python-v1 or python-v2).
+	Kind ArchiveKind
 }
 
 // LegacyRestorer restores a Python backup through the same steps as the

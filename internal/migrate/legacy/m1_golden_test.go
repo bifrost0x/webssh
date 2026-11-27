@@ -141,6 +141,14 @@ func TestM1GoldenAccounts(t *testing.T) {
 	t.Parallel()
 	dir := copyGolden(t)
 	m := migrateM1(t, dir, golden.manifest.SecretKey.Value, M1{AdminUsers: []string{"cfg_admin"}})
+	checkGoldenAccounts(t, m, 0)
+}
+
+// checkGoldenAccounts is the functional check of E01, E02 and A04 on a
+// migrated or restored database; a restore raises every generation by
+// generationRaise.
+func checkGoldenAccounts(t *testing.T, m migrated, generationRaise int64) {
+	t.Helper()
 	acc := &accounts.Service{DB: m.db}
 	hasher, err := local.NewHasher(local.Params{Memory: 64, Time: 1, Threads: 1, KeyLen: 32, SaltLen: 16}, 2)
 	if err != nil {
@@ -154,7 +162,7 @@ func TestM1GoldenAccounts(t *testing.T) {
 				t.Fatal(err)
 			}
 			if got.Username != name || got.IsAdmin != want.IsAdmin || got.IsLocked != want.IsLocked ||
-				got.MFARequired != want.MFAEnabled || got.AuthGeneration != want.AuthGeneration {
+				got.MFARequired != want.MFAEnabled || got.AuthGeneration != want.AuthGeneration+generationRaise {
 				t.Fatalf("account %+v, manifest %+v", got, want)
 			}
 			if scope := m.ring.BrowserScope(got.ID, got.Username, got.HistoryGeneration); scope != want.ConnectionHistoryScope {
@@ -214,7 +222,12 @@ func TestM1GoldenAccounts(t *testing.T) {
 func TestM1GoldenFactors(t *testing.T) {
 	t.Parallel()
 	dir := copyGolden(t)
-	m := migrateM1(t, dir, golden.manifest.SecretKey.Value, M1{})
+	checkGoldenFactors(t, migrateM1(t, dir, golden.manifest.SecretKey.Value, M1{}))
+}
+
+// checkGoldenFactors is the functional check of E08 and E11.
+func checkGoldenFactors(t *testing.T, m migrated) {
+	t.Helper()
 	facts := golden.manifest.Values.TOTP
 	user := goldenUserByName(t, "totp_user").ID
 	key, err := otp.DecodeSecret(facts.SecretBase32)
@@ -282,12 +295,18 @@ func TestM1GoldenKeysAndHostTrust(t *testing.T) {
 	t.Parallel()
 	dir := copyGolden(t)
 	m := migrateM1(t, dir, golden.manifest.SecretKey.Value, M1{})
+	checkGoldenKeys(t, m)
+	checkGoldenHostTrust(t, m, dir)
+}
+
+// checkGoldenKeys is the functional check of E23.
+func checkGoldenKeys(t *testing.T, m migrated) {
+	t.Helper()
 	v, err := vault.New(vault.Options{DB: m.db, Sealer: m.ring, StepUp: &principaltest.StepUp{}, Limits: vault.Limits{MaxRecords: 100, MaxStoreBytes: 1 << 20}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	keys := append(slices.Clone(golden.manifest.Values.SSHKeys.Stored), golden.manifest.Values.SSHKeys.LegacyPlaintext)
-	owner := goldenUserByName(t, "local_user").ID
 	for _, k := range keys {
 		var keyOwner int64
 		if _, err := fmt.Sscanf(k.StoredFile, "users/user_%d/", &keyOwner); err != nil {
@@ -309,6 +328,13 @@ func TestM1GoldenKeysAndHostTrust(t *testing.T) {
 	if w := m.entity(t, "E23").Warnings; len(w) != 1 || w[0].Code != "plaintext_key_sealed" || w[0].Count != 1 {
 		t.Errorf("E23 warnings %+v", w)
 	}
+}
+
+// checkGoldenHostTrust is the functional check of E17 and E24; dir is
+// the legacy data the user keys are read from.
+func checkGoldenHostTrust(t *testing.T, m migrated, dir string) {
+	t.Helper()
+	owner := goldenUserByName(t, "local_user").ID
 	trust := hostkey.New(m.db, nil)
 	global := golden.manifest.Values.HostKeys.GlobalLines
 	trusted, revoked := parseLine(t, global[0]), parseLine(t, global[1])
@@ -385,7 +411,13 @@ func keyByFingerprint(t *testing.T, keys []HostKey, fp string) ssh.PublicKey {
 func TestM1GoldenHostsAndSettings(t *testing.T) {
 	t.Parallel()
 	dir := copyGolden(t)
-	m := migrateM1(t, dir, golden.manifest.SecretKey.Value, M1{})
+	checkGoldenHosts(t, migrateM1(t, dir, golden.manifest.SecretKey.Value, M1{}), dir)
+}
+
+// checkGoldenHosts is the functional check of E19 to E21, A06, A11, E25,
+// A05 and E28; dir is the legacy data the records are compared with.
+func checkGoldenHosts(t *testing.T, m migrated, dir string) {
+	t.Helper()
 	owner := goldenUserByName(t, "local_user").ID
 	var got hosts.Legacy
 	err := m.db.Read(t.Context(), func(tx *store.Tx) error {

@@ -17,19 +17,20 @@ const (
 func loadLimits(p *parser, c *Config) {
 	c.Audit.LogMaxBytes = p.positive("AUDIT_LOG_MAX_BYTES", 10*mib)
 	c.Audit.BackupCount = int(p.positive("AUDIT_LOG_BACKUP_COUNT", 5))
-	p.positive("BACKUP_MAX_MEMBERS", 10000)
-	p.positive("BACKUP_MAX_FILE_SIZE", gib)
-	p.positive("BACKUP_MAX_TOTAL_SIZE", 10*gib)
-	p.positive("BACKUP_MAX_COMPRESSION_RATIO", 200)
-	p.positive("BACKUP_MAX_MANIFEST_SIZE", 10*mib)
-	p.positive("BACKUP_UPLOAD_MAX_SIZE", gib)
-	p.positive("BACKUP_OPERATION_TIMEOUT", 1800)
-	p.positive("BACKUP_DOWNLOAD_TTL", 600)
+	b := &c.Backup
+	b.MaxMembers = p.positive("BACKUP_MAX_MEMBERS", 10000)
+	b.MaxFileSize = p.positive("BACKUP_MAX_FILE_SIZE", gib)
+	b.MaxTotalSize = p.positive("BACKUP_MAX_TOTAL_SIZE", 10*gib)
+	b.MaxCompressionRatio = p.positive("BACKUP_MAX_COMPRESSION_RATIO", 200)
+	b.MaxManifestSize = p.positive("BACKUP_MAX_MANIFEST_SIZE", 10*mib)
+	b.UploadMaxSize = p.positive("BACKUP_UPLOAD_MAX_SIZE", gib)
+	b.OperationTimeout = time.Duration(min(p.positive("BACKUP_OPERATION_TIMEOUT", 1800), 1<<32)) * time.Second
+	b.DownloadTTL = time.Duration(min(p.positive("BACKUP_DOWNLOAD_TTL", 600), 1<<32)) * time.Second
 	if !p.failed() {
 		c.BackupTempDir = pyPath(p.raw("BACKUP_TEMP_DIR", pyTempDir(p.get)+"/webssh-backup-operations"))
 		p.record("BACKUP_TEMP_DIR", c.BackupTempDir)
 	}
-	p.flag("BACKUP_RECOVERY_DURABLE", "BACKUP_RECOVERY_DURABLE", "false")
+	b.RecoveryDurable = p.flag("BACKUP_RECOVERY_DURABLE", "BACKUP_RECOVERY_DURABLE", "false")
 
 	loadQuotas(p, c)
 

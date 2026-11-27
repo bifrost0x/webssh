@@ -38,6 +38,11 @@ type run struct {
 	// extraSpace is what --replace needs beside the migration: the copy
 	// of the database it keeps.
 	extraSpace int64
+	// openOpts open the source (a restore opens an extracted archive
+	// with PrivateCopy and Restored); presetRing is the keyring a restore
+	// seals with instead of the material of the source directory.
+	openOpts   []Option
+	presetRing *keyring.Ring
 }
 
 // migrate runs steps 2 to 9. On error it has released everything and
@@ -144,7 +149,7 @@ func (r *run) checkSpace() error {
 // read opens the legacy source, checks SECRET_KEY and runs every step's
 // Read. Nothing is written before it succeeds.
 func (r *run) read(ctx context.Context) error {
-	src, err := Open(ctx, r.l.dataDir, r.o.Secret)
+	src, err := Open(ctx, r.l.dataDir, r.o.Secret, r.openOpts...)
 	switch {
 	case errors.Is(err, fs.ErrPermission):
 		return sourceStop(err)
@@ -191,6 +196,10 @@ func (r *run) read(ctx context.Context) error {
 // prepareKeyring is the first part of step 7. A dry run uses throw-away
 // material and writes none.
 func (r *run) prepareKeyring() error {
+	if r.presetRing != nil {
+		r.ring = r.presetRing
+		return nil
+	}
 	var material []byte
 	if r.dryRun {
 		material = make([]byte, keyring.MaterialSize)

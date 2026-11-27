@@ -45,6 +45,11 @@ func Start(ctx context.Context, o Options) (*Startup, error) {
 	if err != nil {
 		return nil, err
 	}
+	if o.BeforeStart != nil {
+		if err := o.BeforeStart(ctx); err != nil {
+			return nil, errors.Join(err, lock.release())
+		}
+	}
 	st, err := start(ctx, o, l, warnings)
 	if err != nil {
 		return nil, errors.Join(err, lock.release())
@@ -156,6 +161,28 @@ func lockAndClean(o Options) (layout, *goLock, []Warning, error) {
 	}
 	o.at(PointStagingClean)
 	return l, lock, warnings, nil
+}
+
+// Exclusive runs fn with the Go lock held and the leftover staging
+// directories removed, after Options.BeforeStart: the administrator
+// commands that replace the Go database without a running server
+// (`webssh backup restore`) use it. It refuses while another process
+// holds the lock.
+func Exclusive(ctx context.Context, o Options, fn func(ctx context.Context) error) error {
+	if err := o.validate(); err != nil {
+		return err
+	}
+	_, lock, _, err := lockAndClean(o)
+	if err != nil {
+		return err
+	}
+	if o.BeforeStart != nil {
+		err = o.BeforeStart(ctx)
+	}
+	if err == nil {
+		err = fn(ctx)
+	}
+	return errors.Join(err, lock.release())
 }
 
 // DryRun runs section 5.2 steps 2 to 9 into a staging directory and

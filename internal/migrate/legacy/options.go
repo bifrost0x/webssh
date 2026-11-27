@@ -1,6 +1,7 @@
 package legacy
 
 import (
+	"context"
 	"errors"
 	"time"
 )
@@ -37,6 +38,11 @@ type Options struct {
 	// never migrate it again. The server sets it; tests of single steps
 	// leave it off.
 	RequireCoverage bool
+	// BeforeStart runs with the Go lock held, before the state of the
+	// data directory is evaluated: the composition root completes or
+	// rolls back an interrupted restore there (backup.Activate), because
+	// the restore replaces the Go database.
+	BeforeStart func(ctx context.Context) error
 
 	// checkpoint is called at every state transition of a run; tests use
 	// it to inject crashes. Nil in production.

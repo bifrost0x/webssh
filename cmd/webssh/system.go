@@ -153,6 +153,18 @@ type system struct {
 	background     sync.WaitGroup
 	stopBackground context.CancelFunc
 	closers        []func() error
+
+	// lookup is the environment the system was built from.
+	lookup config.LookupFunc
+	// restart closes when the system asks the server to shut it down and
+	// build it again (after a restore was staged).
+	restart     chan struct{}
+	restartOnce sync.Once
+}
+
+// requestRestart asks the server to restart the system once.
+func (s *system) requestRestart() {
+	s.restartOnce.Do(func() { close(s.restart) })
 }
 
 // openSystem starts WebSSH on its data directory: configuration, the
@@ -163,7 +175,7 @@ func openSystem(ctx context.Context, in bootInput) (sys *system, err error) {
 	if err != nil {
 		return nil, err
 	}
-	sys = &system{cfg: cfg, log: in.log}
+	sys = &system{cfg: cfg, log: in.log, lookup: in.lookup, restart: make(chan struct{})}
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, sys.close())

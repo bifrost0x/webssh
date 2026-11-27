@@ -448,7 +448,7 @@ Python handler and pushes `s2s_transfer_error`.
   transfer of another user or one that is gone, as in Python.
 - `Progress` and `Finished` of the contract gain `Copy *CopyRef`,
   `SourcePath` and `DestPath` for these events (additive, TR1).
-- HTTP: downloads are `AccessUser`; the upload is `AccessUserStream`
+- HTTP: downloads are `AccessUser`; the upload is `AccessUser` and marked with `Handler.StreamBody`
   (`internal/httpapi`, additive): a user route whose body the edge does
   not buffer, with the CSRF token from the header only; the handler
   extends the read and write deadlines per chunk. A `HEAD` request never

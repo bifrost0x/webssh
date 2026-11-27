@@ -1,18 +1,18 @@
 // Package backup writes and verifies Go backups (decisions D-03, D-08).
 //
-// This first version covers what `webssh legacy purge` requires before it
-// removes legacy data (migration specification, section 5.9): a single
-// tar archive with a versioned manifest, the cleanly closed Go database,
-// SECRET_KEY and the keyring material, verified by reading it back. The
-// online backup, restore and secret rotation follow in B7 and read this
-// format.
+// An archive is a single tar file with a versioned manifest, the cleanly
+// closed Go database and, depending on its reason, SECRET_KEY and the
+// keyring material; it is verified by reading it back. The purge backup
+// (migration specification, section 5.9), the online and CLI exports, the
+// database `migrate --replace` sets aside and the restore (strict, D-30)
+// use this format; Python backups are restored through LegacyRestorer.
 //
 // Archive layout (format "webssh-go-backup", version 1):
 //
 //	manifest.json             first member: format, version, key id, files
 //	data/go/webssh.db         the Go database
 //	data/secret_key           SECRET_KEY (only with includes_secret_key)
-//	data/go/keyring-material  the keyring material (likewise)
+//	data/go/keyring-material  the keyring material (optional)
 //	data/<legacy path>        legacy files the purge removes that Go did
 //	                          not take over (kept in place), in the order
 //	                          the manifest lists them
@@ -74,9 +74,26 @@ type File struct {
 	SHA256 string `json:"sha256"`
 }
 
+// Reasons an archive was written for (Manifest.Reason).
+const (
+	// ReasonPurge is the backup `webssh legacy purge` writes before it
+	// removes the legacy data: complete, with SECRET_KEY and the material.
+	ReasonPurge = "legacy-purge"
+	// ReasonExport is an online or CLI backup: a portable export without
+	// saved remote passwords and SSH keys, like the Python export.
+	ReasonExport = "export"
+	// ReasonReplaced is the database `webssh migrate --replace` sets
+	// aside: complete, without SECRET_KEY and material (go/ is part of
+	// every Python export, I-22).
+	ReasonReplaced = "replaced"
+)
+
 // Contents is what Write puts into an archive. Database must be closed
 // cleanly (no -wal or -shm file belongs to it) and must not change while
-// Write runs; the caller holds the Go lock.
+// Write runs; the caller holds the Go lock or wrote a private snapshot.
+// SecretKey and Material are optional (D-08: --without-secret-key leaves
+// out SECRET_KEY); SECRET_KEY without the material is refused, because it
+// would let nobody open the records and still expose the secret.
 type Contents struct {
 	Database  string
 	SecretKey []byte
@@ -103,50 +120,67 @@ type source struct {
 // Write creates dir/webssh-backup-<UTC>.tar with mode 0600, syncs it and
 // dir, and returns its path. A partly written archive is removed.
 func Write(dir string, c Contents) (string, error) {
-	if c.Database == "" || c.KeyID == "" || len(c.SecretKey) == 0 || len(c.Material) == 0 {
-		return "", errors.New("backup: database, key id, secret and material are required")
+	path := filepath.Join(dir, ArchiveName(c.Now))
+	return path, WriteFile(path, c)
+}
+
+// ArchiveName is the file name Write gives an archive written at now.
+func ArchiveName(now time.Time) string {
+	return "webssh-backup-" + now.UTC().Format("20060102T150405.000000000Z") + ".tar"
+}
+
+// WriteFile writes the archive to path, which must not exist, with mode
+// 0600, and syncs it and its directory. A partly written archive is
+// removed.
+func WriteFile(path string, c Contents) error {
+	if c.Database == "" || c.KeyID == "" || (len(c.SecretKey) > 0 && len(c.Material) == 0) {
+		return errors.New("backup: the database and key id are required, and SECRET_KEY needs the material")
 	}
-	sources := []source{{name: DatabaseName, path: c.Database}, {name: SecretName, data: c.SecretKey},
-		{name: MaterialName, data: c.Material}}
+	sources := []source{{name: DatabaseName, path: c.Database}}
+	if len(c.SecretKey) > 0 {
+		sources = append(sources, source{name: SecretName, data: c.SecretKey})
+	}
+	if len(c.Material) > 0 {
+		sources = append(sources, source{name: MaterialName, data: c.Material})
+	}
 	if len(c.Legacy) > 0 {
 		root, err := os.OpenRoot(c.DataDir)
 		if err != nil {
-			return "", fmt.Errorf("backup: open the data directory: %w", err)
+			return fmt.Errorf("backup: open the data directory: %w", err)
 		}
 		defer root.Close()
 		seen := map[string]bool{}
 		for _, rel := range c.Legacy {
 			name := "data/" + rel
 			if !LegacyMember(name) || seen[name] {
-				return "", fmt.Errorf("backup: %q is not a legacy file to keep", rel)
+				return fmt.Errorf("backup: %q is not a legacy file to keep", rel)
 			}
 			seen[name] = true
 			sources = append(sources, source{name: name, root: root, rel: filepath.FromSlash(rel)})
 		}
 	}
 	m := Manifest{Format: FormatName, Version: FormatVersion, CreatedAt: c.Now.UTC().Format(time.RFC3339Nano),
-		Release: c.Release, Reason: c.Reason, IncludesSecretKey: true, KeyID: c.KeyID}
+		Release: c.Release, Reason: c.Reason, IncludesSecretKey: len(c.SecretKey) > 0, KeyID: c.KeyID}
 	for _, s := range sources {
 		f, err := s.describe()
 		if err != nil {
-			return "", err
+			return err
 		}
 		m.Files = append(m.Files, f)
 	}
-	path := filepath.Join(dir, "webssh-backup-"+c.Now.UTC().Format("20060102T150405.000000000Z")+".tar")
 	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- the backup target the operator chose
 	if err != nil {
-		return "", fmt.Errorf("backup: create %s: %w", path, err)
+		return fmt.Errorf("backup: create %s: %w", path, err)
 	}
 	err = writeArchive(out, m, sources, c.Now)
 	err = errors.Join(err, out.Sync(), out.Close())
 	if err == nil {
-		err = syncDir(dir)
+		err = syncDir(filepath.Dir(path))
 	}
 	if err != nil {
-		return "", errors.Join(fmt.Errorf("backup: write %s: %w", path, err), os.Remove(path))
+		return errors.Join(fmt.Errorf("backup: write %s: %w", path, err), os.Remove(path))
 	}
-	return path, nil
+	return nil
 }
 
 // LegacyMember reports whether name is a valid member for a kept legacy

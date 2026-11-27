@@ -19,6 +19,9 @@ func TestStreamRouteKeepsChecksWithoutBuffering(t *testing.T) {
 		}
 		echo(w, r)
 	})
+	if err := e.h.StreamBody("POST /api/transfers/{token}/upload"); err != nil {
+		t.Fatal(err)
+	}
 	binding, token := e.csrf(alice.SessionID)
 	big := strings.Repeat("x", 3*controlRequestLimit)
 	w := e.do(req{method: http.MethodPost, target: target, body: big, token: "tok-alice", binding: binding,
@@ -38,7 +41,7 @@ func TestStreamRouteKeepsChecksWithoutBuffering(t *testing.T) {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	if AccessUserStream.String() != "user-stream" {
-		t.Fatal(AccessUserStream.String())
+	if err := e.h.StreamBody("POST /api/unregistered/stream"); err == nil {
+		t.Fatal("an unregistered route was marked as streamed")
 	}
 }
