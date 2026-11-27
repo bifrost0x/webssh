@@ -72,21 +72,21 @@ func spend(budget *int, n int) error {
 // unclosed "${" is scanned once instead of once per "${".
 type dotenvScan struct {
 	s          []rune
-	next, stop []int32
+	next, stop []int
 }
 
 func newDotenvScan(s []rune) dotenvScan {
 	n := len(s)
-	next := make([]int32, n+1)
-	stop := make([]int32, n+1)
-	next[n], stop[n] = int32(n), int32(n)
+	next := make([]int, n+1)
+	stop := make([]int, n+1)
+	next[n], stop[n] = n, n
 	for i := n - 1; i >= 0; i-- {
 		next[i], stop[i] = next[i+1], stop[i+1]
 		switch s[i] {
 		case '}':
-			next[i], stop[i] = int32(i), int32(i)
+			next[i], stop[i] = i, i
 		case ':':
-			stop[i] = int32(i)
+			stop[i] = i
 		}
 	}
 	return dotenvScan{s: s, next: next, stop: stop}
@@ -101,14 +101,14 @@ func (d dotenvScan) variable(i int) (name, def string, hasDef bool, end int, ok 
 	}
 	// The name is copied only once the match is certain: copying it first
 	// made every unclosed "${" cost the rest of the value.
-	j := int(d.stop[i+2])
+	j := d.stop[i+2]
 	if j < len(s) && s[j] == '}' {
 		return string(s[i+2 : j]), "", false, j + 1, true
 	}
 	if j+1 >= len(s) || s[j] != ':' || s[j+1] != '-' {
 		return "", "", false, 0, false
 	}
-	k := int(d.next[j+2])
+	k := d.next[j+2]
 	if k >= len(s) {
 		return "", "", false, 0, false
 	}
