@@ -102,7 +102,10 @@
 
     function mapped(host, entry, data, ack) {
         const payload = entry.payload ? entry.payload(data) : {...data};
-        host.request(entry.type, payload).then(result => {
+        // expand(host, result) may replace a successful result before it is
+        // answered (a large answer fetched over HTTP).
+        const expand = result => (result.ok && entry.expand ? entry.expand(host, result) : result);
+        host.request(entry.type, payload).then(expand).then(result => {
             if (!result.ok) {
                 const failed = entry.failure ? entry.failure(acks.failure(result.err), data) : acks.failure(result.err);
                 // The details Python sent with the event too (usages of a

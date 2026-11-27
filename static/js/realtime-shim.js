@@ -181,7 +181,16 @@
                 request: (type, payload) => this._request(type, payload),
                 dispatch: (event, ...args) => this._dispatch(event, ...args),
                 later: fn => this._later(fn),
+                // GET <root><path> as JSON in the session of the page.
+                fetchJSON: path => this._fetchJSON(path),
             };
+        }
+
+        _fetchJSON(path) {
+            if (typeof root.fetch !== 'function') return Promise.reject(new Error('fetch unavailable'));
+            return root.fetch(`${basePath(this.opts)}${path}`, {
+                credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'},
+            }).then(response => response.json().then(body => ({ok: response.ok, body})));
         }
 
         // Requests resolve with the v1 result; a lost connection or a

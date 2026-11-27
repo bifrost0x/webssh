@@ -141,10 +141,14 @@ func (s *Service) imageRoute(ctx context.Context, c Caller, rq protocol.FilesIma
 	if err != nil {
 		return nil, err
 	}
-	return &protocol.FilesImageData{
+	out := &protocol.FilesImageData{
 		FileRef: rq.FileRef, Path: rq.RemotePath, Filename: path.Base(rq.RemotePath),
 		FileData: base64.StdEncoding.EncodeToString(data), Size: int64(len(data)), ForPreview: true, Encoding: "base64",
-	}, nil
+	}
+	return offload(s, c, out, func(token string) *protocol.FilesImageData {
+		return &protocol.FilesImageData{FileRef: rq.FileRef, Path: rq.RemotePath, Filename: out.Filename, Size: out.Size,
+			ForPreview: true, Encoding: "base64", Handoff: token}
+	})
 }
 
 func (s *Service) editOpenRoute(ctx context.Context, c Caller, rq protocol.FilesEditOpen) (*protocol.FilesEditData, error) {
@@ -155,11 +159,14 @@ func (s *Service) editOpenRoute(ctx context.Context, c Caller, rq protocol.Files
 	if err != nil {
 		return nil, err
 	}
-	return &protocol.FilesEditData{
+	out := &protocol.FilesEditData{
 		FileRef: rq.FileRef, Path: rq.Path, Filename: path.Base(rq.Path), Content: doc.Text, Size: doc.Size,
 		Encoding: string(doc.Encoding), Newline: string(doc.Newline), Revision: doc.Revision,
 		OriginalBytes: base64.StdEncoding.EncodeToString(doc.Original), Endpoint: doc.Endpoint,
-	}, nil
+	}
+	return offload(s, c, out, func(token string) *protocol.FilesEditData {
+		return &protocol.FilesEditData{FileRef: rq.FileRef, Path: rq.Path, Filename: out.Filename, Size: out.Size, Handoff: token}
+	})
 }
 
 func (s *Service) saveRoute(ctx context.Context, c Caller, rq protocol.FilesEditSave) (*protocol.FilesSaved, error) {

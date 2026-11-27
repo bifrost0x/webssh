@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/files"
 	"github.com/bifrost0x/webssh/internal/files/filestest"
@@ -29,12 +28,11 @@ func TestSystemWiresFiles(t *testing.T) {
 	}
 }
 
-func TestRealtimeQueueBytes(t *testing.T) {
-	for _, c := range []struct{ editor, want int64 }{
-		{5 << 20, 41 << 20}, {1 << 10, 8 << 20}, {1 << 40, 1 << 30},
-	} {
-		if got := realtimeQueueBytes(config.Files{MaxEditorBytes: c.editor}); got != c.want {
-			t.Errorf("editor %d: %d, want %d", c.editor, got, c.want)
-		}
+// The realtime queue keeps its default bound: large editor answers go
+// over HTTP (files.HandoffPath) instead of a larger queue per connection.
+func TestRealtimeQueueKeepsItsBound(t *testing.T) {
+	sys, _ := openTestSystem(t, map[string]string{"MAX_EDITOR_FILE_SIZE": "52428800"})
+	if q := realtimeConfig(sys).QueueBytes; q != 0 {
+		t.Fatalf("queue bytes %d, want the default", q)
 	}
 }

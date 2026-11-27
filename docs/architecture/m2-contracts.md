@@ -326,6 +326,36 @@ marked "mutates" re-validate the browser session before they run.
 | `files.delete` | client | `internal/files` | `FilesDelete` → `FilesPath` | `delete_item` → `item_deleted` | mutates, 300 s |
 | `files.source.close` | client | `internal/files` | `FilesSourceClose` → `FilesSourceClosed` | `file_source_disconnect` → `file_source_disconnect_success` | mutates, 30 s |
 
+Large answers of `files.edit.open` and `files.preview.image` (JSON
+above `HandoffInline`, 1 MiB) do not travel through the realtime
+connection, whose outbound queue stays at its default of 8 MiB per
+connection: the result carries only the correlation members, `size` and
+`handoff`, a one-time token, and the shim fetches the whole answer from
+`GET <root>/api/files/handoff/{token}` (user route, `no-store`) before it
+pushes `edit_data` or `file_download_ready_binary`. A parked answer is
+bound to the user and the browser session, expires after 60 seconds,
+counts against a budget for all users (128 MiB, `busy` beyond) and four
+per user, and a revocation drops it (K6).
+
+The SFTP sources (FS2, `payload_sftp.go`):
+
+| Type | Direction | Owner | Payload | Socket.IO today | Spec |
+|---|---|---|---|---|---|
+| `files.quick.open` | client | `internal/files/sftp` | `FilesQuickOpen` → `FilesQuickOpened` | `quick_connect` → `quick_connect_success` / `quick_connect_error` | mutates, `ssh_connect` bucket, 5 min |
+| `files.quick.close` | client | `internal/files/sftp` | `FilesQuickClose` → `FilesQuickClosed` | `quick_disconnect` → `quick_disconnect_success` / `error` | mutates |
+| `files.session.probe` | client | `internal/files/sftp` | `FilesSessionProbe` → `FilesSessionCapability` | `probe_session_sftp` → `session_sftp_capability` | 10 per minute |
+| `files.session.directory` | client | `internal/files/sftp` | `FilesSessionDirectoryRequest` → `FilesSessionDirectory` | `request_session_directory` (ack) | max(90, 60 × connections per user) per minute |
+
+`files.quick.open` takes the target fields of `terminal.open` and checks
+them with the terminal (`terminal.Manager.Target`: saved host, typed
+target, jump host, SOCKS5 proxy, saved passwords with their guard); host
+keys and banners are asked with the terminal's prompts (D-22). The
+registry reserves `quick_connection` before the dial ("Maximum number of
+quick connections reached"). A target of the SSH gateway or Tailscale SSH
+answers `not_available_in_preview` (C-GW-02, open). The terminal session's
+own source (`sftp-session:<session id>`) opens on first use over the
+session's connection (`terminal.Manager.FileSession`).
+
 The payload bound of the other types is 32 KiB. `check_exists` and
 `get_file_stat` have no caller in the frontend and get no type (D-13).
 The permission events (`get_file_permissions`, `set_file_permissions`,

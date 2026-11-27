@@ -79,8 +79,7 @@ func (s *system) buildEdges(in bootInput) error {
 
 func realtimeConfig(s *system) realtime.Config {
 	t := s.cfg.Terminal
-	return realtime.Config{CookieName: s.cfg.Cookies.SessionName, MaxConns: t.MaxConnections, MaxConnsPerUser: t.MaxConnectionsPerUser,
-		QueueBytes: realtimeQueueBytes(s.cfg.Files)}
+	return realtime.Config{CookieName: s.cfg.Cookies.SessionName, MaxConns: t.MaxConnections, MaxConnsPerUser: t.MaxConnectionsPerUser}
 }
 
 // originPolicy is the origin rule of realtime connections (D-20). The

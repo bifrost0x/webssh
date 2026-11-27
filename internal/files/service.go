@@ -42,6 +42,11 @@ type Options struct {
 	MaxPreviewTailLines  int64 // MAX_PREVIEW_TAIL_LINES
 	MaxSupportedFileSize int64 // MAX_SUPPORTED_FILE_SIZE
 
+	// HandoffInline is the largest editor or image answer sent through
+	// the realtime connection; larger ones are fetched over HTTP within
+	// HandoffBudget bytes for all users.
+	HandoffInline, HandoffBudget int64
+
 	Now func() time.Time
 }
 
@@ -69,6 +74,8 @@ func (o *Options) defaults() {
 	set64(&o.MaxPreviewBytes, DefaultMaxPreviewBytes)
 	set64(&o.MaxPreviewTailLines, DefaultMaxPreviewTailLines)
 	set64(&o.MaxSupportedFileSize, DefaultMaxSupportedFileSize)
+	set64(&o.HandoffInline, DefaultHandoffInline)
+	set64(&o.HandoffBudget, DefaultHandoffBudget)
 	if o.Now == nil {
 		o.Now = time.Now
 	}
@@ -87,6 +94,7 @@ type Service struct {
 	control    *byteBudget
 	editor     *byteBudget
 	challenges *challenges
+	handoff    *handoffs
 }
 
 // New returns a Service. It drops the listings of a source when the
@@ -96,7 +104,7 @@ func New(o Options) *Service {
 	s := &Service{
 		opts: o, reg: o.Registry, list: newListings(o),
 		control: newByteBudget(o.ControlBytesPerMin, o.Now), editor: newByteBudget(o.EditorBytesPerMinute, o.Now),
-		challenges: newChallenges(o.Now),
+		challenges: newChallenges(o.Now), handoff: newHandoffs(o.HandoffInline, o.HandoffBudget),
 	}
 	s.reg.OnClose(func(session, sourceID string) {
 		s.list.discard(func(sn *snapshot) bool { return sn.owner.session == session && sn.sourceID == sourceID })

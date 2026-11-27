@@ -7,6 +7,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/audit"
 	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/files"
+	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/quota"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 )
@@ -47,12 +48,17 @@ func fileOptions(f config.Files, reg *files.Registry, audit files.Audit) files.O
 
 func wireFiles(sys *system) error {
 	sys.realtime.Mount(sys.files.Routes()...)
+	sys.edge.Mux().HandleFunc(files.HandoffPath, sys.files.HandoffHTTP)
 	sys.realtime.OnOpen(func(p protocol.Peer) { sys.fileSources.PeerOpened(p.Principal().UserID, p.ID()) })
 	sys.realtime.OnClose(func(p protocol.Peer) {
 		sys.files.PeerClosed(files.Caller{P: p.Principal(), Peer: p.ID()})
 	})
-	// A revocation closes the file sources of the session at once (K6).
-	unsubscribe := sys.sessions.Subscribe(sys.fileSources.Revoke)
+	// A revocation closes the file sources of the session at once, held
+	// ones too, and drops its parked answers (K6).
+	unsubscribe := sys.sessions.Subscribe(func(rev principal.Revocation) {
+		sys.fileSources.Revoke(rev)
+		sys.files.Revoke(rev)
+	})
 	sys.closers = append(sys.closers, func() error { unsubscribe(); return nil })
 	return nil
 }
@@ -64,15 +70,6 @@ func sweepFileSources(ctx context.Context, sys *system) {
 	sys.background.Go(func() {
 		sys.every(ctx, fileSweepInterval, func(context.Context) bool { sys.fileSources.Sweep(); return true })
 	})
-}
-
-// realtimeQueueBytes bounds the outbound bytes of one realtime connection:
-// the default, raised so that the answer to opening the largest editable
-// file fits (its text, escaped, and its original bytes in base64).
-func realtimeQueueBytes(f config.Files) int64 {
-	const floor, ceiling = 8 << 20, 1 << 30
-	n := min(f.MaxEditorBytes, ceiling/8)
-	return min(max(floor, 8*n+1<<20), ceiling)
 }
 
 // The providers that exist already satisfy the consumer interfaces of

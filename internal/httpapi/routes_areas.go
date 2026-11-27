@@ -27,6 +27,7 @@ var areas = []area{
 	{"automation", "AU1", automationBuilt, automationPreview},
 	{"schedules", "AU2", schedulesBuilt, schedulesPreview},
 	{"transfers", "TR1", transfersBuilt, transfersPreview},
+	{"files", "FS1", filesBuilt, filesPreview},
 }
 
 // catalogRoutes are the routes with an access level: M1 and every built

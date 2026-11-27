@@ -125,6 +125,9 @@ type FilesImageData struct {
 	Size       int64  `json:"size"`
 	ForPreview bool   `json:"for_preview"`
 	Encoding   string `json:"encoding"` // "base64"
+	// Handoff, when set, replaces the data: the whole answer is fetched
+	// once from GET <root>/api/files/handoff/<token> (large files).
+	Handoff string `json:"handoff,omitzero"`
 }
 
 // FilesEditOpen loads a file for the editor (open_file_for_edit).
@@ -145,6 +148,8 @@ type FilesEditData struct {
 	Revision      string `json:"revision"`
 	OriginalBytes string `json:"original_bytes"` // base64
 	Endpoint      string `json:"endpoint"`
+	// Handoff, as in FilesImageData.
+	Handoff string `json:"handoff,omitzero"`
 }
 
 // FilesEditSave saves editor text (save_file).

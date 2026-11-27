@@ -44,6 +44,19 @@
         return extra ? {...out, ...extra(data)} : out;
     };
 
+    // A large editor or image answer is parked on the server; the page
+    // fetches it once over HTTP instead of through the realtime queue.
+    const handoff = (host, result) => {
+        const token = result.p && result.p.handoff;
+        if (typeof token !== 'string' || token === '') return result;
+        const lost = {ok: false, err: {code: 'SOURCE_UNAVAILABLE', message: 'The file is no longer available. Open it again.'}};
+        if (typeof host.fetchJSON !== 'function') return lost;
+        return host.fetchJSON(`/api/files/handoff/${encodeURIComponent(token)}`)
+            .then(({ok, body}) => (ok && body && typeof body === 'object' ? {ok: true, p: body}
+                : {ok: false, err: {code: body?.code || lost.err.code, message: body?.error || lost.err.message}}))
+            .catch(() => lost);
+    };
+
     const requests = {
         list_directory: {
             type: 'files.list',
@@ -78,6 +91,7 @@
         download_file_binary: {
             type: 'files.preview.image',
             payload: data => ({...pick(data, [...REF, 'remote_path']), for_preview: data.for_preview === true}),
+            expand: handoff,
             push: [['file_download_ready_binary', reply => without(reply, 'success', 'path')]],
             errorEvent: true,
             failure: fileFailure('download_file_binary', 'remote_path'),
@@ -85,6 +99,7 @@
         open_file_for_edit: {
             type: 'files.edit.open',
             payload: data => pick(data, [...REF, 'path']),
+            expand: handoff,
             push: [['edit_data', reply => withoutSuccess(reply)]],
             errorEvent: 'edit_error',
             failure: fileFailure('open_file_for_edit', 'path'),

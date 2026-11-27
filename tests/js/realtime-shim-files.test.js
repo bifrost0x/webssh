@@ -143,3 +143,28 @@ test('the session probe and the terminal directory reach the server', async () =
     ]);
     socket.disconnect();
 });
+
+test('a large editor answer is fetched once over HTTP and then pushed as edit_data', async () => {
+    const fetched = [];
+    const window = loadShim({fetch: (url, init) => {
+        fetched.push([url, init.credentials, init.cache]);
+        if (url.endsWith('/gone')) return Promise.resolve({ok: false, json: () => Promise.resolve({code: 'SOURCE_UNAVAILABLE', error: 'expired'})});
+        return Promise.resolve({ok: true, json: () => Promise.resolve({source_id: 's:a', request_id: 'r1', path: '/big', content: 'x'.repeat(10), revision: 'v'})});
+    }});
+    const {socket, ws} = await connected(window, {path: '/root/socket.io'});
+    const seen = [];
+    socket.on('edit_data', data => seen.push(['data', data]));
+    socket.on('edit_error', data => seen.push(['error', data.code, data.error]));
+    socket.emit('open_file_for_edit', {source_id: 's:a', request_id: 'r1', path: '/big'});
+    ws.reply(ws.lastRequest('files.edit.open').id, {source_id: 's:a', request_id: 'r1', path: '/big', size: 10, handoff: 'tok'});
+    await tick(5);
+    socket.emit('open_file_for_edit', {source_id: 's:a', request_id: 'r2', path: '/big'});
+    ws.reply(ws.lastRequest('files.edit.open').id, {source_id: 's:a', request_id: 'r2', path: '/big', size: 10, handoff: 'gone'});
+    await tick(5);
+    assert.deepEqual(plain(fetched), [['/root/api/files/handoff/tok', 'same-origin', 'no-store'], ['/root/api/files/handoff/gone', 'same-origin', 'no-store']]);
+    assert.deepEqual(plain(seen), [
+        ['data', {source_id: 's:a', request_id: 'r1', path: '/big', content: 'xxxxxxxxxx', revision: 'v'}],
+        ['error', 'SOURCE_UNAVAILABLE', 'expired'],
+    ]);
+    socket.disconnect();
+});
