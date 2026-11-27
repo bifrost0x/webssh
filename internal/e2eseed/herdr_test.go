@@ -81,7 +81,9 @@ func TestHerdrSnapshotAddsTheHostileAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var doc struct {
+		ID     string `json:"id"`
 		Result struct {
+			Type     string `json:"type"`
 			Snapshot struct {
 				Agents []map[string]any `json:"agents"`
 			} `json:"snapshot"`
@@ -89,6 +91,10 @@ func TestHerdrSnapshotAddsTheHostileAgent(t *testing.T) {
 	}
 	if !bytes.HasSuffix(snap, []byte("\n")) || json.Unmarshal(bytes.TrimSpace(snap), &doc) != nil {
 		t.Fatalf("snapshot = %q", snap)
+	}
+	// The recorded members stay, so the server's parser accepts the answer.
+	if doc.ID != "cli:api:snapshot" || doc.Result.Type != "session_snapshot" {
+		t.Fatalf("recorded members lost: %q %q", doc.ID, doc.Result.Type)
 	}
 	agents := doc.Result.Snapshot.Agents
 	if len(agents) != 4 || agents[3]["name"] != `<img src=x onerror="window.__herdrInjected=1">` || agents[3]["pane_id"] != "w1:p9" {

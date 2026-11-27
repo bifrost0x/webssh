@@ -79,17 +79,21 @@ func LoadHerdrSnapshot(path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("e2e: herdr snapshot: %w", err)
 	}
-	var doc struct {
-		ID     jsontext.Value `json:"id"`
-		Result struct {
-			Snapshot map[string]jsontext.Value `json:"snapshot"`
-		} `json:"result"`
-	}
+	// Every member is kept as recorded (result.type among them); only the
+	// agent list of the snapshot grows by the hostile agent.
+	var doc map[string]jsontext.Value
+	var result, snapshot map[string]jsontext.Value
+	var agents []jsontext.Value
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, fmt.Errorf("e2e: herdr snapshot: %w", err)
 	}
-	var agents []jsontext.Value
-	if err := json.Unmarshal(doc.Result.Snapshot["agents"], &agents); err != nil {
+	if err := json.Unmarshal(doc["result"], &result); err != nil {
+		return nil, fmt.Errorf("e2e: herdr snapshot result: %w", err)
+	}
+	if err := json.Unmarshal(result["snapshot"], &snapshot); err != nil {
+		return nil, fmt.Errorf("e2e: herdr snapshot: %w", err)
+	}
+	if err := json.Unmarshal(snapshot["agents"], &agents); err != nil {
 		return nil, fmt.Errorf("e2e: herdr snapshot agents: %w", err)
 	}
 	hostile, err := json.Marshal(map[string]string{
@@ -102,7 +106,13 @@ func LoadHerdrSnapshot(path string) ([]byte, error) {
 		return nil, err
 	}
 	agents = append(agents, hostile)
-	if doc.Result.Snapshot["agents"], err = json.Marshal(agents); err != nil {
+	if snapshot["agents"], err = json.Marshal(agents); err != nil {
+		return nil, err
+	}
+	if result["snapshot"], err = json.Marshal(snapshot); err != nil {
+		return nil, err
+	}
+	if doc["result"], err = json.Marshal(result); err != nil {
 		return nil, err
 	}
 	out, err := json.Marshal(doc)
