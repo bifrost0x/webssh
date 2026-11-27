@@ -103,6 +103,7 @@ func TestRouteSecrets(t *testing.T) {
 			check: func(t client.Target) bool {
 				return t.Hop.Auth.Password == "saved-host" && t.Proxy.Password == "saved-socks"
 			}},
+		{name: "profile password missing", req: protocol.OpenTarget{ProfileID: "p-jump", AuthType: protocol.AuthPassword, JumpPassword: "jp"}, err: "Password required."},
 		{name: "profile socks password missing", req: protocol.OpenTarget{ProfileID: "p-socks", AuthType: protocol.AuthPassword, Password: "tp"}, err: "SOCKS5 proxy password required"},
 		{name: "typed and saved target password", saved: true, req: typed(func(r *protocol.OpenTarget) { r.SavedPassword = true }), err: string(fault.InvalidRequest)},
 		{name: "saved target password", saved: true, req: typed(func(r *protocol.OpenTarget) {

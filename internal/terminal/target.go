@@ -57,6 +57,11 @@ func (m *Manager) resolve(ctx context.Context, owner int64, req protocol.OpenTar
 		if err := m.addRouteSecrets(ctx, owner, &t, req); err != nil {
 			return client.Target{}, err
 		}
+		// A password profile opened without a password: the message of the
+		// Python release, not the dialer's "No authentication method".
+		if t.Hop.Auth.Password == "" && t.Hop.Auth.KeyID == "" && !needsVariant(t) {
+			return client.Target{}, invalid("Password required.")
+		}
 		return t, nil
 	}
 	host := strings.TrimSpace(req.Host)
