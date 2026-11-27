@@ -260,7 +260,7 @@ func TestLabKeyboardInteractive(t *testing.T) {
 			auth.KeyID = "mfa"
 		}
 		tgt := client.Target{Owner: 1, Hop: hop(t, "ssh-modern", user, auth)}
-		if _, err := r.dialer.Dial(t.Context(), tgt, r.ix); code(err) != fault.NotAvailableInPreview {
+		if _, err := r.dialer.Dial(t.Context(), tgt, r.ix); code(err) != fault.InteractionRequired {
 			t.Errorf("%s attended: %v", user, err)
 		}
 		if _, err := r.dialer.Dial(t.Context(), tgt, nil); code(err) != fault.InteractionRequired {

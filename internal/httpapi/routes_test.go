@@ -56,47 +56,50 @@ func loadPythonRoutes(t *testing.T) []pythonRoute {
 var goOnlyRoutes = []string{"GET /ws", "GET /api/realtime/status", "GET /api/files/handoff/{}"}
 
 // TestRouteCatalogCoversPython: every route of the Python release is a
-// preview route or a route of this preview, never both, and the catalogs
-// hold nothing else.
+// route of the catalog or dropped by a decision, never both, and the
+// catalog holds nothing else.
 func TestRouteCatalogCoversPython(t *testing.T) {
-	m1 := map[string]Access{}
+	built := map[string]Access{}
 	for _, rt := range catalogRoutes() {
-		if _, dup := m1[patternKey(rt.pattern)]; dup {
+		if _, dup := built[patternKey(rt.pattern)]; dup {
 			t.Errorf("the catalog lists %q twice", rt.pattern)
 		}
-		m1[patternKey(rt.pattern)] = rt.access
+		built[patternKey(rt.pattern)] = rt.access
 	}
-	preview := map[string]bool{}
-	for _, p := range previewRoutes() {
+	dropped := map[string]bool{}
+	for p, decision := range droppedRoutes {
 		k := patternKey(p)
-		if preview[k] {
-			t.Errorf("previewRoutes lists %q twice", p)
+		if !strings.HasPrefix(decision, "D-") {
+			t.Errorf("dropped route %q names no decision", p)
 		}
-		if _, both := m1[k]; both {
-			t.Errorf("%q is both a preview route and a route of this preview", p)
+		if _, both := built[k]; both {
+			t.Errorf("%q is both dropped and in the catalog", p)
 		}
-		preview[k] = true
+		dropped[k] = true
 	}
 	seen := map[string]bool{}
 	for _, r := range loadPythonRoutes(t) {
 		k := patternKey(flaskPattern(r.Method, r.Rule))
 		seen[k] = true
-		if _, ok := m1[k]; !ok && !preview[k] {
-			t.Errorf("Python route %s %s is neither built nor in the preview catalog", r.Method, r.Rule)
+		if _, ok := built[k]; !ok && !dropped[k] {
+			t.Errorf("Python route %s %s is neither built nor dropped", r.Method, r.Rule)
 		}
 	}
-	for k := range m1 {
+	for k := range built {
 		if !seen[k] && !slices.Contains(goOnlyRoutes, k) {
 			t.Errorf("the catalog has %q, which the Python release does not have", k)
 		}
 	}
-	for k := range preview {
+	for k := range dropped {
 		if !seen[k] {
-			t.Errorf("previewRoutes has %q, which the Python release does not have", k)
+			t.Errorf("droppedRoutes has %q, which the Python release does not have", k)
 		}
 	}
 }
 
+// A catalog route nobody registered answers 404 like an unknown route,
+// and Finish names it, so that the composition root can refuse to start.
+// No route answers not_available_in_preview.
 func TestEveryCatalogRouteIsAnsweredWithoutHandlers(t *testing.T) {
 	e := newEdge(t)
 	filled, err := e.h.Finish()
@@ -108,6 +111,9 @@ func TestEveryCatalogRouteIsAnsweredWithoutHandlers(t *testing.T) {
 	if want := len(catalogRoutes()) - len(own); len(filled) != want {
 		t.Fatalf("Finish filled %d routes, want %d: %v", len(filled), want, filled)
 	}
+	if again, _ := e.h.Finish(); len(again) != len(filled) {
+		t.Fatalf("a second Finish reports %d routes, want %d", len(again), len(filled))
+	}
 	for _, rt := range catalogRoutes() {
 		if slices.Contains(own, rt.pattern) {
 			continue
@@ -117,13 +123,27 @@ func TestEveryCatalogRouteIsAnsweredWithoutHandlers(t *testing.T) {
 		w := e.do(req{method: method, target: path, token: "tok-root", binding: binding,
 			headers: map[string]string{"X-CSRFToken": token, "Accept": "application/json"}})
 		if rt.access == AccessUpgrade {
-			if w.Code != http.StatusNotImplemented {
-				t.Errorf("%s: status %d, want 501", rt.pattern, w.Code)
+			if w.Code != http.StatusNotFound {
+				t.Errorf("%s: status %d, want 404", rt.pattern, w.Code)
 			}
 			continue
 		}
-		if w.Code != http.StatusNotImplemented || !strings.Contains(w.Body.String(), `"not_available_in_preview"`) {
-			t.Errorf("%s: %d %s, want 501 not_available_in_preview", rt.pattern, w.Code, w.Body)
+		if w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "preview") {
+			t.Errorf("%s: %d %s, want 404", rt.pattern, w.Code, w.Body)
+		}
+	}
+}
+
+// The dropped routes answer 404 like any route the server does not have.
+func TestDroppedRoutesAreNotFound(t *testing.T) {
+	e := newEdge(t)
+	for p := range droppedRoutes {
+		method, path := samplePath(p)
+		binding, token := e.csrf("s-root")
+		w := e.do(req{method: method, target: path, token: "tok-root", binding: binding,
+			headers: map[string]string{"X-CSRFToken": token, "Accept": "application/json"}})
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", p, w.Code)
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -62,6 +63,7 @@ type Handler struct {
 
 	finish    sync.Once
 	finishErr error
+	filled    []string // catalog routes Finish found without a handler
 }
 
 // New builds the edge with the probes, static files, the realtime status
@@ -97,14 +99,14 @@ func New(o Options) (*Handler, error) {
 	for _, rt := range catalogRoutes() {
 		h.access[patternKey(rt.pattern)] = rt.access
 	}
-	for _, p := range previewRoutes() {
-		h.access[patternKey(p)] = AccessPreview
-		h.mux.Handle(p, http.HandlerFunc(h.notAvailable))
+	for p := range droppedRoutes {
+		h.access[patternKey(p)] = AccessGone
+		h.mux.Handle(p, http.HandlerFunc(h.unwired))
 	}
 	h.mux.Handle("/socket.io/", http.HandlerFunc(gone))
 	h.mux.Handle("/socket.io", http.HandlerFunc(gone))
-	h.access[patternKey("/socket.io/")] = AccessPreview
-	h.access[patternKey("/socket.io")] = AccessPreview
+	h.access[patternKey("/socket.io/")] = AccessGone
+	h.access[patternKey("/socket.io")] = AccessGone
 
 	h.ready = newReadiness(o.Readiness, log)
 	h.mux.HandleFunc("GET "+pathHealth, health)
@@ -124,10 +126,11 @@ func (h *Handler) Mux() *http.ServeMux { return h.mux }
 func (h *Handler) SessionCookie() SessionCookie { return SessionCookie{jar: h.session} }
 
 // Finish completes the routing: every catalog route without a handler
-// answers 501 like a preview route, so a capability that is not wired
-// leaves nothing open. It returns the patterns it filled. ServeHTTP calls
-// it before the first request; the composition root calls it at start to
-// log the list. Registering routes afterwards is a programming error.
+// answers 404 like a route that does not exist, so a capability that is
+// not wired leaves nothing open. It returns the patterns it filled; the
+// composition root refuses to start when there are any. ServeHTTP calls
+// it before the first request. Registering routes afterwards is a
+// programming error.
 func (h *Handler) Finish() (filled []string, err error) {
 	h.finish.Do(func() {
 		defer func() {
@@ -139,14 +142,11 @@ func (h *Handler) Finish() (filled []string, err error) {
 			if h.registered(rt.pattern) {
 				continue
 			}
-			h.mux.Handle(rt.pattern, http.HandlerFunc(h.notAvailable))
-			filled = append(filled, rt.pattern)
-		}
-		if len(filled) > 0 {
-			h.log.Warn("routes without a handler answer 501 in this preview", "routes", filled)
+			h.mux.Handle(rt.pattern, http.HandlerFunc(h.unwired))
+			h.filled = append(h.filled, rt.pattern)
 		}
 	})
-	return filled, h.finishErr
+	return slices.Clone(h.filled), h.finishErr
 }
 
 // registered reports whether the mux already has a handler for exactly
@@ -162,7 +162,7 @@ func (h *Handler) registered(pattern string) bool {
 }
 
 // ServeHTTP runs the pipeline in this order: client address, headers,
-// admin panel gate, preview routes, deadlines, body limit, session,
+// admin panel gate, edge-answered routes, deadlines, body limit, session,
 // access level, origin and CSRF, handler.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.Finish(); err != nil {
@@ -193,7 +193,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch access {
-	case AccessPreview, AccessUpgrade:
+	case AccessGone, AccessUpgrade:
 		h.mux.ServeHTTP(w, r)
 		return
 	case AccessProbe:

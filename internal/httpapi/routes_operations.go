@@ -1,8 +1,7 @@
 package httpapi
 
 // Routes of the area "operations" (OP3): audit, instance operations, application settings and the support report.
-// OP3 moves each route it builds from operationsPreview to operationsBuilt with its
-// access level; no other package edits this file.
+// No other package edits this file.
 
 var operationsBuilt = []route{
 	{"GET /admin/api/audit", AccessAdmin},
@@ -17,5 +16,3 @@ var operationsBuilt = []route{
 	{"POST /admin/api/settings", AccessAdmin},
 	{"POST /api/account/support-report", AccessUser},
 }
-
-var operationsPreview = []string{}

@@ -57,7 +57,7 @@ func get(t *testing.T, c *http.Client, u string) (*http.Response, string) {
 	return resp, string(b)
 }
 
-func TestSystemServesThePreview(t *testing.T) {
+func TestSystemServesTheWorkspace(t *testing.T) {
 	_, ts := openTestSystem(t, nil)
 	anon := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	if resp, _ := get(t, anon, ts.URL+"/"); resp.StatusCode != http.StatusFound || !strings.HasPrefix(resp.Header.Get("Location"), "/login") {
@@ -69,19 +69,8 @@ func TestSystemServesThePreview(t *testing.T) {
 
 	c := signUp(t, ts.URL, "admin1", "first-password-1")
 	resp, body := get(t, c, ts.URL+"/")
-	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `id="initialInventory"`) || !strings.Contains(body, `id="websshPreview"`) {
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `id="initialInventory"`) {
 		t.Fatalf("workspace: %d", resp.StatusCode)
-	}
-	for _, want := range []string{`"automation"`} {
-		if !strings.Contains(body, want) {
-			t.Errorf("preview notice lacks %s", want)
-		}
-	}
-	// Server operations and Herdr are built (HO1).
-	for _, gone := range []string{`"serverOps"`} {
-		if strings.Contains(body, gone) {
-			t.Errorf("preview notice still names %s", gone)
-		}
 	}
 	if resp, body := get(t, c, ts.URL+"/security"); resp.StatusCode != http.StatusOK || !strings.Contains(body, "WebSSH password") {
 		t.Fatalf("security: %d", resp.StatusCode)
@@ -215,5 +204,29 @@ func TestSystemWiresPasskeys(t *testing.T) {
 	}
 	if resp, body := get(t, c, ts.URL+"/security"); resp.StatusCode != http.StatusOK || !strings.Contains(body, `id="passkeyAddBtn"`) {
 		t.Fatalf("security page without passkeys: %d", resp.StatusCode)
+	}
+}
+
+// The switches of the workspace page follow the configuration, as the
+// Python page reads them (sftp_chmod_enabled through the runtime feature).
+func TestWorkspaceFlagsFollowTheConfiguration(t *testing.T) {
+	for _, tc := range []struct {
+		env  map[string]string
+		want []string
+	}{
+		{nil, []string{`data-sftp-chmod-enabled="false"`}},
+		{map[string]string{"SFTP_CHMOD_ENABLED": "true"}, []string{`data-sftp-chmod-enabled="true"`}},
+	} {
+		_, ts := openTestSystem(t, tc.env)
+		c := signUp(t, ts.URL, "admin1", "first-password-1")
+		resp, body := get(t, c, ts.URL+"/")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("workspace: %d", resp.StatusCode)
+		}
+		for _, want := range tc.want {
+			if !strings.Contains(body, want) {
+				t.Errorf("env %v: workspace lacks %s", tc.env, want)
+			}
+		}
 	}
 }

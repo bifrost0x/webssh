@@ -26,6 +26,9 @@ const (
 	PreconditionFailed    Code = "precondition_failed"     // If-Match or a confirmed impact no longer holds
 	RateLimited           Code = "rate_limited"            // too many attempts; see RetryAfter
 	Busy                  Code = "busy"                    // a concurrent operation holds the resource
+	// NotAvailableInPreview keeps the spelling of the preview builds
+	// (codes are never renamed). It now only answers a capability built
+	// without an optional collaborator; a complete server never sends it.
 	NotAvailableInPreview Code = "not_available_in_preview"
 	Maintenance           Code = "maintenance" // the server is in maintenance mode
 	Unavailable           Code = "unavailable" // a dependency is down or the server is stopping
@@ -142,7 +145,7 @@ var catalog = map[Code]entry{
 	PreconditionFailed:    {statusPreconditionFailed, "The data has changed. Reload and try again."},
 	RateLimited:           {statusTooManyRequests, "Too many attempts. Try again later."},
 	Busy:                  {statusConflict, "Another operation is in progress."},
-	NotAvailableInPreview: {statusNotImplemented, "Not available in this preview yet."},
+	NotAvailableInPreview: {statusNotImplemented, "This function is not available on this server."},
 	Maintenance:           {statusServiceUnavailable, "The server is in maintenance mode."},
 	Unavailable:           {statusServiceUnavailable, "The service is unavailable."},
 	StorageError:          {statusInternalServerError, "The data could not be stored."},

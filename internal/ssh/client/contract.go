@@ -176,7 +176,7 @@ type Interaction interface {
 // answers prompts, backed by prompt.interactive of an attempt of
 // internal/ssh/gateway (gateway.Attempt.Challenger). Without it, an
 // attended connection that needs
-// such an answer ends with not_available_in_preview. The answers are sent
+// such an answer ends with interaction_required. The answers are sent
 // once; a rejected answer ends the attempt.
 type Challenger interface {
 	Challenge(ctx context.Context, q Challenge) ([]string, error)

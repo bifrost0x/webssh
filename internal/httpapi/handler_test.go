@@ -49,29 +49,27 @@ func TestNoHSTSInDebug(t *testing.T) {
 	}
 }
 
-// A preview route answers 501 before the session lookup and without
+// A dropped route answers 404 before the session lookup and without
 // reading the body, also without a CSRF token.
-func TestPreviewRouteLetsNothingThrough(t *testing.T) {
+func TestDroppedRouteLetsNothingThrough(t *testing.T) {
 	e := newEdge(t)
 	body := &countingReader{r: strings.NewReader(`{"name":"x"}`)}
 	r := httptest.NewRequest(http.MethodPost, "http://webssh.test/api/credentials/apply", body)
 	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Accept", "application/json")
 	r.AddCookie(&http.Cookie{Name: "session", Value: "tok-alice"})
 	w := httptest.NewRecorder()
 	e.h.ServeHTTP(w, r)
-	if w.Code != http.StatusNotImplemented {
-		t.Fatalf("status %d", w.Code)
-	}
-	if want := `{"success":false,"code":"not_available_in_preview","error":"Not available in this preview yet."}`; strings.TrimSpace(w.Body.String()) != want {
-		t.Fatalf("body %s", w.Body)
+	if w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), `"not_found"`) {
+		t.Fatalf("status %d %s", w.Code, w.Body)
 	}
 	if e.sessions.calls.Load() != 0 || body.n != 0 {
 		t.Fatalf("session lookups %d, body bytes read %d; want none", e.sessions.calls.Load(), body.n)
 	}
-	// A page route without a handler answers in plain text.
+	// A page route without a handler answers 404 in plain text.
 	w = e.do(req{target: "/automation", token: "tok-alice"})
-	if w.Code != http.StatusNotImplemented || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") {
-		t.Fatalf("/automation: %d %q", w.Code, w.Header().Get("Content-Type"))
+	if w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "preview") {
+		t.Fatalf("/automation: %d %q", w.Code, w.Body)
 	}
 }
 

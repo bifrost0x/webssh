@@ -19,7 +19,7 @@ var (
 	errSOCKSPassword  = invalid("SOCKS5 proxy password required")
 	errSOCKSLength    = invalid("SOCKS5 proxy password must contain 1 to 255 UTF-8 bytes")
 	errBothPasswords  = fault.New(fault.InvalidRequest, "")
-	errSavedPasswords = fault.New(fault.NotAvailableInPreview, "Saved passwords are not available in this preview.")
+	errSavedPasswords = fault.New(fault.NotAvailableInPreview, "Saved passwords are not available on this server.")
 )
 
 // addRouteSecrets gives a jump host with password sign-in and a SOCKS5

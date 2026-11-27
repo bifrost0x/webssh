@@ -75,16 +75,19 @@ func TestKeyboardInteractiveFallback(t *testing.T) {
 }
 
 // A second prompt (a one-time code) is not answered with anything: an
-// attended connection ends with not_available_in_preview, an unattended
-// one with interaction_required.
+// attended connection ends with interaction_required and says that the
+// host asks for further input, an unattended one with the plain code.
 func TestSecondPromptNeedsTheUser(t *testing.T) {
 	cfg := kiServer([]string{"Password: ", "Verification code: "}, []string{"pw", "123456"}, nil)
 	cfg.PasswordCallback = nil
 	s := startServer(t, cfg)
 	d, _ := newDialer(trusting(s), nil)
 	_, err := d.Dial(t.Context(), target(s, "u", Auth{Password: "pw"}), &prompts{})
-	if _, code := hopOf(t, err); code != fault.NotAvailableInPreview {
+	if _, code := hopOf(t, err); code != fault.InteractionRequired {
 		t.Fatalf("attended: %v", err)
+	}
+	if fe, _ := fault.From(err); !strings.Contains(fe.Message, "one-time code") || strings.Contains(fe.Message, "preview") {
+		t.Fatalf("attended message %q", fe.Message)
 	}
 	_, err = d.Dial(t.Context(), target(s, "u", Auth{Password: "pw"}), nil)
 	if _, code := hopOf(t, err); code != fault.InteractionRequired {
@@ -192,7 +195,7 @@ func TestPublicKeyThenPassword(t *testing.T) {
 	_ = c.Close()
 	// Key only: the second factor needs the user.
 	_, err = d.Dial(t.Context(), target(s, "u", Auth{KeyID: "k1"}), &prompts{})
-	if _, code := hopOf(t, err); code != fault.NotAvailableInPreview {
+	if _, code := hopOf(t, err); code != fault.InteractionRequired {
 		t.Fatalf("key only: %v", err)
 	}
 	_, err = d.Dial(t.Context(), target(s, "u", Auth{KeyID: "missing"}), nil)

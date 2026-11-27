@@ -99,7 +99,7 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 		SSHGatewayEnabled:        app.SSHGatewayEnabled,
 		HerdrEnabled:             app.HerdrEnabled,
 		AutomationEnabled:        app.AutomationEnabled,
-		Preview:                  previewNotice(u == nil),
+		SFTPChmodEnabled:         app.RuntimeFeature("sftp_chmod_enabled").Enabled,
 	}
 	if u == nil {
 		return d, nil, nil

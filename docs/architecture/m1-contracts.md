@@ -110,8 +110,9 @@ func DetailsOf(err error) map[string]any
   test). The one exception is `internal/realtime/protocol/route.go`, which
   sends the error of `Validate()`; every validator returns fixed texts of
   its own and never includes request values.
-- Routes planned but not built in M1 answer
-  `501 {"success": false, "code": "not_available_in_preview", "error": …}`.
+- Every route of the catalog has a handler; a route nobody registered
+  stops the start (M2, FE1). Routes of the Python release dropped by a
+  decision (D-06, D-13) answer 404 like unknown routes.
 - One answer leaves the catalog on purpose: a wrong password or code on
   the admin step-up routes is `403 {"code": "invalid_value"}`, because
   `admin.js` retries only on that pair; `internal/auth/stepup/http.go`
@@ -146,7 +147,7 @@ func DetailsOf(err error) map[string]any
 | `maintenance` | 503 | The server is in maintenance mode. |
 | `mfa_restart` | 400 | The sign-in has expired. Start again. |
 | `no_common_algorithm` | 502 | No common SSH algorithm. |
-| `not_available_in_preview` | 501 | Not available in this preview yet. |
+| `not_available_in_preview` | 501 | This function is not available on this server. |
 | `not_found` | 404 | Not found. |
 | `precondition_failed` | 412 | The data has changed. Reload and try again. |
 | `quota_exceeded` | 413 | Connection storage quota exceeded. |

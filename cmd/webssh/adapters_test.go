@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json/jsontext"
-	"slices"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/config"
@@ -37,17 +36,6 @@ func TestSettingsEnvironmentDefaults(t *testing.T) {
 	}
 }
 
-func TestPreviewNotice(t *testing.T) {
-	signIn := previewNotice(true)
-	if signIn.Enabled || len(signIn.Unavailable) != 0 {
-		t.Errorf("sign-in notice %+v", signIn)
-	}
-	work := previewNotice(false)
-	if !work.Enabled || !slices.Contains(work.Unavailable, "discovery") || slices.Contains(work.Unavailable, "files") ||
-		slices.Contains(work.Unavailable, "commands") || slices.Contains(work.Unavailable, "automation") {
-		t.Errorf("workspace notice %+v", work)
-	}
-}
 
 func TestIsProbe(t *testing.T) {
 	for path, want := range map[string]bool{"/health": true, "/ready": true, "/webssh/ready": true, "/login": false, "/readyx": false} {

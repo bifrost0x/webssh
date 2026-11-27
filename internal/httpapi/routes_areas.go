@@ -1,33 +1,35 @@
 package httpapi
 
-// area is one part of the route catalog that one M2 package completes.
-// Each area has its own file routes_<name>.go with the routes it has built
-// and the routes that still answer 501, so packages built in parallel
+import (
+	"fmt"
+	"net/http"
+)
+
+// area is one part of the route catalog that one M2 package built. Each
+// area has its own file routes_<name>.go, so packages built in parallel
 // never edit the same lines (M2 plan, section 4.7).
 type area struct {
-	name    string
-	owner   string // the package of the M2 plan that builds it
-	built   []route
-	preview []string
+	name  string
+	owner string // the package of the M2 plan that built it
+	built []route
 }
 
 // areas are the parts of the catalog after the routes of M1, in a fixed order.
 var areas = []area{
-	{"ldap", "ID1", ldapBuilt, ldapPreview},
-	{"oidc", "ID2", oidcBuilt, oidcPreview},
-	{"github", "ID3", githubBuilt, githubPreview},
-	{"accounts", "ID4", accountsBuilt, accountsPreview},
-	{"retired", "FE1", retiredBuilt, retiredPreview},
-	{"backup", "OP1", backupBuilt, backupPreview},
-	{"operations", "OP3", operationsBuilt, operationsPreview},
-	{"hostcontext", "HO3", hostcontextBuilt, hostcontextPreview},
-	{"discovery", "HO2", discoveryBuilt, discoveryPreview},
-	{"serverops", "HO1", serveropsBuilt, serveropsPreview},
-	{"credentials", "VA1", credentialsBuilt, credentialsPreview},
-	{"automation", "AU1", automationBuilt, automationPreview},
-	{"schedules", "AU2", schedulesBuilt, schedulesPreview},
-	{"transfers", "TR1", transfersBuilt, transfersPreview},
-	{"files", "FS1", filesBuilt, filesPreview},
+	{"ldap", "ID1", ldapBuilt},
+	{"oidc", "ID2", oidcBuilt},
+	{"github", "ID3", githubBuilt},
+	{"accounts", "ID4", accountsBuilt},
+	{"backup", "OP1", backupBuilt},
+	{"operations", "OP3", operationsBuilt},
+	{"hostcontext", "HO3", hostcontextBuilt},
+	{"discovery", "HO2", discoveryBuilt},
+	{"serverops", "HO1", serveropsBuilt},
+	{"credentials", "VA1", credentialsBuilt},
+	{"automation", "AU1", automationBuilt},
+	{"schedules", "AU2", schedulesBuilt},
+	{"transfers", "TR1", transfersBuilt},
+	{"files", "FS1", filesBuilt},
 }
 
 // catalogRoutes are the routes with an access level: M1 and every built
@@ -40,16 +42,41 @@ func catalogRoutes() []route {
 	return out
 }
 
-// previewRoutes are the routes of the Python release that this build does
-// not have yet. Each answers 501 not_available_in_preview before anything
-// reads the request: no session lookup, no body, no handler. Together with
-// catalogRoutes they cover every route of the Python release;
+// droppedRoutes are routes of the Python release that this server does
+// not have, each with its decision. They answer 404 like any unknown
+// route; the migration notice lists them. Together with catalogRoutes
+// they cover every route of the Python release;
 // TestRouteCatalogCoversPython checks that against the Flask url_map in
 // testdata/python-routes.json.
-func previewRoutes() []string {
-	var out []string
+var droppedRoutes = map[string]string{
+	// No caller since 3.0: the passphrase vault was replaced by saved
+	// passwords; the import of an old vault stays (D-06).
+	"POST /api/automation/vault/apply":   "D-06",
+	"POST /api/automation/vault/intents": "D-06",
+	"POST /api/automation/vault/lock":    "D-06",
+	"POST /api/credentials/apply":        "D-06",
+	"POST /api/credentials/lock":         "D-06",
+	// No caller: TOTP is turned off through the one MFA switch of the
+	// settings page (D-13).
+	"POST /api/totp/disable": "D-13",
+}
+
+// DisableArea answers every route of the named area that has no handler
+// with 404, for an area the configuration turns off: the OIDC routes
+// without OIDC_ENABLED, which the Python release answers with 404 too.
+// Routes the area shares with another area keep their handler. It must
+// be called before Finish.
+func (h *Handler) DisableArea(name string) error {
 	for _, a := range areas {
-		out = append(out, a.preview...)
+		if a.name != name {
+			continue
+		}
+		for _, rt := range a.built {
+			if !h.registered(rt.pattern) {
+				h.mux.Handle(rt.pattern, http.HandlerFunc(h.unwired))
+			}
+		}
+		return nil
 	}
-	return out
+	return fmt.Errorf("httpapi: no route area %q", name)
 }

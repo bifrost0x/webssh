@@ -39,7 +39,7 @@ func newGates(t *testing.T) *Gates {
 		DB:         storetest.Open(t, Schema()),
 		Deployment: map[string]bool{"passkey": true, "totp": true, "oidc": true, "ldap": false, "recovery": true},
 		Ready: map[string]Readiness{"passkey": {Ready: true}, "totp": {Ready: true}, "recovery": {Ready: true},
-			"oidc": {Reason: "OIDC is not available in this preview."}},
+			"oidc": {Reason: "OIDC provider discovery failed."}},
 		Audit: &auditLog{},
 	}
 }
@@ -57,7 +57,7 @@ func TestStatusRules(t *testing.T) {
 	}{
 		"passkey":  {true, ""},
 		"totp":     {false, "TOTP is not activated in the admin panel."}, // no upgrade default
-		"oidc":     {false, "OIDC is not available in this preview."},
+		"oidc":     {false, "OIDC provider discovery failed."},
 		"ldap":     {false, "LDAP is disabled by deployment configuration."},
 		"recovery": {true, ""},
 	}

@@ -87,17 +87,17 @@ func featureDeployment(cfg config.Config, lookup config.LookupFunc) map[string]b
 	}
 }
 
-const notInPreview = "not available in this preview."
-
-// featureReadiness is the start-up readiness of each security feature in
-// this build. Passkeys become ready when their capability registers.
+// featureReadiness is the start-up readiness of each security feature.
+// Passkeys, OIDC and LDAP become ready when their capability registers
+// and sets itself up; until then they are "not ready", as in the Python
+// release.
 func featureReadiness() map[string]operations.Readiness {
 	return map[string]operations.Readiness{
 		"totp":     {Ready: true},
 		"recovery": {Ready: true},
-		"passkey":  {Reason: "Passkeys are " + notInPreview},
-		"oidc":     {Reason: "OIDC sign-in is " + notInPreview},
-		"ldap":     {Reason: "LDAP sign-in is " + notInPreview},
+		"passkey":  {},
+		"oidc":     {},
+		"ldap":     {},
 	}
 }
 

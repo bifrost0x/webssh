@@ -56,12 +56,10 @@ func (h *Handler) tooLarge(w http.ResponseWriter, r *http.Request) {
 	h.fail(w, r, fault.New(fault.TooLarge, "Request body too large"), "", "")
 }
 
-var errPreview = fault.New(fault.NotAvailableInPreview, "")
-
-// notAvailable answers a route this preview does not build. It reads
-// nothing of the request.
-func (h *Handler) notAvailable(w http.ResponseWriter, r *http.Request) {
-	h.fail(w, r, errPreview, "", "")
+// unwired answers a catalog route that no capability registered, like a
+// route that does not exist. It reads nothing of the request.
+func (h *Handler) unwired(w http.ResponseWriter, r *http.Request) {
+	h.fail(w, r, errNotFound, "", "")
 }
 
 // goneBody tells a cached Socket.IO page that the transport changed
