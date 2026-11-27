@@ -1,12 +1,12 @@
 package main
 
 import (
-	cmdlib "github.com/bifrost0x/webssh/internal/commands"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/auth"
+	cmdlib "github.com/bifrost0x/webssh/internal/commands"
 	"github.com/bifrost0x/webssh/internal/config"
 	"github.com/bifrost0x/webssh/internal/files/sftp"
 	"github.com/bifrost0x/webssh/internal/files/smb"
