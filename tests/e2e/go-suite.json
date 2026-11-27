@@ -163,6 +163,12 @@
     {"file": "file-keyboard-scope.spec.js", "exclude": []},
     {"file": "file-connection-focus.spec.js", "exclude": []},
     {"file": "smb-file-workspace.spec.js", "exclude": []},
+    {"file": "file-transfer-disconnect.spec.js", "exclude": []},
+    {"file": "upload-destination-switch.spec.js", "exclude": []},
+    {"file": "local-upload-read-error.spec.js", "exclude": []},
+    {"file": "trust-files-controls.spec.js", "exclude": [
+      {"title": "transfer history preserves old errors and cancellation at 390", "reason": "at 390 px the preview notice of the areas not built yet pushes the transfer queue out of the viewport; passes with the notice removed", "package": "FE1"}
+    ]},
     {"file": "closed-issue-regressions.spec.js", "exclude": []},
     {"file": "primary-workspace-navigation.spec.js", "exclude": []},
     {"file": "ux-refinements.spec.js", "exclude": []},

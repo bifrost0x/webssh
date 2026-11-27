@@ -226,9 +226,9 @@
         // with a listener; a local reply keeps those views from waiting.
         unavailable: Object.freeze({}),
         // Feature groups of the preview notice: what this build does not
-        // answer yet (transfers, permissions).
+        // answer yet (permissions).
         features: Object.freeze([
-            ['files', /^(prepare_transfer|cancel_transfer|transfer_server_to_server|get_file_permissions|set_file_permissions|prepare_file_permissions|get_file_permissions_job|apply_file_permissions_job|cancel_file_permissions_job)/],
+            ['files', /^(get_file_permissions|set_file_permissions|prepare_file_permissions|get_file_permissions_job|apply_file_permissions_job|cancel_file_permissions_job)/],
         ]),
     });
 });

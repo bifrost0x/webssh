@@ -34,15 +34,6 @@ type initialInventory struct {
 	SOCKSProxies []jsontext.Value `json:"socks_proxies"`
 }
 
-// The limits of the transfer areas, which this preview does not offer.
-// The page publishes them to its scripts; the values are the Python
-// defaults so that the scripts behave as before.
-const (
-	defaultUploadBytes   = 100 << 20
-	defaultDownloadBytes = 100 << 20
-	defaultArchiveBytes  = 500 << 20
-)
-
 // inventory reads initial_inventory. Like the Python release it gives up
 // quietly (the page then asks over the realtime connection, which reports
 // storage problems itself).
@@ -113,8 +104,11 @@ func (pg *pages) workspace(w http.ResponseWriter, r *http.Request) {
 	d.InitialInventory = pg.inventory(r.Context(), d.User.ID)
 	d.MaxEditorFileSize = pg.cfg.Files.MaxEditorBytes
 	d.SMBEnabled = pg.cfg.SMB.Enabled
-	d.TransferLimits = httpapi.TransferLimits{UploadBytes: defaultUploadBytes, DownloadBytes: defaultDownloadBytes,
-		ArchiveBytes: defaultArchiveBytes, RemoteTransferBytes: defaultArchiveBytes}
+	// The transfer limits as the Python page published them
+	// (MAX_UPLOAD_SIZE, MAX_DOWNLOAD_SIZE, MAX_ZIP_DOWNLOAD_SIZE twice).
+	t := pg.cfg.Files.Transfers
+	d.TransferLimits = httpapi.TransferLimits{UploadBytes: t.MaxUpload, DownloadBytes: t.MaxDownload,
+		ArchiveBytes: t.MaxArchive, RemoteTransferBytes: t.MaxArchive}
 	d.SSHInputLimits = httpapi.SSHInputLimits{MaxEventBytes: int64(pg.cfg.Terminal.Input.MaxBytes)}
 	d.AuthSessionExpiresAt = sess.ExpiresAt.UnixMilli()
 	d.AuthServerNow = pg.now().UnixMilli()

@@ -17,6 +17,7 @@ const SCRIPTS = [
     'static/js/realtime-shim-notes.js',
     'static/js/realtime-shim-files.js',
     'static/js/realtime-shim-smb.js',
+    'static/js/realtime-shim-transfer.js',
     'static/js/realtime-shim-commands.js',
     'static/js/realtime-shim-insights.js',
     'static/js/realtime-shim-terminal-tools.js',

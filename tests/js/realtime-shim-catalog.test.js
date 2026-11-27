@@ -21,6 +21,7 @@ test('every mapped event targets a type of the v1 catalog', () => {
         'commands.list', 'commands.add', 'commands.update', 'commands.delete', 'commands.set.list',
         'commands.set.resolve', 'commands.set.save', 'commands.set.duplicate', 'commands.set.delete',
         'commands.set.convert',
+        'transfer.prepare', 'transfer.cancel', 'transfer.copy',
     ]);
     const mapped = new Set(Object.values(catalog.REQUESTS).map(entry => entry.type));
     assert.deepEqual([...mapped].sort(), [...v1].sort());
@@ -190,7 +191,7 @@ test('events without a v1 type are answered locally and reported to the notice',
     const seen = [];
     socket.on('error', data => seen.push(['error', data]));
     const sent = ws.sent.length;
-    socket.timeout(10000).emit('prepare_transfer', {}, (error, ack) => seen.push(['timed', error, ack.code]));
+    socket.timeout(10000).emit('get_file_permissions', {}, (error, ack) => seen.push(['timed', error, ack.code]));
     socket.emit('get_file_permissions', {source_id: 'src', request_id: 'r2', path: '/'});
     await tick();
     assert.equal(ws.sent.length, sent, 'nothing reaches the server');
@@ -198,7 +199,7 @@ test('events without a v1 type are answered locally and reported to the notice',
         ['timed', null, 'not_available_in_preview'],
         ['error', {success: false, code: 'not_available_in_preview', error: 'Not available in this preview yet.', source_id: 'src', request_id: 'r2', path: '/'}],
     ]);
-    assert.deepEqual(reported, [catalog.featureOf('prepare_transfer'), 'files']);
+    assert.deepEqual(reported, ['files', 'files']);
     socket.disconnect();
 });
 
@@ -239,7 +240,7 @@ test('the unavailable message follows the page language', async () => {
     const window = loadShim({i18n: {t: key => (key === 'previewNotice.notAvailable' ? 'In dieser Vorschau noch nicht verfügbar.' : key)}});
     const {socket} = await connected(window);
     let message;
-    socket.emit('prepare_transfer', {}, ack => { message = ack.error; });
+    socket.emit('get_file_permissions', {}, ack => { message = ack.error; });
     await tick();
     assert.equal(message, 'In dieser Vorschau noch nicht verfügbar.');
     socket.disconnect();

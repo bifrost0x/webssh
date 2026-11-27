@@ -173,6 +173,12 @@ var v1 = []MessageType{
 	{TypeCommandSetDuplicate, ClientRequest, "internal/commands"},
 	{TypeCommandSetDelete, ClientRequest, "internal/commands"},
 	{TypeCommandSetConvert, ClientRequest, "internal/commands"},
+	// Area "transfer" (TR1, payload_transfer.go).
+	{TypeTransferPrepare, ClientRequest, "internal/transfer"},
+	{TypeTransferCancel, ClientRequest, "internal/transfer"},
+	{TypeTransferCopy, ClientRequest, "internal/transfer"},
+	{TypeTransferProgress, ServerEvent, "internal/transfer"},
+	{TypeTransferFinished, ServerEvent, "internal/transfer"},
 }
 
 // V1 returns the catalog of schema v1.

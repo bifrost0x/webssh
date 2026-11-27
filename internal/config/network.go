@@ -59,8 +59,8 @@ func loadNetwork(p *parser, c *Config, in *pending) {
 	in.smbIdleTimeout = p.positive("SMB_IO_IDLE_TIMEOUT_SECONDS", 30)
 	loadSMB(p, c, in)
 
-	p.anyInt("MAX_DOWNLOAD_SIZE", 100*mib)
-	p.anyInt("MAX_ZIP_DOWNLOAD_SIZE", 500*mib)
+	c.Files.Transfers.MaxDownload = p.anyInt("MAX_DOWNLOAD_SIZE", 100*mib)
+	c.Files.Transfers.MaxArchive = p.anyInt("MAX_ZIP_DOWNLOAD_SIZE", 500*mib)
 	c.Files.MaxTransferMembers = int(p.positive("MAX_TRANSFER_MEMBERS", 10000))
 	c.Files.MaxPreviewBytes = p.positive("MAX_PREVIEW_SIZE", 512000)
 	c.Files.MaxPreviewTailLines = p.positive("MAX_PREVIEW_TAIL_LINES", 10000)

@@ -34,6 +34,11 @@ const (
 	// AccessPreview routes are planned but not built in this preview. They
 	// answer 501 before anything reads the request.
 	AccessPreview
+	// AccessUserStream routes are AccessUser routes whose handler streams
+	// the request body itself (transfer uploads): the edge does not buffer
+	// it, the CSRF token must come in a header, and the handler extends
+	// the deadlines while it reads.
+	AccessUserStream
 )
 
 // String returns the level for logs and tests.
@@ -53,6 +58,8 @@ func (a Access) String() string {
 		return "probe"
 	case AccessPreview:
 		return "preview"
+	case AccessUserStream:
+		return "user-stream"
 	}
 	return "unknown"
 }

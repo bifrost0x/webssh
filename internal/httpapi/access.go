@@ -61,7 +61,7 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, access Ac
 	switch access {
 	case AccessPublic:
 		return r, true
-	case AccessUser, AccessRepair, AccessAdmin:
+	case AccessUser, AccessRepair, AccessAdmin, AccessUserStream:
 	default:
 		h.fail(w, r, errNotFound, "", "")
 		return r, false

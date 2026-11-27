@@ -276,6 +276,14 @@ type Stores struct {
 	CommandConfigMaxBytes int
 }
 
+// Transfers are the size limits of HTTP transfers and host-to-host
+// copies.
+type Transfers struct {
+	MaxUpload   int64 // MAX_UPLOAD_SIZE
+	MaxDownload int64 // MAX_DOWNLOAD_SIZE
+	MaxArchive  int64 // MAX_ZIP_DOWNLOAD_SIZE, also host-to-host copies
+}
+
 // Files are the limits of the file workspace and the editor.
 type Files struct {
 	MaxEditorBytes       int64 // MAX_EDITOR_FILE_SIZE
@@ -290,6 +298,7 @@ type Files struct {
 	MaxPreviewTailLines  int64 // MAX_PREVIEW_TAIL_LINES
 	MaxSupportedFileSize int64 // MAX_SUPPORTED_FILE_SIZE
 	SFTP                 SFTP
+	Transfers            Transfers
 }
 
 // SFTP are the protocol limits of the SFTP backend.
