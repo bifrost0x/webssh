@@ -147,6 +147,38 @@ func (r *Registry) Covered() []string {
 	return out
 }
 
+// StepEntities lists the entities registered as a step, in the order a
+// run executes them.
+func (r *Registry) StepEntities() []string {
+	var out []string
+	for _, s := range r.ordered() {
+		out = append(out, s.entity)
+	}
+	return out
+}
+
+// PendingEntities lists the entities this build leaves in the legacy data
+// (KEEP-IN-PLACE), including the pending part of a step's entity. A
+// release build lists none; while one is listed the legacy purge is
+// refused.
+func (r *Registry) PendingEntities() []string {
+	var out []string
+	for _, p := range r.pending {
+		out = append(out, p.entity)
+	}
+	return out
+}
+
+// WrapSteps replaces every step of later runs with wrap(step). The
+// wrapper must keep the step's entity and version. It serves fault
+// injection over a build's complete registry (crash tests of section 8.3).
+func (r *Registry) WrapSteps(wrap func(Step) Step) {
+	for i := range r.steps {
+		next := r.steps[i].newStep
+		r.steps[i].newStep = func() Step { return wrap(next()) }
+	}
+}
+
 // Uncovered lists the entities of the specification that are neither a
 // step nor pending, for completeness tests of a build's registry.
 func (r *Registry) Uncovered() []string {

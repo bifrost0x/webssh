@@ -196,3 +196,46 @@ func TestRegistryRules(t *testing.T) {
 		t.Errorf("entities %d, uncovered %d", len(Entities), len(r.Uncovered()))
 	}
 }
+
+type versionedStep struct {
+	Step
+	wrapped *int
+}
+
+func (s versionedStep) Read(ctx context.Context, src *Source) error {
+	*s.wrapped++
+	return s.Step.Read(ctx, src)
+}
+
+// StepEntities, PendingEntities and WrapSteps describe and instrument a
+// build's registry; a wrapped step still runs, and a wrapper that changes
+// the entity is refused by the run.
+func TestRegistryListsAndWrapsSteps(t *testing.T) {
+	t.Parallel()
+	r := NewRegistry()
+	if err := AddSingleUserStores(r); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.KeepInPlace("E22", "B4", func(context.Context, *Source) (int, error) { return 0, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.StepEntities(); len(got) != 1 || got[0] != "E35" {
+		t.Errorf("steps %v", got)
+	}
+	if got := r.PendingEntities(); len(got) != 1 || got[0] != "E22" {
+		t.Errorf("pending %v", got)
+	}
+	n := 0
+	r.WrapSteps(func(s Step) Step { return versionedStep{Step: s, wrapped: &n} })
+	steps, err := r.instantiate()
+	if err != nil || len(steps) != 1 {
+		t.Fatalf("%v %v", steps, err)
+	}
+	if _, ok := steps[0].(versionedStep); !ok {
+		t.Fatalf("step not wrapped: %T", steps[0])
+	}
+	r.WrapSteps(func(Step) Step { return &discardStep{def: discardedEntities[0]} })
+	if _, err := r.instantiate(); err == nil {
+		t.Error("a wrapper that changes the entity was accepted")
+	}
+}

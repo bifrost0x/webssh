@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bifrost0x/webssh/internal/backup"
 )
@@ -94,6 +95,13 @@ func (rs *Restorer) RestoreLegacy(ctx context.Context, req backup.LegacyRestore)
 	}
 	if err := refuseActiveObjects(r.src.Schema()); err != nil {
 		return out, errors.Join(invalid(err), r.discard())
+	}
+	// A migration keeps pending entities in the legacy data for a later
+	// release. A restore has no legacy data that stays: the extraction is
+	// removed, so whatever this build does not migrate would be lost.
+	if names := pendingWithRecords(r.pending); len(names) > 0 {
+		return out, errors.Join(stop("", CodeRestoreIncomplete, "this release does not migrate every entity of the archive, "+
+			"so the restore would lose "+strings.Join(names, ", ")+"; restore it with the release that migrates them", nil), r.discard())
 	}
 	db := filepath.Join(r.staging, stagedDBName)
 	err = errors.Join(r.src.Close(), r.db.CloseForActivation(ctx))
