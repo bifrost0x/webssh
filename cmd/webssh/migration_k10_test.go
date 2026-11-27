@@ -260,6 +260,14 @@ func TestBuildMigratesEveryGoldenDataDir(t *testing.T) {
 					t.Errorf("%s missing from the report", e)
 				}
 			}
+			if fx.name == "extended" {
+				// Spec 8.3: sqlite_stat1, an extra index and an unknown table
+				// are reported, not STOP.
+				shape := st.Report.Source.SchemaShape
+				if !slices.Contains(shape.Tables, "sqlite_stat1") || !slices.Contains(shape.Tables, "operator_notes") {
+					t.Errorf("schema shape %+v", shape)
+				}
+			}
 			// D-01: the previous behaviour is written as explicit settings
 			// for every existing installation (spec section 6).
 			for _, key := range []string{settings.PolicyDiscovery, settings.PolicyReachability,

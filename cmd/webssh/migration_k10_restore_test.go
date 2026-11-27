@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +34,9 @@ func TestBuildRestoresPythonBackupsThroughTheMigration(t *testing.T) {
 		{"v1 from 8c41517", filepath.Join(goldenLegacyDir, "backups", "backup-v1-8c41517.zip"), false},
 		{"v2 with data/go", filepath.Join(goldenLegacyDir, "backups", "with-go-dir.zip"), false},
 		{"v2 with data/logs", filepath.Join(goldenLegacyDir, "backups", "with-logs-members.zip"), false},
+		// SECRET_KEY from the environment wins over an outdated
+		// data/secret_key, as at Python's next start (5.6 step 4).
+		{"v2 with an outdated data/secret_key", filepath.Join(goldenLegacyDir, "backups", "outdated-secret-key.zip"), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -106,5 +111,35 @@ func restoreReport(t *testing.T, archive string, recovery bool) {
 		if !seen[e] {
 			t.Errorf("%s missing from the restore report", e)
 		}
+	}
+}
+
+// Without SECRET_KEY in the environment the archive's outdated
+// data/secret_key is the legacy key; it does not decrypt the records, so
+// the restore stops before anything is activated (D-08) and the
+// installation keeps its database.
+func TestBuildRefusesAPythonBackupWithAnOutdatedSecret(t *testing.T) {
+	dir := adminEnv(t)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "secret_key"), []byte(fixtureSecret(t)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	os.Unsetenv("SECRET_KEY")
+	if code, _, e := runIn(t, "password1\npassword1\n", "webssh", "create-admin", "--username", "admin1"); code != 0 {
+		t.Fatalf("create-admin: %s", e)
+	}
+	before := storedUsernames(t)
+	archive := filepath.Join(goldenLegacyDir, "backups", "outdated-secret-key.zip")
+	code, out, e := runIn(t, "", "webssh", "backup", "restore", archive, "--confirm-offline")
+	if code == 0 {
+		t.Fatalf("restore with the outdated archive secret succeeded: %q", out)
+	}
+	if !strings.Contains(e, "secret_key_mismatch") && !strings.Contains(e, "SECRET_KEY") {
+		t.Errorf("restore error %q", e)
+	}
+	if after := storedUsernames(t); !slices.Equal(after, before) {
+		t.Errorf("accounts changed: %v, was %v", after, before)
 	}
 }
