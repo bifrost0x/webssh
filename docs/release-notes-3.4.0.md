@@ -110,8 +110,10 @@ Tested in an isolated lab, not against every real deployment:
   kernel routing in a network namespace, not against a real tailnet.
 - **SSH gateway** was tested against a Warpgate container in the lab, not
   against production gateway setups.
-- **Herdr** was tested against a stand-in, not against a real Herdr
-  installation.
+- **Herdr** was tested against Herdr 0.9.5 on an SSH host in a lab
+  container, not against real hosts with other Herdr versions or agents,
+  and the browser flow of the Herdr session mode against the new server
+  only through the end-to-end stand-ins.
 - **Unraid** was checked with the template and the 99:100 runtime user in
   containers, not on Unraid hardware.
 - **ARM64**: the image was cross-compiled and checked only under QEMU
