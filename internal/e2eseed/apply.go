@@ -171,7 +171,7 @@ func (s *Seed) skipped() []string {
 	add(len(s.Commands) > 0, "commands")
 	add(len(s.CommandSets) > 0, "command_sets")
 	for _, h := range s.TestHooks {
-		add(h.Name == HookAutomationSSHPeer || h.Name == HookSocketHerdrSessions, "test_hooks."+h.Name)
+		add(h.Name == HookAutomationSSHPeer, "test_hooks."+h.Name)
 	}
 	return parts
 }

@@ -75,6 +75,10 @@ func WorkspaceRestoreRoute(sessions FixtureSessions) protocol.Route {
 type Hooks struct {
 	OutputFlow      OutputFlow
 	FixtureSessions FixtureSessions
+	HerdrSessions   HerdrSessions
+	// HerdrSnapshot is the path of the recorded Herdr snapshot; Run sets
+	// it next to the seed file when it is empty.
+	HerdrSnapshot string
 }
 
 // Routes returns the realtime routes of the seed's hooks. A hook the seed
@@ -93,6 +97,15 @@ func (s *Seed) Routes(h Hooks) ([]protocol.Route, error) {
 				return nil, errors.New("e2e seed: hook socket_workspace_restore has no fixture sessions")
 			}
 			routes = append(routes, WorkspaceRestoreRoute(h.FixtureSessions))
+		case HookSocketHerdrSessions:
+			if h.HerdrSessions == nil {
+				return nil, errors.New("e2e seed: hook socket_herdr_sessions has no fixture sessions")
+			}
+			snapshot, err := LoadHerdrSnapshot(h.HerdrSnapshot)
+			if err != nil {
+				return nil, err
+			}
+			routes = append(routes, HerdrRoutes(h.HerdrSessions, snapshot)...)
 		}
 	}
 	return routes, nil

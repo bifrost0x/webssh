@@ -259,11 +259,15 @@ func TestWorkspaceRestore(t *testing.T) {
 func TestRoutesFollowTheHooks(t *testing.T) {
 	t.Parallel()
 	s := loadSeed(t)
-	routes, err := s.Routes(Hooks{OutputFlow: newFakeFlow(0), FixtureSessions: &fakeSessions{}})
-	if err != nil || len(routes) != 2 || routes[0].Type != TypeOutputLoad || routes[1].Type != TypeWorkspaceRestore {
+	full := Hooks{OutputFlow: newFakeFlow(0), FixtureSessions: &fakeSessions{}, HerdrSessions: &fakeHerdr{}, HerdrSnapshot: herdrSnapshotPath(checkedInSeed)}
+	routes, err := s.Routes(full)
+	if err != nil || len(routes) != 4 || routes[0].Type != TypeOutputLoad || routes[1].Type != TypeWorkspaceRestore ||
+		routes[2].Type != TypeHerdrSessions || routes[3].Type != TypeHerdrExecCount {
 		t.Fatalf("routes = %v, %v", routes, err)
 	}
-	for _, h := range []Hooks{{OutputFlow: newFakeFlow(0)}, {FixtureSessions: &fakeSessions{}}} {
+	noFlow, noFixtures, noHerdr, noSnapshot := full, full, full, full
+	noFlow.OutputFlow, noFixtures.FixtureSessions, noHerdr.HerdrSessions, noSnapshot.HerdrSnapshot = nil, nil, nil, "missing.json"
+	for _, h := range []Hooks{noFlow, noFixtures, noHerdr, noSnapshot} {
 		if _, err := s.Routes(h); err == nil {
 			t.Error("hook without provider accepted")
 		}
@@ -272,7 +276,7 @@ func TestRoutesFollowTheHooks(t *testing.T) {
 	if routes, err := s.Routes(Hooks{}); err != nil || len(routes) != 0 {
 		t.Fatalf("no hooks: %v, %v", routes, err)
 	}
-	for _, typ := range []string{TypeOutputLoad, TypeOutputLoadDone, TypeWorkspaceRestore} {
+	for _, typ := range []string{TypeOutputLoad, TypeOutputLoadDone, TypeWorkspaceRestore, TypeHerdrSessions, TypeHerdrExecCount} {
 		if _, ok := protocol.Lookup(typ); ok {
 			t.Errorf("%s is in the release catalog", typ)
 		}

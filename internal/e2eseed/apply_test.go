@@ -35,7 +35,7 @@ func TestApplyCheckedInSeed(t *testing.T) {
 		t.Fatalf("mfa = %v", f.mfa)
 	}
 	wantSkipped := []string{"admin_settings.automation_enabled", "commands", "command_sets",
-		"test_hooks.automation_ssh_peer", "test_hooks.socket_herdr_sessions"}
+		"test_hooks.automation_ssh_peer"}
 	if !slices.Equal(a.Skipped, wantSkipped) {
 		t.Fatalf("skipped = %q", a.Skipped)
 	}

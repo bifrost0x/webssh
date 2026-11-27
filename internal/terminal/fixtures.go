@@ -103,7 +103,7 @@ func (m *Manager) ReplaceFixtureSessions(_ context.Context, _ protocol.Peer, own
 		return nil, fault.New(fault.InvalidValue, "")
 	}
 	for _, s := range m.sessionsOf(owner) {
-		if s.fixture {
+		if s.fixture && s.fixtureExec == nil {
 			s.terminate(reasonClosed, nil)
 		}
 	}
