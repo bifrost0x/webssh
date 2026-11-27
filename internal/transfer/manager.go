@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -145,8 +146,6 @@ func New(o Options) *Manager {
 	}
 }
 
-var errUnavailable = fault.New(fault.TransferUnavailable, "")
-
 func tokenKey(token string) [32]byte { return sha256.Sum256([]byte(token)) }
 
 // create registers a pending transfer. It takes ownership of release: on
@@ -188,8 +187,8 @@ func (m *Manager) create(ctx context.Context, r *record, release []func()) (stri
 func newID() string { return NewToken()[:24] }
 
 func runAll(fs []func()) {
-	for i := len(fs) - 1; i >= 0; i-- {
-		fs[i]()
+	for _, f := range slices.Backward(fs) {
+		f()
 	}
 }
 

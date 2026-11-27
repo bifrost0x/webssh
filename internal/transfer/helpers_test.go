@@ -39,12 +39,6 @@ func (s *regSources) add(id string, owner principal.Principal, b files.Backend) 
 	s.backends[id], s.owners[id] = b, owner
 }
 
-func (s *regSources) drop(id string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.backends, id)
-}
-
 func (s *regSources) Resolve(_ context.Context, p principal.Principal, id string, need files.Capability) (files.Backend, func(), error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
