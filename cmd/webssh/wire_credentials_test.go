@@ -68,17 +68,34 @@ func TestCredentialsWiring(t *testing.T) {
 		t.Fatal(err)
 	}
 	saved := savedPasswords{sys.vault}
-	if pw, err := saved.Password(t.Context(), 1, rec.ID); err != nil || pw != "box-secret" {
+	// A connection gets a saved password only for its own principal and
+	// only over HTTPS (connection_password).
+	conn := principal.With(t.Context(), principal.Principal{UserID: 1, SessionID: "s1", Secure: true})
+	plain := principal.With(t.Context(), principal.Principal{UserID: 1, SessionID: "s1"})
+	other := principal.With(t.Context(), principal.Principal{UserID: 2, SessionID: "s2", Secure: true})
+	if _, err := saved.Password(plain, 1, rec.ID); fault.CodeOf(err) != fault.HTTPSRequired {
+		t.Errorf("without HTTPS: %v", err)
+	}
+	if _, err := saved.Password(other, 1, rec.ID); fault.CodeOf(err) != fault.AuthenticationNeeded {
+		t.Errorf("another user: %v", err)
+	}
+	if _, err := saved.Password(t.Context(), 1, rec.ID); fault.CodeOf(err) != fault.AuthenticationNeeded {
+		t.Errorf("without a principal: %v", err)
+	}
+	if _, err := saved.TargetPassword(plain, principal.Principal{UserID: 1, SessionID: "s1"}, "c", "t", "h", 22, "u", "", ""); fault.CodeOf(err) != fault.HTTPSRequired {
+		t.Errorf("target password without HTTPS: %v", err)
+	}
+	if pw, err := saved.Password(conn, 1, rec.ID); err != nil || pw != "box-secret" {
 		t.Fatalf("saved password: %q %v", pw, err)
 	}
-	if _, err := saved.Password(t.Context(), 1, "jump:none"); fault.CodeOf(err) != fault.CredentialMissing {
+	if _, err := saved.Password(conn, 1, "jump:none"); fault.CodeOf(err) != fault.CredentialMissing {
 		t.Errorf("unknown resource: %v", err)
 	}
 	if _, err := sys.hosts.SaveProfile(ctx, 1, protocol.HostsProfileSave{ID: j(`"` + rec.ID + `"`), Name: j(`"Box"`),
 		Host: j(`"elsewhere.example"`), Port: j(`22`), Username: j(`"root"`), AuthType: j(`"password"`)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := saved.Password(t.Context(), 1, rec.ID); fault.CodeOf(err) != fault.CredentialTargetChanged {
+	if _, err := saved.Password(conn, 1, rec.ID); fault.CodeOf(err) != fault.CredentialTargetChanged {
 		t.Errorf("moved host: %v", err)
 	}
 	// create_for_resource through the hosts adapter.
@@ -94,7 +111,7 @@ func TestCredentialsWiring(t *testing.T) {
 		ID string `json:"id"`
 	}
 	_ = json.Unmarshal(jumps[0], &jr)
-	if pw, err := saved.Password(t.Context(), 1, "jump:"+jr.ID); err != nil || pw != "jump-secret" {
+	if pw, err := saved.Password(conn, 1, "jump:"+jr.ID); err != nil || pw != "jump-secret" {
 		t.Fatalf("jump password: %q %v", pw, err)
 	}
 	// HTTP needs HTTPS: the browser's Origin states it behind a proxy.

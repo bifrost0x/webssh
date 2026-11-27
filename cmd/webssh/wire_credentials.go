@@ -17,6 +17,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/store"
+	"github.com/bifrost0x/webssh/internal/terminal"
 	"github.com/bifrost0x/webssh/internal/vault"
 )
 
@@ -55,12 +56,13 @@ func credentialsArea() extension {
 
 // The providers satisfy the consumer interfaces of the area.
 var (
-	_ vault.Stores         = credentialStores{}
-	_ vault.ResourceWriter = credentialResources{}
-	_ vault.Policy         = credentialPolicy{}
-	_ vault.Incarnations   = credentialAccounts{}
-	_ vault.Audit          = credentialAudit{}
-	_ vault.Resources      = (*vault.Service)(nil)
+	_ vault.Stores            = credentialStores{}
+	_ vault.ResourceWriter    = credentialResources{}
+	_ vault.Policy            = credentialPolicy{}
+	_ vault.Incarnations      = credentialAccounts{}
+	_ vault.Audit             = credentialAudit{}
+	_ vault.Resources         = (*vault.Service)(nil)
+	_ terminal.SavedPasswords = savedPasswords{}
 )
 
 // credentialStores reads the saved hosts, jump hosts and SOCKS proxies of
@@ -149,12 +151,31 @@ func (c credentialAudit) CredentialChanged(_ context.Context, userID int64, acti
 }
 
 // savedPasswords adapts the vault to the terminal's saved passwords
-// (terminal.SavedPasswords of NW1, wired when the areas are merged): the
-// password assigned to a saved host, jump host or SOCKS proxy, checked
-// against the resource as it is now.
+// (terminal.SavedPasswords): the password assigned to a saved host, jump
+// host or SOCKS proxy, checked against the resource as it is now. A
+// connection gets one only for the principal of ctx, reached over HTTPS,
+// as connection_password required.
 type savedPasswords struct{ vault *vault.Service }
 
+// connecting is the principal of a connection that may use owner's saved
+// passwords.
+func connecting(ctx context.Context, owner int64) (principal.Principal, error) {
+	p, err := principal.Require(ctx)
+	switch {
+	case err != nil:
+		return principal.Principal{}, err
+	case p.UserID != owner:
+		return principal.Principal{}, fault.New(fault.AuthenticationNeeded, "")
+	case !p.Secure:
+		return principal.Principal{}, fault.New(fault.HTTPSRequired, "")
+	}
+	return p, nil
+}
+
 func (s savedPasswords) Password(ctx context.Context, owner int64, resourceID string) (string, error) {
+	if _, err := connecting(ctx, owner); err != nil {
+		return "", err
+	}
 	t, found, err := s.vault.Resource(ctx, owner, resourceID)
 	if err != nil {
 		return "", err
@@ -174,6 +195,9 @@ func (s savedPasswords) Password(ctx context.Context, owner int64, resourceID st
 // the target token of /api/credentials/authorize-target
 // (credential_target_token) for exactly this host, port, user and route.
 func (s savedPasswords) TargetPassword(ctx context.Context, p principal.Principal, credentialID, token string, host string, port int, user, jumpHostID, socksProxyID string) (string, error) {
+	if _, err := connecting(ctx, p.UserID); err != nil {
+		return "", err
+	}
 	port64, auth := int64(port), "password"
 	t := vault.Target{Kind: vault.ResourceSSH, Host: &host, Port: &port64, Username: &user, AuthType: &auth}
 	if jumpHostID != "" {

@@ -23,6 +23,7 @@ func (s *system) buildEdges(in bootInput) error {
 		Origin:   s.originPolicy(),
 		Sessions: s.gatedSessions(), Revocations: s.sessions,
 		Limiter: auth.Realtime{L: realtimeLimiter(cfg)}, Auditor: s.audit, Log: s.log,
+		Secure: httpapi.ReachedOverHTTPS,
 	}); err != nil {
 		return fmt.Errorf("realtime endpoint: %w", err)
 	}

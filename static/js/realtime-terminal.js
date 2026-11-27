@@ -64,7 +64,15 @@
             if (typeof data[name] === 'string' && data[name] !== '') target[name] = data[name];
         }
         Object.assign(target, jump ? {jump_host_id: jump} : {}, socks ? {socks_proxy_id: socks} : {});
-        if (data.credential_id !== undefined && data.credential_id !== null) target.saved_password = true;
+        // A saved password: of the saved host, or for a typed target the
+        // credential and the target token the page confirmed.
+        if (data.credential_id !== undefined && data.credential_id !== null) {
+            target.saved_password = true;
+            if (typeof data.credential_id === 'string' && data.credential_id !== '') target.credential_id = data.credential_id;
+            if (typeof data.credential_target_token === 'string' && data.credential_target_token !== '') {
+                target.credential_target_token = data.credential_target_token;
+            }
+        }
         if (jump) Object.assign(target, routeSecrets(data.proxy_jump, 'jump_'));
         if (socks) Object.assign(target, routeSecrets(data.socks_proxy, 'socks_'));
         const port = typeof data.port === 'string' && /^\d{1,5}$/.test(data.port) ? Number(data.port) : data.port;

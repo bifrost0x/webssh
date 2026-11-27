@@ -36,7 +36,7 @@ func (d *Dialer) handshake(ctx context.Context, conn net.Conn, owner int64, h ho
 		return nil, fail(hctx, h.role, false, err)
 	}
 	var banner strings.Builder
-	plan := &authPlan{ctx: hctx, password: h.Auth.Password, signer: h.signer, legacy: h.Legacy, attended: ix != nil}
+	plan := &authPlan{ctx: hctx, password: h.Auth.Password, guard: h.Auth.Guard, signer: h.signer, legacy: h.Legacy, attended: ix != nil}
 	if ch, ok := ix.(Challenger); ok {
 		plan.ask = func(name, instruction string, questions []string, echos []bool) ([]string, error) {
 			return askUser(hctx, wd, ch, h, name, instruction, questions, echos)

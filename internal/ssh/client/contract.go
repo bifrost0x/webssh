@@ -68,6 +68,18 @@ type Hop struct {
 type Auth struct {
 	Password string
 	KeyID    string
+	// Guard, when set, re-checks a saved password right before it is
+	// sent; an error ends the attempt without sending it (CredentialGuard
+	// of the Python release).
+	Guard PasswordGuard
+}
+
+// PasswordGuard checks that a saved password may still be used for the
+// connection it was resolved for: host-key and banner prompts can keep an
+// attempt waiting while the assignment changes. Implementations are
+// pointers or other comparable values.
+type PasswordGuard interface {
+	Check(ctx context.Context) error
 }
 
 // SOCKS is a SOCKS5 proxy. Username and Password, both set or both

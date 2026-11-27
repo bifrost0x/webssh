@@ -106,6 +106,11 @@ type OpenTarget struct {
 	SavedPassword      bool   `json:"saved_password,omitzero"`
 	JumpSavedPassword  bool   `json:"jump_saved_password,omitzero"`
 	SOCKSSavedPassword bool   `json:"socks_saved_password,omitzero"`
+	// CredentialID and CredentialTargetToken name the saved password of a
+	// connection typed by hand and the target the page confirmed for it
+	// (credential_id, credential_target_token).
+	CredentialID          string `json:"credential_id,omitzero"`
+	CredentialTargetToken string `json:"credential_target_token,omitzero"`
 	// Interactive says the page answers prompt.interactive and shows the
 	// gateway's temporary terminal (gateway_interaction and
 	// ssh_interaction of the Python release). An SSH gateway selector

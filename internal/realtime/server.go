@@ -112,6 +112,10 @@ type Deps struct {
 	Limiter     Limiter // optional: no rate limits
 	Auditor     Auditor // optional: no audit records
 	Log         *slog.Logger
+	// Secure reports whether the upgrade request reached the server over
+	// HTTPS; it sets principal.Secure of the connection. Optional: without
+	// it no connection counts as secure.
+	Secure func(*http.Request) bool
 }
 
 // Restorer lists the terminal sessions a new connection of p may attach
@@ -290,6 +294,7 @@ func (s *Server) authenticate(r *http.Request) (principal.Principal, bool) {
 	if err != nil || !p.Valid() {
 		return principal.Principal{}, false
 	}
+	p.Secure = s.deps.Secure != nil && s.deps.Secure(r)
 	return p, true
 }
 

@@ -29,6 +29,7 @@ const maxPromptRounds = 8
 type authPlan struct {
 	ctx      context.Context
 	password string
+	guard    PasswordGuard
 	signer   ssh.Signer
 	legacy   bool
 	attended bool
@@ -76,6 +77,9 @@ func (a *authPlan) next(c *ssh.ClientAuthContext) (ssh.AuthMethod, error) {
 		}
 		return ssh.PublicKeys(signer), nil
 	case a.password != "" && allowed("password"):
+		if err := a.checkGuard(); err != nil {
+			return nil, err
+		}
 		return ssh.Password(a.password), nil
 	case a.password != "" && allowed("keyboard-interactive"):
 		return ssh.KeyboardInteractive(a.challenge), nil
@@ -88,6 +92,19 @@ func (a *authPlan) next(c *ssh.ClientAuthContext) (ssh.AuthMethod, error) {
 		return nil, a.needsUser()
 	}
 	return nil, errAuthExhausted
+}
+
+// checkGuard runs the guard of a saved password before it is sent; a
+// refusal ends the attempt.
+func (a *authPlan) checkGuard() error {
+	if a.guard == nil {
+		return nil
+	}
+	if err := a.guard.Check(a.ctx); err != nil {
+		a.abort = err
+		return err
+	}
+	return nil
 }
 
 func (a *authPlan) needsUser() error {
@@ -111,6 +128,10 @@ func (a *authPlan) challenge(name, instruction string, questions []string, echos
 	case !a.answered && a.password != "" && len(questions) == 1 && !echos[0]:
 		// The stored password answers the first single hidden prompt.
 		a.answered = true
+		if err := a.checkGuard(); err != nil {
+			a.abort = err
+			return nil, err
+		}
 		return []string{a.password}, nil
 	case a.ask != nil:
 		a.answered = true

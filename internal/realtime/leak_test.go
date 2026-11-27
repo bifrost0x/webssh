@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"context"
+	"net/http"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -81,5 +82,23 @@ func settledGoroutines(t *testing.T, want int) int {
 		}
 		last = n
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// The connection's principal says whether the upgrade reached the server
+// over HTTPS, as the Secure dependency judged it; without one it is false.
+func TestPrincipalSecureFromTheUpgrade(t *testing.T) {
+	for _, secure := range []bool{false, true} {
+		got := make(chan bool, 1)
+		e := newEnv(t, Config{}, func(s *Server) {
+			if secure {
+				s.deps.Secure = func(*http.Request) bool { return true }
+			}
+			s.OnOpen(func(p protocol.Peer) { got <- p.Principal().Secure })
+		})
+		e.open(1, "a")
+		if v := <-got; v != secure {
+			t.Fatalf("Secure = %v, want %v", v, secure)
+		}
 	}
 }
