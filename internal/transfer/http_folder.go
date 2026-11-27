@@ -20,9 +20,9 @@ import (
 // a transfer ends early. The limits are the same: the tree is walked
 // first, links, the member and depth limits and the declared size refuse
 // the download before any byte is sent; the bytes read and the archive
-// written stay within min(MAX_ZIP_DOWNLOAD_SIZE, QUOTA_TEMP_BYTES_PER_USER),
-// and the temp_bytes quota is reserved for that amount while it runs, so
-// a user builds as many archives at once as before.
+// written stay within min(MAX_ZIP_DOWNLOAD_SIZE, QUOTA_TEMP_BYTES_PER_USER).
+// No disk space is used, so the temp_bytes quota is not charged (TR1-2);
+// the transfer quota of the user bounds how many archives run at once.
 func (m *Manager) FolderHTTP(w http.ResponseWriter, req *http.Request) {
 	r, p, req := m.started(w, req, Download, true)
 	if r == nil {
@@ -36,7 +36,7 @@ func (m *Manager) FolderHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	defer release()
-	entries, total, quota, err := m.planArchive(ctx, b, r, p.UserID)
+	entries, total, err := m.planArchive(ctx, b, r)
 	if err != nil {
 		f := endedBy(ctx, err, opFolder)
 		m.auditOp(r, p.Username, "folder_download", string(f.Code), 0)
@@ -44,7 +44,6 @@ func (m *Manager) FolderHTTP(w http.ResponseWriter, req *http.Request) {
 		m.end(r, stateOf(f), &f)
 		return
 	}
-	defer quota()
 	attachment(w, folderName(r.path)+".zip", "application/zip")
 	w.WriteHeader(http.StatusOK)
 	n, err := m.writeArchive(ctx, w, b, r, entries, total)
@@ -52,34 +51,30 @@ func (m *Manager) FolderHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 // archiveLimit bounds one archive: MAX_ZIP_DOWNLOAD_SIZE, and the
-// per-user temp quota of the Python release, which built it on disk.
+// per-user temp quota of the Python release, which built it on disk. The
+// quota is a cap per archive only; it is not reserved.
 func (m *Manager) archiveLimit() int64 {
 	return min(m.o.Limits.MaxArchive, m.o.Limits.TempBytesPerUse)
 }
 
-// planArchive checks the folder and its tree and reserves the quota. It
-// returns the entries below the folder and their declared size.
-func (m *Manager) planArchive(ctx context.Context, b files.Backend, r *record, userID int64) ([]files.Entry, int64, func(), error) {
+// planArchive checks the folder and its tree. It returns the entries
+// below the folder and their declared size.
+func (m *Manager) planArchive(ctx context.Context, b files.Backend, r *record) ([]files.Entry, int64, error) {
 	st, err := b.Stat(ctx, r.path, false)
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, err
 	}
 	if !st.IsDir || st.IsSymlink {
-		return nil, 0, nil, fault.New(fault.FileNotFound, "")
+		return nil, 0, fault.New(fault.FileNotFound, "")
 	}
 	limit := m.archiveLimit()
 	if limit < 1 {
-		return nil, 0, nil, errLimit
-	}
-	quota, err := m.o.Quotas.Reserve(ctx, quotaTemp, userID, limit)
-	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, errLimit
 	}
 	bud := &budget{maxBytes: limit, maxMembers: m.o.Limits.MaxMembers, maxDepth: m.o.Limits.MaxDepth}
 	entries, err := bud.tree(ctx, b, r.path)
 	if err != nil {
-		quota()
-		return nil, 0, nil, err
+		return nil, 0, err
 	}
 	var total int64
 	for _, e := range entries {
@@ -87,7 +82,7 @@ func (m *Manager) planArchive(ctx context.Context, b files.Backend, r *record, u
 			total += e.Size
 		}
 	}
-	return entries, total, quota, nil
+	return entries, total, nil
 }
 
 // folderName is the top directory of the archive.

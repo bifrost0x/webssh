@@ -172,8 +172,8 @@ type Sources interface {
 }
 
 // Quotas reserves runtime quota (provided by internal/quota). Kinds used
-// here: "transfer" per HTTP transfer, "temp_bytes" for a ZIP being built,
-// "background_job" per host-to-host copy.
+// here: "transfer" per HTTP transfer and "background_job" per host-to-host
+// copy. A streamed ZIP uses no disk and charges no "temp_bytes".
 type Quotas interface {
 	Reserve(ctx context.Context, kind string, userID int64, amount int64) (release func(), err error)
 }

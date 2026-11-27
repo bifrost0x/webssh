@@ -388,8 +388,10 @@ The permission events (`get_file_permissions`, `set_file_permissions`,
   `error`.
 - Limits (`DefaultLimits`): `MAX_UPLOAD_SIZE`, `MAX_DOWNLOAD_SIZE`
   (100 MiB each), `MAX_ZIP_DOWNLOAD_SIZE` (500 MiB, also host-to-host),
-  `MAX_TRANSFER_MEMBERS` (10000), depth 50; a ZIP being built is capped by
-  `QUOTA_TEMP_BYTES_PER_USER` and reserves `temp_bytes`.
+  `MAX_TRANSFER_MEMBERS` (10000), depth 50; a ZIP is capped by
+  `QUOTA_TEMP_BYTES_PER_USER` as well. It is streamed without a temporary
+  file, so it reserves no `temp_bytes` (W3 integration, TR1-2); the
+  `transfer` quota bounds the archives of a user that run at once.
 - `Failure{Code, Message, LimitKind, LimitBytes, ActualBytes}` with
   `Retryable()`: `SHARE_UNAVAILABLE`, `TIMEOUT`, `SOURCE_UNAVAILABLE` and
   `SOURCE_CHANGED` are retryable (`app/transfer_errors.py`).

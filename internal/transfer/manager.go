@@ -15,7 +15,6 @@ import (
 // Quota kinds a transfer reserves (internal/quota).
 const (
 	quotaTransfer = "transfer"
-	quotaTemp     = "temp_bytes"
 	quotaJob      = "background_job"
 )
 

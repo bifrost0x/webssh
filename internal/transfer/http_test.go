@@ -300,3 +300,19 @@ func TestContentDisposition(t *testing.T) {
 		e.idle()
 	}
 }
+
+// TR1-2: a streamed ZIP uses no disk and charges no temp_bytes quota; the
+// quota only caps one archive.
+func TestArchiveChargesNoTempQuota(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.quota.mu.Lock()
+	e.quota.limit["temp_bytes"] = 0
+	e.quota.mu.Unlock()
+	e.a.PutFile("/d/f", []byte("four"))
+	pr := e.prepare(transfer.PrepareRequest{SourceID: "sftp-session:a", Direction: transfer.Download, Path: "/d", Archive: true})
+	if r := e.do(e.owner, http.MethodGet, pr.URL, nil, 0); r.Code != http.StatusOK {
+		t.Fatalf("%d", r.Code)
+	}
+	e.idle()
+}
