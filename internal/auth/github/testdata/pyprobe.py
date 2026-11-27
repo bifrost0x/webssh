@@ -6,7 +6,6 @@ line. Test support only.
 """
 
 import json
-import os
 import sys
 
 sys.path.insert(0, sys.argv[1])
