@@ -131,7 +131,7 @@ type Applied struct {
 
 // Apply writes the seed into the stores, in the order of run_app.py:
 // admin settings, accounts, account settings, factors and feature gates,
-// keys, jump hosts, SOCKS proxies, profiles. Parts that belong to
+// keys, jump hosts, SOCKS proxies, commands and command sets, profiles. Parts that belong to
 // capabilities outside this build are logged and skipped (Skipped). The
 // first error stops the run; the caller discards the data directory.
 func Apply(ctx context.Context, s *Seed, st Stores, log *slog.Logger) (Applied, error) {
@@ -151,7 +151,6 @@ func Apply(ctx context.Context, s *Seed, st Stores, log *slog.Logger) (Applied, 
 		func() error { return applyAccounts(ctx, s, st, a.Users) },
 		func() error { return applyFactors(ctx, s, st, a.Users) },
 		func() error { return applyIdentities(ctx, s, st, a.Users) },
-		func() error { return applyCommands(ctx, s, st.Commands, a.Users, time.Now()) },
 		func() error { return applyConnections(ctx, s, st, a.Users) },
 	}
 	for _, step := range steps {
@@ -267,6 +266,9 @@ func applyConnections(ctx context.Context, s *Seed, st Stores, users map[string]
 		if proxies[p.Ref], err = st.Hosts.AddSOCKSProxy(ctx, users[p.Account], rec); err != nil {
 			return fmt.Errorf("socks proxy %s: %w", p.Ref, err)
 		}
+	}
+	if err := applyCommands(ctx, s, st.Commands, users, time.Now()); err != nil {
+		return err
 	}
 	// Profiles are saved per account in first-appearance order.
 	var order []string

@@ -34,7 +34,7 @@ func TestApplyCheckedInSeed(t *testing.T) {
 	if !f.mfa[mixed] || len(f.mfa) != 1 {
 		t.Fatalf("mfa = %v", f.mfa)
 	}
-	wantSkipped := []string{"admin_settings.automation_enabled", "commands", "command_sets",
+	wantSkipped := []string{"admin_settings.automation_enabled",
 		"test_hooks.automation_ssh_peer", "test_hooks.socket_herdr_sessions"}
 	if !slices.Equal(a.Skipped, wantSkipped) {
 		t.Fatalf("skipped = %q", a.Skipped)
@@ -48,7 +48,7 @@ func TestApplyCheckedInSeed(t *testing.T) {
 	// everything that refers to them, keys before routes before profiles.
 	order := []string{"registration true", "limits 100 1000", "account e2e_admin", "onboarding 1 completed true",
 		"mfa 4", "feature totp true 1", "totp 4 E2E authenticator true", "passkey 4 E2E passkey e2e-mixed-passkey 0",
-		"key 1 E2E usable key", "jump 1 E2E key jump host", "socks 1 E2E none SOCKS proxy", "profiles 1 23", "profiles 2 1"}
+		"key 1 E2E usable key", "jump 1 E2E key jump host", "socks 1 E2E none SOCKS proxy", "commands 1 2 2", "profiles 1 23", "profiles 2 1"}
 	last := -1
 	for _, call := range order {
 		i := slices.Index(f.calls, call)
@@ -146,7 +146,7 @@ func TestApplyStopsAtFirstStoreError(t *testing.T) {
 	t.Parallel()
 	for _, failOn := range []string{"registration true", "account e2e_user", "mfa 4", "feature passkey true 1",
 		"totp 4 E2E authenticator true", "key 1 E2E usable key", "jump 1 E2E key jump host",
-		"socks 1 E2E password SOCKS proxy", "profiles 1 23", "onboarding 2 completed true", "limits 100 1000"} {
+		"socks 1 E2E password SOCKS proxy", "commands 1 2 2", "profiles 1 23", "onboarding 2 completed true", "limits 100 1000"} {
 		f := newFakeStores()
 		f.failOn = failOn
 		_, err := Apply(t.Context(), loadSeed(t), f.stores(), slog.New(slog.DiscardHandler))
