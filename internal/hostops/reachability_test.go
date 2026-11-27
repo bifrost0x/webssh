@@ -180,12 +180,92 @@ func TestReachabilityPlansAtMostFiftyHosts(t *testing.T) {
 		hosts = append(hosts, ReachHost{ID: "h" + itoa(i), Host: "h", Port: 22})
 	}
 	r := &Reachability{Canonical: canonicalLower}
-	plans, sig := r.plans(hosts, nil)
+	plans, sig := r.plans(principaltest.User(1), hosts, nil)
 	if len(plans) != MaxProbes {
 		t.Fatalf("%d plans", len(plans))
 	}
-	other, sig2 := r.plans(hosts, map[string]bool{"h1": true})
+	other, sig2 := r.plans(principaltest.User(1), hosts, map[string]bool{"h1": true})
 	if len(other) != 1 || sig == sig2 {
 		t.Fatalf("wanted plans: %d", len(other))
+	}
+}
+
+// fakeTailnet lets user 1 launch the hosts in may and routes those in
+// routed through the tailnet, where tailnet answers them.
+type fakeTailnet struct {
+	may, routed map[string]bool
+	tailnet     *fakeProber
+	asked       []string
+}
+
+func (f *fakeTailnet) MayLaunch(p principal.Principal, host string, _ int, user string) bool {
+	return p.UserID == 1 && f.may[host] && user == "root"
+}
+
+func (f *fakeTailnet) DialTailnet(ctx context.Context, p principal.Principal, host string, port int, user string) (Conn, bool, error) {
+	f.asked = append(f.asked, host)
+	if !f.MayLaunch(p, host, port, user) || !f.routed[host] {
+		return nil, false, nil
+	}
+	conn, err := f.tailnet.DialProbe(ctx, host, port)
+	return conn, true, err
+}
+
+// HO2-2: a direct Tailscale SSH host the caller may launch is reached
+// over its authorized tailnet route, not refused by the tailnet route
+// restriction of the network policy; without the authorization or the
+// route it is probed as any other host.
+func TestReachabilityUsesTheTailnetAuthorization(t *testing.T) {
+	hosts := []ReachHost{
+		{ID: "node", Host: "node.ts.net", Port: 22, AuthType: "tailscale", Username: "root"},
+		{ID: "down", Host: "down.ts.net", Port: 22, AuthType: "tailscale", Username: "root"},
+		{ID: "denied", Host: "denied.ts.net", Port: 22, AuthType: "tailscale", Username: "root"},
+		{ID: "other-user", Host: "node.ts.net", Port: 22, AuthType: "tailscale", Username: "admin"},
+		{ID: "no-route", Host: "lan.example", Port: 22, AuthType: "tailscale", Username: "root"},
+		{ID: "key", Host: "node.ts.net", Port: 2222, AuthType: "key", Username: "root"},
+	}
+	// The ordinary policy refuses every tailnet node.
+	h, prober, greetings := reachFixture(hosts, map[string]string{
+		"node.ts.net:22": "blocked", "down.ts.net:22": "blocked", "denied.ts.net:22": "blocked",
+		"node.ts.net:2222": "blocked", "lan.example:22": "ssh:SSH-2.0-OpenSSH_9.6\r\n",
+	})
+	tn := &fakeTailnet{
+		may:     map[string]bool{"node.ts.net": true, "down.ts.net": true, "lan.example": true},
+		routed:  map[string]bool{"node.ts.net": true, "down.ts.net": true},
+		tailnet: &fakeProber{script: map[string]string{"node.ts.net:22": "ssh:SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.5\r\n"}},
+	}
+	h.Check.Tailnet = tn
+	h.Check.deadline = 3 * time.Second
+	status, body := reachRequest(t, h, principaltest.User(1), "")
+	if status != 200 {
+		t.Fatalf("check: %d %v", status, body)
+	}
+	results := body["results"].(map[string]any)
+	want := map[string]string{"node": "reachable", "down": "unreachable", "denied": "blocked",
+		"other-user": "blocked", "no-route": "reachable", "key": "blocked"}
+	for id, s := range want {
+		if got := results[id].(map[string]any)["state"]; got != s {
+			t.Errorf("%s: %v, want %s", id, got, s)
+		}
+	}
+	// Only the host with a remote user outside the allowlist reaches
+	// node.ts.net through the network policy.
+	policyDials := map[string]int{}
+	for _, d := range prober.dials() {
+		policyDials[d]++
+	}
+	if policyDials["node.ts.net:22"] != 1 || policyDials["down.ts.net:22"] != 0 {
+		t.Errorf("authorized tailnet hosts went through the network policy: %v", policyDials)
+	}
+	if g := greetings.seen["node"]; g.Platform != "ubuntu" {
+		t.Errorf("tailnet greeting %+v", greetings.seen)
+	}
+	// A change of the authorization is another set of destinations.
+	r := h.Check
+	_, before := r.plans(principaltest.User(1), hosts, nil)
+	tn.may["node.ts.net"] = false
+	_, after := r.plans(principaltest.User(1), hosts, nil)
+	if before == after {
+		t.Error("the signature ignores the tailnet authorization")
 	}
 }

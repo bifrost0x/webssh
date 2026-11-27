@@ -4,16 +4,19 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+
+	"github.com/bifrost0x/webssh/internal/principal"
 )
 
 // run checks the hosts of owner; allow charges the rate limits once the
 // check is not answered from the cache.
-func (c *Reachability) run(ctx context.Context, owner int64, wanted map[string]bool, allow func(endpoints int) bool, log *slog.Logger) (map[string]any, error) {
+func (c *Reachability) run(ctx context.Context, p principal.Principal, wanted map[string]bool, allow func(endpoints int) bool, log *slog.Logger) (map[string]any, error) {
+	owner := p.UserID
 	hosts, err := c.Inventory(ctx, owner)
 	if err != nil {
 		return nil, err
 	}
-	plans, signature := c.plans(hosts, wanted)
+	plans, signature := c.plans(p, hosts, wanted)
 	targets := map[ProbeTarget]bool{}
 	for _, p := range plans {
 		if p.valid {
@@ -43,7 +46,7 @@ func (c *Reachability) run(ctx context.Context, owner int64, wanted map[string]b
 	}
 	c.inFlight[owner] = true
 	c.mu.Unlock()
-	outcomes := c.probeAll(ctx, targets)
+	outcomes := c.probeAll(ctx, p, targets)
 	c.mu.Lock()
 	delete(c.inFlight, owner)
 	c.mu.Unlock()
@@ -90,7 +93,7 @@ func (c *Reachability) run(ctx context.Context, owner int64, wanted map[string]b
 // probeAll probes the targets on the shared pool within the deadline of a
 // check. A probe that did not answer in time, or never started, is
 // "unchecked": unknown, not down.
-func (c *Reachability) probeAll(ctx context.Context, targets map[ProbeTarget]bool) map[ProbeTarget]Outcome {
+func (c *Reachability) probeAll(ctx context.Context, p principal.Principal, targets map[ProbeTarget]bool) map[ProbeTarget]Outcome {
 	c.once.Do(func() { c.probes = make(chan struct{}, maxConcurrentProbes) })
 	deadline := c.deadline
 	if deadline == 0 {
@@ -109,7 +112,7 @@ func (c *Reachability) probeAll(ctx context.Context, targets map[ProbeTarget]boo
 				return
 			}
 			defer func() { <-c.probes }()
-			o := c.probe(dctx, t)
+			o := c.probe(dctx, p, t)
 			if dctx.Err() != nil {
 				return
 			}

@@ -79,6 +79,7 @@ type overviewRecord struct {
 	SOCKSProxyID *string        `json:"socks_proxy_id"`
 	AuthType     string         `json:"auth_type"`
 	KeyID        *string        `json:"key_id"`
+	Username     string         `json:"username"`
 }
 
 func (o overviewInventory) OverviewInventory(ctx context.Context, owner int64) (hostops.OverviewInventory, error) {

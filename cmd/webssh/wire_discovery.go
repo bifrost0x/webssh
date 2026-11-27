@@ -16,6 +16,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
+	"github.com/bifrost0x/webssh/internal/ssh/tailscale"
 )
 
 // discoveryArea wires the area "discovery" (HO2): discovery, platform facts and the overview (internal/hostops, internal/hosts).
@@ -63,6 +64,9 @@ func (w *discoveryWiring) wire(sys *system) error {
 	w.reach.Prober = prober
 	w.reach.Inventory = reachInventory{sys.hosts}.list
 	w.reach.Greetings = greetingStore{sys.hosts}
+	if v, ok := sys.optional.terminalVariants.(*variantProvider); ok && v.policy.Enabled() {
+		w.reach.Tailnet = tailnetProbe{v.policy}
+	}
 	w.detector.Hosts = sys.hosts
 	w.detector.Notify = func(owner int64, typ string, payload any) { sys.realtime.NotifyUser(owner, typ, payload) }
 	(&hostops.DiscoveryHTTP{Scanner: w.scanner, Enabled: sys.cfg.Features.HostDiscovery,
@@ -112,6 +116,29 @@ type probeDialer struct{ policy *netpolicy.Policy }
 
 func (d probeDialer) DialProbe(ctx context.Context, host string, port int) (hostops.Conn, error) {
 	return d.policy.DialContext(ctx, netpolicy.RoleProbe, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+}
+
+// tailnetProbe reaches direct Tailscale SSH hosts for the reachability
+// check with the policy of the terminal connection (wire_gateway.go): the
+// same authorization, the pinned address and the tailnet interface.
+var _ hostops.TailnetProber = tailnetProbe{}
+
+type tailnetProbe struct{ policy *tailscale.Policy }
+
+func (t tailnetProbe) MayLaunch(p principal.Principal, host string, port int, remoteUser string) bool {
+	return t.policy.Check(tsUser(p), host, port, remoteUser) == nil
+}
+
+func (t tailnetProbe) DialTailnet(ctx context.Context, p principal.Principal, host string, port int, remoteUser string) (hostops.Conn, bool, error) {
+	auth, err := t.policy.Authorize(ctx, tsUser(p), host, port, remoteUser)
+	if err != nil {
+		return nil, false, nil
+	}
+	conn, err := netpolicy.DialInterface(ctx, auth.Interface(), auth.Addr())
+	if err != nil {
+		return nil, true, err
+	}
+	return conn, true, nil
 }
 
 // userLimiter adapts the in-process limiter to the per-account limits of
@@ -190,7 +217,7 @@ func (ri reachInventory) list(ctx context.Context, owner int64) ([]hostops.Reach
 			return nil, err
 		}
 		h := hostops.ReachHost{ID: r.ID, AuthType: r.AuthType, JumpHostID: deref(r.JumpHostID),
-			SOCKSProxyID: deref(r.SOCKSProxyID), Host: r.Host, Port: recordPort(r.Port)}
+			SOCKSProxyID: deref(r.SOCKSProxyID), Host: r.Host, Port: recordPort(r.Port), Username: r.Username}
 		first, ok := r, true
 		if h.JumpHostID != "" {
 			first, ok = jumps[h.JumpHostID]

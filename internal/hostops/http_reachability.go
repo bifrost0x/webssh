@@ -77,7 +77,7 @@ func (h *ReachabilityHTTP) run(r *http.Request, p principal.Principal) (int, any
 	} else if !ok {
 		return 0, nil, errNotPermitted
 	}
-	body, err := h.Check.run(ctx, p.UserID, wanted, func(endpoints int) bool {
+	body, err := h.Check.run(ctx, p, wanted, func(endpoints int) bool {
 		return allowUser(h.Limiter, "overview_reachability", p.UserID, checkRateLimit, reachabilityRateSpan, 1) &&
 			allowUser(h.Limiter, "overview_reachability_probes", p.UserID, probeBudget, reachabilityRateSpan, endpoints)
 	}, h.Logger)

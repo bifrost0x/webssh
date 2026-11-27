@@ -39,9 +39,11 @@ type ReachHost struct {
 	SOCKSProxyID string
 	// Host and Port are the first hop as stored (Port 0: the default 22);
 	// Missing is set when the jump host or proxy no longer exists.
-	Host    string
-	Port    int
-	Missing bool
+	// Username is the remote user of a direct Tailscale SSH host.
+	Host     string
+	Port     int
+	Username string
+	Missing  bool
 }
 
 // ReachInventory lists the saved hosts of an account in list order.
@@ -51,9 +53,11 @@ type ReachInventory func(ctx context.Context, owner int64) ([]ReachHost, error)
 type ProbeTarget struct {
 	Host string // canonical
 	Port int
-	// Tailnet marks a direct Tailscale SSH host, whose tailnet route the
-	// check may use.
+	// Tailnet marks a direct Tailscale SSH host that the caller may
+	// launch (TailnetProber.MayLaunch); the check reaches it the way the
+	// terminal does. User is its remote user.
 	Tailnet bool
+	User    string
 	// SOCKS marks a SOCKS5 proxy: it sends no greeting, so the connection
 	// alone answers.
 	SOCKS bool
@@ -65,6 +69,20 @@ type ProbeTarget struct {
 // with Unreachable; any other error is a target that did not answer.
 type TCPProber interface {
 	DialProbe(ctx context.Context, host string, port int) (Conn, error)
+}
+
+// TailnetProber reaches a direct Tailscale SSH host the way a terminal
+// connection does (internal/ssh/tailscale through cmd/webssh). MayLaunch
+// is profile_is_authorized_for_launch: the switch and the allowlists of
+// users, targets and remote users, without any lookup. DialTailnet
+// authorizes the exact connection (tailscale.Policy.Authorize: an address
+// of the target whose kernel route leaves through the tailnet interface)
+// and connects to that address bound to the interface; authorized is
+// false when the target has no such route, and the check then probes it
+// as any other host, under the network policy.
+type TailnetProber interface {
+	MayLaunch(p principal.Principal, host string, port int, remoteUser string) bool
+	DialTailnet(ctx context.Context, p principal.Principal, host string, port int, remoteUser string) (conn Conn, authorized bool, err error)
 }
 
 // Conn is a probe connection.
@@ -130,8 +148,12 @@ type Reachability struct {
 	// the same, so names cannot be probed for existence.
 	BlockInternal bool
 	Greetings     GreetingStore
-	now           func() time.Time
-	deadline      time.Duration
+	// Tailnet reaches direct Tailscale SSH hosts; nil: they are probed as
+	// any other host, so a tailnet node reads as blocked while the route
+	// restriction holds.
+	Tailnet  TailnetProber
+	now      func() time.Time
+	deadline time.Duration
 
 	mu       sync.Mutex
 	cache    map[int64]cached
@@ -149,8 +171,9 @@ func (r *Reachability) clock() time.Time {
 
 // plans is _plans: one plan per saved host (wanted only, if given), at
 // most MaxProbes, and the signature of exactly this set of destinations.
-func (r *Reachability) plans(hosts []ReachHost, wanted map[string]bool) (map[string]plan, string) {
+func (r *Reachability) plans(p principal.Principal, hosts []ReachHost, wanted map[string]bool) (map[string]plan, string) {
 	plans := map[string]plan{}
+	caller := p
 	for _, h := range hosts {
 		if wanted != nil && !wanted[h.ID] {
 			continue
@@ -167,8 +190,11 @@ func (r *Reachability) plans(hosts []ReachHost, wanted map[string]bool) (map[str
 					port = 22
 				}
 				p.target, p.valid = ProbeTarget{Host: host, Port: port}, true
-				p.target.Tailnet = h.AuthType == "tailscale" && !p.viaJump && !p.viaSOCKS
 				p.target.SOCKS = p.viaSOCKS
+				if h.AuthType == "tailscale" && !p.viaJump && !p.viaSOCKS && r.Tailnet != nil &&
+					r.Tailnet.MayLaunch(caller, h.Host, port, h.Username) {
+					p.target.Tailnet, p.target.User = true, h.Username
+				}
 			}
 		}
 		plans[h.ID] = p
@@ -193,7 +219,7 @@ func (r *Reachability) Last(ctx context.Context, p principal.Principal) (map[str
 	if err != nil {
 		return nil, err
 	}
-	_, signature := r.plans(hosts, nil)
+	_, signature := r.plans(p, hosts, nil)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	c, ok := r.cache[p.UserID]
@@ -204,11 +230,15 @@ func (r *Reachability) Last(ctx context.Context, p principal.Principal) (map[str
 }
 
 // probe is _probe: one TCP connection, the greeting read, nothing sent.
-func (r *Reachability) probe(ctx context.Context, t ProbeTarget) Outcome {
+func (r *Reachability) probe(ctx context.Context, p principal.Principal, t ProbeTarget) Outcome {
 	started := time.Now()
 	dctx, cancel := context.WithTimeout(ctx, probeTimeout)
-	conn, err := r.Prober.DialProbe(dctx, t.Host, t.Port)
+	conn, tailnet, err := r.dial(dctx, p, t)
 	cancel()
+	if err != nil && tailnet {
+		// The authorized tailnet connection did not answer.
+		return Outcome{State: "unreachable"}
+	}
 	if err != nil {
 		switch code := fault.CodeOf(err); {
 		case code == fault.Unreachable && !r.BlockInternal:
@@ -233,6 +263,19 @@ func (r *Reachability) probe(ctx context.Context, t ProbeTarget) Outcome {
 		return Outcome{State: "unreachable"}
 	}
 	return Outcome{State: "reachable", LatencyMS: &latency, platform: b.Platform, greeted: true}
+}
+
+// dial connects to t: a launchable Tailscale SSH host over its authorized
+// tailnet route (tailnet true), anything else under the network policy.
+func (r *Reachability) dial(ctx context.Context, p principal.Principal, t ProbeTarget) (Conn, bool, error) {
+	if t.Tailnet && r.Tailnet != nil {
+		conn, authorized, err := r.Tailnet.DialTailnet(ctx, p, t.Host, t.Port, t.User)
+		if authorized {
+			return conn, true, err
+		}
+	}
+	conn, err := r.Prober.DialProbe(ctx, t.Host, t.Port)
+	return conn, false, err
 }
 
 // identificationLine is the first complete line starting with "SSH-";
