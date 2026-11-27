@@ -78,6 +78,7 @@ func TestTokenIsBoundToUserSessionAndRoute(t *testing.T) {
 		{"other user", e.do(other, http.MethodGet, pr.URL, nil, 0)},
 		{"other session", e.do(sameUserOtherSession, http.MethodGet, pr.URL, nil, 0)},
 		{"malformed", e.do(e.owner, http.MethodGet, "/api/transfers/short/download", nil, 0)},
+		{"head", e.do(e.owner, http.MethodHead, pr.URL, nil, 0)},
 	} {
 		if p.resp.Code != 404 || p.resp.Body.Len() != 0 {
 			t.Errorf("%s: %d %q", p.name, p.resp.Code, p.resp.Body.String())

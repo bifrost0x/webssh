@@ -448,6 +448,20 @@ Python handler and pushes `s2s_transfer_error`.
   transfer of another user or one that is gone, as in Python.
 - `Progress` and `Finished` of the contract gain `Copy *CopyRef`,
   `SourcePath` and `DestPath` for these events (additive, TR1).
+- HTTP: downloads are `AccessUser`; the upload is `AccessUserStream`
+  (`internal/httpapi`, additive): a user route whose body the edge does
+  not buffer, with the CSRF token from the header only; the handler
+  extends the read and write deadlines per chunk. A `HEAD` request never
+  uses up a token.
+- Visible changes against Python: a folder ZIP is written to the response
+  while the files are read (no file in `TRANSFER_TEMP_DIR`; the limits
+  are checked on the walk before the first byte, a failure later cuts the
+  connection); a single download sends `Content-Length` and the file as
+  it was when opened; the token is bound to the browser session as well
+  as the user; an unsafe replace during a host-to-host copy reports
+  `ATOMIC_REPLACE_UNAVAILABLE` on SFTP too (Python wrapped it into
+  `TRANSFER_UNAVAILABLE`); copies between the same sources run
+  concurrently (Python serialised them per source).
 
 ### Saved passwords and the legacy vault
 

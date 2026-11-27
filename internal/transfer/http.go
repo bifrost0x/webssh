@@ -15,7 +15,9 @@ import (
 // match it answers 404 without a body and returns nil.
 func (m *Manager) started(w http.ResponseWriter, r *http.Request, dir Direction, archive bool) (*record, principal.Principal, *http.Request) {
 	p, err := principal.Require(r.Context())
-	if err != nil {
+	// A HEAD request (which the GET pattern also matches) must not use
+	// up the token.
+	if err != nil || r.Method == http.MethodHead {
 		notFound(w)
 		return nil, p, r
 	}
