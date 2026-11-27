@@ -737,8 +737,8 @@ func (c Config) Explicit(name string) bool
   `ResolveSecretKey` → `Load`, as `Bootstrap` runs it; the composition
   root (D4) calls `Bootstrap` with `platform.PrepareDataDir` and does not
   reorder the steps.
-- `Config` holds only the settings this preview acts on; every other
-  documented variable is still validated like the Python release.
+- `Config` holds the settings the server acts on; every documented
+  variable is validated like the Python release.
   `Explicit(name)` says a variable was set to a non-blank value.
 - In the container the port stays 5000 (`serve --bind 0.0.0.0:5000`),
   whatever `HOST` and `PORT` say.

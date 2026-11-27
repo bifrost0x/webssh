@@ -1238,17 +1238,18 @@ A test checks that the files and the list agree.
 
 ### Route catalog by area
 
-The 501 catalog of `internal/httpapi` is split by area:
+The route catalog of `internal/httpapi` is split by area:
 `routes_areas.go` lists the areas, and each `routes_<area>.go` holds
-`<area>Built` (routes with their access level) and `<area>Preview` (routes
-that still answer 501). A package moves each route it builds from the
-preview list to the built list of its own file. The areas are `ldap`
-(ID1), `oidc` (ID2), `github` (ID3), `accounts` (ID4), `retired` (FE1:
-`POST /api/totp/disable`, without a caller after D-13), `backup` (OP1),
+`<area>Built` (routes with their access level). The areas are `ldap`
+(ID1), `oidc` (ID2), `github` (ID3), `accounts` (ID4), `backup` (OP1),
 `operations` (OP3), `hostcontext` (HO3), `discovery` (HO2), `serverops`
-(HO1), `credentials` (VA1), `automation` (AU1), `schedules` (AU2) and
-`transfers` (TR1). The test against the Flask route table is unchanged:
-every Python route is built or a preview route, never both.
+(HO1), `credentials` (VA1), `automation` (AU1), `schedules` (AU2),
+`transfers` (TR1) and `files` (FS1). Routes of the Python release
+without a caller are `droppedRoutes`, each with its decision (D-06,
+D-13), and answer 404. The test against the Flask route table checks
+that every Python route is built or dropped, never both; the server does
+not start while a catalog route has no handler, and `DisableArea`
+answers an area the configuration turns off (OIDC) with 404 (FE1).
 
 ### Realtime shim by area
 
@@ -1363,7 +1364,8 @@ Consumer interfaces of `internal/terminal` (Deps):
   ResolveSet(ctx, owner, setID) (string, error)}` for the modes `command`
   and `command_set`; CM1 provides it over `commands.Library` (Resolve
   without values for the set, `sys.optional.terminalCommands`). Without
-  it those modes answer `not_available_in_preview`.
+  it those modes answer `not_available_in_preview` (code kept, text
+  "This function is not available on this server.").
 - `HerdrGrants{Overview, SessionMode}` decide Herdr from the switch
   `herdr_enabled` and the options `herdr`/`use_herdr` of the owner's saved
   host (`client.Display.Herdr` is new, additive); cmd/webssh provides it
