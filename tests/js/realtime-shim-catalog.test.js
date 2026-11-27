@@ -271,6 +271,27 @@ test('gateway prompts, setup and output arrive as the Socket.IO events of today'
     socket.disconnect();
 });
 
+test('detected host facts arrive as host_platform and host_maintenance', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const seen = [];
+    for (const name of ['host_platform', 'host_maintenance']) {
+        socket.on(name, data => seen.push([name, plain(data)]));
+    }
+    const identity = {state: 'detected', platform: 'debian', family: null, os_id: null, os_version: '12', virt: 'vm',
+        graphical: false, guests: null, services: ['docker'], container_access: 'ok'};
+    ws.serverSend('hostops.discovery.platform', {profile_id: 'p1', platform: 'debian', services: ['docker'], identity});
+    ws.serverSend('hostops.discovery.platform', {profile_id: 'p2'});
+    ws.serverSend('hostops.discovery.maintenance', {profile_id: 'p3'});
+    await tick();
+    assert.deepEqual(seen, [
+        ['host_platform', {profile_id: 'p1', platform: 'debian', services: ['docker'], identity}],
+        ['host_platform', {profile_id: 'p2'}],
+        ['host_maintenance', {profile_id: 'p3'}],
+    ]);
+    socket.disconnect();
+});
+
 test('gateway answers, input and acks become v1 requests', async () => {
     const window = loadShim();
     const {socket, ws} = await connected(window);

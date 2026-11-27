@@ -124,6 +124,10 @@ var v1 = []MessageType{
 	{TypeGatewayOutput, ServerEvent, "internal/ssh/gateway"},
 	{TypeGatewayInput, ClientRequest, "internal/ssh/gateway"},
 	{TypeGatewayAck, ClientRequest, "internal/ssh/gateway"},
+
+	// Area "hostops.discovery" (HO2, payload_discovery.go).
+	{TypeDiscoveryPlatform, ServerEvent, "internal/hosts"},
+	{TypeDiscoveryMaintenance, ServerEvent, "internal/hosts"},
 }
 
 // V1 returns the catalog of schema v1.

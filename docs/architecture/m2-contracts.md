@@ -1020,6 +1020,30 @@ connection is returned (the gateway's readiness probe).
 `client.Display.Tailscale` marks a saved host with the auth type
 `tailscale`. Host keys apply to every variant.
 
+### Message types (hostops.discovery)
+
+Defined by HO2 (`internal/realtime/protocol/payload_discovery.go`). After a
+connection to a saved host, `internal/hosts` reads the authenticated SSH
+greeting and, at most once a week per saved host, runs the read-only
+identity probe on its own exec channel; a restart hint from a check the
+user ran is reread on login. What changed is pushed to every open
+connection of the account (`realtime.Server.NotifyUser`), not only to the
+tab that connected, because the facts belong to the saved host. The page
+then reloads the saved hosts. The shim maps both events in
+`static/js/realtime-shim-hosts.js`. The payloads carry no `session_id`:
+the session icon follows the saved host.
+
+| Type | Direction | Owner | Payload | Socket.IO today |
+|---|---|---|---|---|
+| `hostops.discovery.platform` | server | `internal/hosts` | `DiscoveryPlatform` | `host_platform` |
+| `hostops.discovery.maintenance` | server | `internal/hosts` | `DiscoveryMaintenance` | `host_maintenance` |
+
+Discovery scans and the reachability check stay HTTP routes as in the
+Python release (`/api/discovery/scans`, `/api/overview/reachability`),
+behind the permissions `permission.hosts.discovery` and
+`permission.hosts.reachability` (A13) and `HOST_DISCOVERY_ENABLED` as the
+ceiling of discovery.
+
 ### End-to-end harness for M2
 
 - `tests/e2e/go-suite.json` (formerly `tests/e2e/m1/go-subset.json`) lists
