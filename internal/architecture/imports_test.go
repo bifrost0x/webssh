@@ -19,17 +19,15 @@ var execAllowed = map[string]bool{}
 // syscallAllowed lists the files that may import syscall directly. Entries
 // for missing files fail TestExceptionListsAreCurrent.
 var syscallAllowed = map[string]bool{
-	// syscall.SIGTERM, the stop signal of docker stop and service
-	// managers; os has no portable name for it.
+	// syscall.SIGTERM, the stop signal of docker stop; os has no portable
+	// name for it.
 	"cmd/webssh/signal.go": true,
 	// Netlink route lookup for the tailnet rule (ADR 0010).
 	"internal/netpolicy/route_linux.go": true,
 	// The Go lock (flock), the read-only probes of Python's SQLite and
 	// backup operation locks (F_GETLK, flock), free space (statfs) and the
 	// inode for the legacy digest (migration specification 5.2, 5.3).
-	"internal/migrate/legacy/host_unix.go": true,
-	// The Go lock as a file opened without sharing (CreateFile).
-	"internal/migrate/legacy/host_windows.go": true,
+	"internal/migrate/legacy/host_linux.go": true,
 }
 
 // exceptions are the reviewed exception lists the import rules consult.
@@ -323,7 +321,6 @@ func TestParseFileFindsProcessCalls(t *testing.T) {
 	}{
 		{name: "os.StartProcess", src: "package a\nimport \"os\"\nvar _ = os.StartProcess\n", want: []string{"os.StartProcess"}},
 		{name: "aliased syscall", src: "package a\nimport sc \"syscall\"\nfunc f() { sc.Exec(\"\", nil, nil) }\n", want: []string{"syscall.Exec"}},
-		{name: "x sys windows", src: "package a\nimport \"golang.org/x/sys/windows\"\nvar _ = windows.CreateProcess\n", want: []string{"golang.org/x/sys/windows.CreateProcess"}},
 		{name: "execve through Syscall", src: "package a\nimport \"syscall\"\nfunc f() { syscall.Syscall(syscall.SYS_EXECVE, 0, 0, 0) }\n", want: []string{"syscall.SYS_EXECVE"}},
 		{name: "clone through x sys unix", src: "package a\nimport \"golang.org/x/sys/unix\"\nfunc f() { unix.RawSyscall(unix.SYS_CLONE3, 0, 0, 0) }\n", want: []string{"golang.org/x/sys/unix.SYS_CLONE3"}},
 		{name: "harmless syscall use", src: "package a\nimport \"syscall\"\nfunc f() { syscall.Socket(syscall.AF_NETLINK, syscall.SOCK_RAW, 0) }\n"},

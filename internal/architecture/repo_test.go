@@ -30,11 +30,11 @@ const modulePath = "github.com/bifrost0x/webssh"
 // ensures nothing outside these patterns escapes the checks.
 var packagePatterns = []string{"./cmd/...", "./internal/..."}
 
-// targets are the release platforms. Dependency graphs are the union over
-// all of them, so platform-specific imports are checked too.
+// targets are the release platforms: Linux only (Docker on linux/amd64
+// and linux/arm64, Unraid). Dependency graphs are the union over all of
+// them, so architecture-specific imports are checked too.
 var targets = []struct{ goos, goarch string }{
-	{"linux", "amd64"}, {"linux", "arm64"}, {"windows", "amd64"},
-	{"darwin", "amd64"}, {"darwin", "arm64"},
+	{"linux", "amd64"}, {"linux", "arm64"},
 }
 
 // processSyscalls are the system call numbers that create or replace a
@@ -44,10 +44,9 @@ var processSyscalls = []string{"SYS_EXECVE", "SYS_EXECVEAT", "SYS_FORK", "SYS_VF
 // processCalls lists identifiers that start processes, by import path.
 // os/exec is rejected as an import; these are the remaining ways.
 var processCalls = map[string][]string{
-	"os":                       {"StartProcess"},
-	"syscall":                  append([]string{"ForkExec", "Exec", "StartProcess", "CreateProcess", "CreateProcessAsUser"}, processSyscalls...),
-	"golang.org/x/sys/unix":    append([]string{"Exec"}, processSyscalls...),
-	"golang.org/x/sys/windows": {"CreateProcess", "CreateProcessAsUser", "ShellExecute"},
+	"os":                    {"StartProcess"},
+	"syscall":               append([]string{"ForkExec", "Exec", "StartProcess"}, processSyscalls...),
+	"golang.org/x/sys/unix": append([]string{"Exec"}, processSyscalls...),
 }
 
 // goPackage is the subset of "go list -json" output the checks use.
