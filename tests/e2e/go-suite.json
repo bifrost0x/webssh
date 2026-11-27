@@ -26,6 +26,7 @@
     {"file": "overview-workspace.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-default-content.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-classic.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "start-page.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "connection-overview.spec.js", "exclude": []},
     {"file": "empty-states.spec.js", "exclude": []},
     {"file": "onboarding.spec.js", "serial": "e2e_admin", "exclude": []},

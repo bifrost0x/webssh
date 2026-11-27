@@ -48,3 +48,11 @@ test('no excluded test waits for FE1', () => {
         for (const entry of spec.exclude) assert.notEqual(entry.package, 'FE1', `${spec.file}: ${entry.title}`);
     }
 });
+
+// Every spec of the main suite runs against Go; a test that does not is
+// excluded by name with its reason, never by leaving its file out.
+test('go-suite.json lists every spec of the main suite', () => {
+    const listed = new Set(suite.specs.map(spec => spec.file));
+    const missing = fs.readdirSync(path.join(__dirname, '../e2e')).filter(file => file.endsWith('.spec.js') && !listed.has(file));
+    assert.deepEqual(missing, []);
+});
