@@ -56,9 +56,14 @@ var rotationPoints = []string{backup.PointPrepared, backup.PointPending, backup.
 // in agreement, every secret opens to its plaintext, no pending secret is
 // left once a start or a rotation ran, and a new rotation succeeds.
 func TestRotationCrash(t *testing.T) {
+	// The migration of the golden data set is the slow part; it runs once
+	// and every point starts from a copy.
+	base := migratedPurged(t)
 	for _, point := range rotationPoints {
 		t.Run(point, func(t *testing.T) {
-			dir := migratedPurged(t)
+			dir := filepath.Join(t.TempDir(), "data")
+			copyTree(t, base, dir)
+			rotationEnv(t, dir)
 			before := secrets(t)
 			oldSecret := readSecret(t, dir)
 			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestRotationCrashHelper$", "-test.count=1")
@@ -102,5 +107,36 @@ func TestRotationCrash(t *testing.T) {
 				t.Fatalf("pending secret after the next rotation: %v", err)
 			}
 		})
+	}
+}
+
+// copyTree copies a data directory with its file modes (the keyring
+// material must stay 0600).
+func copyTree(t *testing.T, src, dst string) {
+	t.Helper()
+	err := filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return os.MkdirAll(target, info.Mode().Perm())
+		}
+		raw, err := os.ReadFile(path) // #nosec G304 -- test data
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, raw, info.Mode().Perm())
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

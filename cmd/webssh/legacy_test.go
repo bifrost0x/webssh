@@ -16,8 +16,8 @@ func TestLegacyEntrypoint(t *testing.T) {
 		wantStderr string
 	}{
 		{name: "known command not built yet", argv: []string{ep, "flask", "--app", "start:app", "backup", "create"}, wantCode: 1, wantStderr: `"backup" is not available`},
-		{name: "short app form", argv: []string{ep, "flask", "--app", "start", "connection-store"}, wantCode: 1, wantStderr: "not available"},
-		{name: "equals form", argv: []string{ep, "flask", "--app=start:app", "rotate-secret-key"}, wantCode: 1, wantStderr: "not available"},
+		{name: "short app form", argv: []string{ep, "flask", "--app", "start", "connection-store"}, wantCode: 2, wantStderr: "Usage: flask connection-store [OPTIONS] COMMAND [ARGS]..."},
+		{name: "equals form", argv: []string{ep, "flask", "--app=start:app", "rotate-secret-key"}, wantCode: 1, wantStderr: "repeat with --confirm-offline"},
 		{name: "unknown flask command", argv: []string{ep, "flask", "--app", "start:app", "shell"}, wantCode: 2, wantStderr: "Error: No such command 'shell'."},
 		{name: "webssh subcommand is not a flask command", argv: []string{ep, "flask", "--app", "start:app", "serve"}, wantCode: 2, wantStderr: "No such command 'serve'"},
 		{name: "other app", argv: []string{ep, "flask", "--app", "evil:app", "create-admin"}, wantCode: 2, wantStderr: `unknown flask application "evil:app"`},

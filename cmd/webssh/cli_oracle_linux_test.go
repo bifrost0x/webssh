@@ -138,7 +138,7 @@ func cliCases() []cliCase {
 			{Args: cs("list", "--username", "admin1", "--kind", "profiles", "--confirm-offline")},
 			{Args: cs("list", "--username", "admin1", "--kind", "jump-hosts", "--confirm-offline")},
 			{Args: cs("list", "--username", "admin1", "--kind", "socks-proxies", "--confirm-offline")},
-			{Args: cs("delete", "--username", "admin1", "--kind", "profiles", "--selector", "r1:0:" + strings.Repeat("0", 64), "--confirm-offline")},
+			{Args: cs("delete", "--username", "admin1", "--kind", "profiles", "--selector", "r1:0:"+strings.Repeat("0", 64), "--confirm-offline")},
 			{Args: cs("delete", "--username", "admin1", "--kind", "socks-proxies", "--selector", "x", "--confirm-offline")},
 			{Args: cs("delete", "--username", "ADMIN1", "--kind", "socks-proxies", "--selector", "x", "--confirm-offline")},
 		}},

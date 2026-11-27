@@ -175,22 +175,25 @@ func finishRotation(dataDir string, secret []byte, installed func()) error {
 // every table, so that a capability whose records the steps missed stops
 // the rotation instead of losing its secrets.
 func sealedUnder(ctx context.Context, tx *store.Tx, header []byte) (string, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT m.name, p.name FROM sqlite_schema m, pragma_table_info(m.name) p
-WHERE m.type = 'table' AND upper(p.type) = 'BLOB' ORDER BY m.name, p.cid`)
-	if err != nil {
-		return "", fmt.Errorf("backup: list sealed columns: %w", err)
-	}
 	type column struct{ table, name string }
-	var cols []column
-	for rows.Next() {
-		var c column
-		if err := rows.Scan(&c.table, &c.name); err != nil {
-			rows.Close()
-			return "", fmt.Errorf("backup: list sealed columns: %w", err)
+	cols, err := func() ([]column, error) {
+		rows, err := tx.QueryContext(ctx, `SELECT m.name, p.name FROM sqlite_schema m, pragma_table_info(m.name) p
+WHERE m.type = 'table' AND upper(p.type) = 'BLOB' ORDER BY m.name, p.cid`)
+		if err != nil {
+			return nil, err
 		}
-		cols = append(cols, c)
-	}
-	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		defer rows.Close()
+		var cols []column
+		for rows.Next() {
+			var c column
+			if err := rows.Scan(&c.table, &c.name); err != nil {
+				return nil, err
+			}
+			cols = append(cols, c)
+		}
+		return cols, rows.Err()
+	}()
+	if err != nil {
 		return "", fmt.Errorf("backup: list sealed columns: %w", err)
 	}
 	for _, c := range cols {

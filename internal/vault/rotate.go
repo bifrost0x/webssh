@@ -29,23 +29,23 @@ func resealTx(ctx context.Context, tx *store.Tx, rt *keyring.Rotation, table, co
 		id     string
 		sealed []byte
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT user_id, id, `+column+` FROM `+table+` ORDER BY user_id, id`) // #nosec G202 -- constant names
-	if err != nil {
-		return 0, fmt.Errorf("vault: read %s: %w", table, err)
-	}
-	var all []row
-	for rows.Next() {
-		var r row
-		if err := rows.Scan(&r.user, &r.id, &r.sealed); err != nil {
-			rows.Close()
-			return 0, fmt.Errorf("vault: read %s: %w", table, err)
+	all, err := func() ([]row, error) {
+		rows, err := tx.QueryContext(ctx, `SELECT user_id, id, `+column+` FROM `+table+` ORDER BY user_id, id`) // #nosec G202 -- constant names
+		if err != nil {
+			return nil, err
 		}
-		all = append(all, r)
-	}
-	if err := rows.Close(); err != nil {
-		return 0, fmt.Errorf("vault: read %s: %w", table, err)
-	}
-	if err := rows.Err(); err != nil {
+		defer rows.Close()
+		var all []row
+		for rows.Next() {
+			var r row
+			if err := rows.Scan(&r.user, &r.id, &r.sealed); err != nil {
+				return nil, err
+			}
+			all = append(all, r)
+		}
+		return all, rows.Err()
+	}()
+	if err != nil {
 		return 0, fmt.Errorf("vault: read %s: %w", table, err)
 	}
 	for _, r := range all {

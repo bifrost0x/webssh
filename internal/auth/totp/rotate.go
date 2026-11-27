@@ -17,24 +17,23 @@ func ResealTx(ctx context.Context, tx *store.Tx, rt *keyring.Rotation) (int, err
 		id, user int64
 		sealed   []byte
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id, user_id, sealed_secret FROM totp_authenticators ORDER BY id`)
-	if err != nil {
-		return 0, fmt.Errorf("totp: read authenticators: %w", err)
-	}
-	var all []row
-	for rows.Next() {
-		var r row
-		if err := rows.Scan(&r.id, &r.user, &r.sealed); err != nil {
-			rows.Close()
-			return 0, fmt.Errorf("totp: read authenticators: %w", err)
+	all, err := func() ([]row, error) {
+		rows, err := tx.QueryContext(ctx, `SELECT id, user_id, sealed_secret FROM totp_authenticators ORDER BY id`)
+		if err != nil {
+			return nil, err
 		}
-		all = append(all, r)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return 0, fmt.Errorf("totp: read authenticators: %w", err)
-	}
-	if err := rows.Close(); err != nil {
+		defer rows.Close()
+		var all []row
+		for rows.Next() {
+			var r row
+			if err := rows.Scan(&r.id, &r.user, &r.sealed); err != nil {
+				return nil, err
+			}
+			all = append(all, r)
+		}
+		return all, rows.Err()
+	}()
+	if err != nil {
 		return 0, fmt.Errorf("totp: read authenticators: %w", err)
 	}
 	for _, r := range all {
