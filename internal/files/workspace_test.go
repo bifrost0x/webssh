@@ -34,7 +34,12 @@ func TestListingPagesAndCursorBinding(t *testing.T) {
 		func() error { _, err := f.svc.List(ctx, other, f.id, "r2", "/d", page.Next); return err },
 		func() error { _, err := f.svc.List(ctx, c, f.id, "r2", "/e", page.Next); return err },
 		func() error {
-			_, err := f.svc.List(ctx, c, f.id, "r2", "/d", page.Next[:len(page.Next)-1]+"0")
+			// Another last character, whatever the cursor ended with.
+			last := "0"
+			if strings.HasSuffix(page.Next, last) {
+				last = "1"
+			}
+			_, err := f.svc.List(ctx, c, f.id, "r2", "/d", page.Next[:len(page.Next)-1]+last)
 			return err
 		},
 		func() error {
