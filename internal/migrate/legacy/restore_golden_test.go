@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,7 +23,8 @@ import (
 func restoreRegistry(t *testing.T) *Registry {
 	t.Helper()
 	r := m1Registry(t, M1{AdminUsers: []string{"cfg_admin"}, Persistent: &testPersistent{}})
-	if err := errors.Join(AddCredentials(r), AddSMB(r), AddLDAP(r), AddOIDCIdentities(r), AddBackupState(r, "")); err != nil {
+	if err := errors.Join(AddCredentials(r), AddSMB(r), AddLDAP(r), AddOIDCIdentities(r), AddBackupState(r, ""),
+		AddCommands(r), AddAutomation(r), AddSchedules(r)); err != nil {
 		t.Fatal(err)
 	}
 	return r
@@ -295,5 +297,35 @@ func TestInspectGoldenBackups(t *testing.T) {
 		if err != nil || !s.Compatible || s.Kind != backup.KindPythonV2 || s.IncludesRemoteCredentials != want || !s.IncludesSecretKey {
 			t.Fatalf("%s: %+v, %v", name, s, err)
 		}
+	}
+}
+
+// A build that leaves entities pending cannot restore a Python archive
+// that holds records of them: the extraction is removed afterwards, so
+// the records would be lost. The restore stops instead.
+func TestRestoreRefusesPendingRecords(t *testing.T) {
+	t.Parallel()
+	material := bytes.Repeat([]byte{0x42}, keyring.MaterialSize)
+	ring, err := keyring.Open([]byte(golden.manifest.SecretKey.Value), material)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(backupPath("export"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := m1Registry(t, M1{AdminUsers: []string{"cfg_admin"}, Persistent: &testPersistent{}})
+	rs := &Restorer{Options: Options{Registry: r, Release: "test", Now: func() time.Time { return restoredAt }}, Work: t.TempDir()}
+	staging := t.TempDir()
+	_, err = rs.RestoreLegacy(t.Context(), backup.LegacyRestore{Archive: f, Size: info.Size(), Staging: staging,
+		SecretKey: []byte("the active secret of the new installation"), Ring: ring, RestoredAt: restoredAt})
+	stopErr, ok := errors.AsType[*StopError](err)
+	if !ok || stopErr.Code != CodeRestoreIncomplete || !strings.Contains(stopErr.Message, "E26") {
+		t.Fatalf("restore with pending commands: %v", err)
 	}
 }

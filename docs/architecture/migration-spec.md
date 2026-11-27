@@ -768,7 +768,10 @@ and `*-pre-rotation-*.zip`.
    not restored, because Python's restore empties `ssh_sessions`.
 5. Run 5.2 steps 7 and 8 into a staging database, then activate through
    `internal/backup` with its own pre-restore Go backup and maintenance
-   handling.
+   handling. A build that leaves an entity pending refuses the restore of
+   an archive holding records of it (`restore_incomplete`): unlike a
+   migration, a restore keeps no legacy data in place, so the records
+   would be lost.
 6. The live legacy source is not touched, so the migration record's digest
    stays valid; the restore is recorded separately.
 7. Members under `data/go/` (a Python backup taken after a way back
@@ -1068,7 +1071,9 @@ a database created by an older Python release with missing additive columns;
 - The package map has no named owner for the notes table; 4.5 proposes
   `internal/hosts`.
 - The file names inside the Go directory are working names until B1.
-- Fixture extensions of 8.2 are not yet generated.
+- The fixture extensions of 8.2 are generated (`tests/golden/legacy/`,
+  `datadir-extended.tar`, the variants and the four boundary backups of
+  the legacy manifest).
 - Residual risk: a Python process beside Go is detected only by the
   periodic check of 5.7, so writes within one interval can reach both
   systems. The upgrade documentation tells operators to remove the Python

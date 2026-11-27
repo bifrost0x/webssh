@@ -148,18 +148,25 @@ func Purge(ctx context.Context, o PurgeOptions) (*Purged, error) {
 // refusePending refuses while the record names entities this build left
 // in place for a later release.
 func refusePending(pending []Pending) error {
-	var names []string
-	for _, p := range pending {
-		if p.Count > 0 {
-			names = append(names, fmt.Sprintf("%s (%d, phase %s)", p.Entity, p.Count, p.Phase))
-		}
-	}
+	names := pendingWithRecords(pending)
 	if len(names) == 0 {
 		return nil
 	}
 	return stop("", CodePurgeRefused, "the legacy data still holds data this release keeps in place for a later "+
 		"release: "+strings.Join(names, ", ")+". A purge would delete it; run it after the release that migrates "+
 		"these entities", nil)
+}
+
+// pendingWithRecords names the pending entities that hold records;
+// pending entities without records lose nothing.
+func pendingWithRecords(pending []Pending) []string {
+	var names []string
+	for _, p := range pending {
+		if p.Count > 0 {
+			names = append(names, fmt.Sprintf("%s (%d, phase %s)", p.Entity, p.Count, p.Phase))
+		}
+	}
+	return names
 }
 
 // purgeList is the list of legacy files to remove: the files of the

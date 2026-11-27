@@ -52,6 +52,7 @@ func crashAt(t *testing.T, mode, point string, o Options) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestCrashHelper$", "-test.count=1")
 	cmd.Env = append(os.Environ(), crashEnv+"="+strings.Join([]string{mode, point, o.DataDir, o.BackupTempDir}, "|"))
+	cmd.Env = append(cmd.Env, helperTempDir(t))
 	out, err := cmd.CombinedOutput()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) {
@@ -204,6 +205,7 @@ func TestReplaceKeepsWALContent(t *testing.T) {
 	dbPath := filepath.Join(dir, "go", "webssh.db")
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestWALHelper$", "-test.count=1")
 	cmd.Env = append(os.Environ(), walEnv+"="+dbPath)
+	cmd.Env = append(cmd.Env, helperTempDir(t))
 	_ = cmd.Run()
 	if info, err := os.Stat(dbPath + "-wal"); err != nil || info.Size() == 0 {
 		t.Fatalf("no WAL left by the killed server: %v", err)
