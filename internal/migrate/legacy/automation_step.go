@@ -83,7 +83,7 @@ func parseRunbooks(raw []byte) ([]automation.Runbook, error) {
 	version, _ := pyjson.Get(doc, "version")
 	list, okList := pyjson.Get(doc, "runbooks")
 	items, isList := pyjson.Items(list)
-	if !ok || string(version) != "1" || !okList || !isList {
+	if !ok || !pyjson.EqualsOne(version) || !okList || !isList {
 		return nil, errors.New("legacy: automation.json has an unknown shape")
 	}
 	seen := map[string]bool{}

@@ -13,6 +13,7 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -345,4 +346,18 @@ func writeEscape(b *strings.Builder, r rune) {
 	for shift := 12; shift >= 0; shift -= 4 {
 		b.WriteByte(hexDigits[(r>>shift)&0xf])
 	}
+}
+
+// EqualsOne is Python's "value == 1" for a decoded JSON value: true and
+// every number equal to one (1, 1.0, 1e0). The legacy stores whose
+// validators compare their version that way accept these spellings.
+func EqualsOne(v jsontext.Value) bool {
+	switch v.Kind() {
+	case 't':
+		return true
+	case '0':
+		f, err := strconv.ParseFloat(string(v), 64)
+		return err == nil && f == 1
+	}
+	return false
 }

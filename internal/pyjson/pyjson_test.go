@@ -145,3 +145,15 @@ func TestValuesDoNotOverwriteTheDocument(t *testing.T) {
 		t.Fatalf("document changed: %s", doc)
 	}
 }
+
+func TestEqualsOne(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]bool{
+		"1": true, "1.0": true, "1e0": true, "10e-1": true, "true": true,
+		"2": false, "0": false, "false": false, `"1"`: false, "null": false, "[1]": false, "1.5": false,
+	} {
+		if got := EqualsOne(jsontext.Value(in)); got != want {
+			t.Errorf("EqualsOne(%s) = %v, want %v", in, got, want)
+		}
+	}
+}

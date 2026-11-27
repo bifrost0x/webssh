@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+
+	"github.com/bifrost0x/webssh/internal/pyjson"
 )
 
 // NamedCredential is one decrypted entry of credentials.json.
@@ -126,10 +128,9 @@ func parseCredentialDocument(data []byte) ([]NamedCredential, map[string]Credent
 	if err != nil {
 		return nil, nil, err
 	}
-	var version int
 	var credentials, assignments map[string]jsontext.Value
 	var imports []jsontext.Value
-	if json.Unmarshal(doc["version"], &version) != nil || version != 1 ||
+	if !pyjson.EqualsOne(doc["version"]) ||
 		json.Unmarshal(doc["credentials"], &credentials) != nil || credentials == nil || len(credentials) > 100 ||
 		json.Unmarshal(doc["assignments"], &assignments) != nil || assignments == nil || len(assignments) > 1000 ||
 		json.Unmarshal(doc["imports"], &imports) != nil || imports == nil || len(imports) > 100 {

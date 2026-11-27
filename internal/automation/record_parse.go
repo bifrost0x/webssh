@@ -6,7 +6,6 @@ import (
 	"math"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/bifrost0x/webssh/internal/pyjson"
 )
@@ -225,7 +224,7 @@ func parseStep(v jsontext.Value) (StepResult, error) {
 // ParseHistory reads automation-runs.json as _read_history accepts it.
 func ParseHistory(doc jsontext.Value) ([]Run, error) {
 	m, ok := pyjson.Members(doc)
-	if !ok || !sameSet(names(m), "version", "runs") || strings.TrimSpace(string(member(m, "version"))) != "1" {
+	if !ok || !sameSet(names(m), "version", "runs") || !pyjson.EqualsOne(member(m, "version")) {
 		return nil, errInvalidRecord
 	}
 	items, ok := pyjson.Items(member(m, "runs"))
