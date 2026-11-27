@@ -11,10 +11,14 @@ import (
 // (COMMAND_MUTATION_RATELIMIT, 60 per minute by default).
 const RateMutation = "command_mutation"
 
+// RateMutationMessage is the refusal of the rate limit, the text of
+// _COMMAND_MUTATION_RATE_ERROR in app/socket_events.py.
+const RateMutationMessage = "Too many command changes. Please wait before trying again."
+
 // Routes are the message types of the area "commands".
 func (l *Library) Routes() []protocol.Route {
 	read := protocol.Spec{}
-	write := protocol.Spec{Mutates: true, RateKey: RateMutation, MaxPayload: protocol.CommandMaxPayload}
+	write := protocol.Spec{Mutates: true, RateKey: RateMutation, RateMessage: RateMutationMessage, MaxPayload: protocol.CommandMaxPayload}
 	return []protocol.Route{
 		protocol.Handle(protocol.TypeCommandsList, read, l.handleList),
 		protocol.Handle(protocol.TypeCommandsAdd, write, l.handleAdd),

@@ -627,6 +627,11 @@ type Profiles interface {
   migration specification names; nothing reads them separately and the
   record keeps unknown members.
 
+Rate limit: every change shares the bucket `command_mutation`
+(`COMMAND_MUTATION_RATELIMIT`); a refusal carries the Python text "Too
+many command changes. Please wait before trying again." through
+`protocol.Spec.RateMessage` (additive, W3 integration, CM1-1).
+
 ### Message types (commands)
 
 Defined by CM1 (`internal/realtime/protocol/payload_commands.go`), mapped

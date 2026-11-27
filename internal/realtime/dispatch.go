@@ -96,7 +96,7 @@ func (s *Server) dispatch(ep endpoint, data []byte) error {
 	}
 	if route.Spec.RateKey != "" && s.deps.Limiter != nil {
 		if ok, after := s.deps.Limiter.Allow(ep.Principal().UserID, route.Spec.RateKey); !ok {
-			e := fault.New(fault.RateLimited, "")
+			e := fault.New(fault.RateLimited, route.Spec.RateMessage)
 			e.RetryAfter = after
 			s.reply(ep, env, nil, e)
 			return nil

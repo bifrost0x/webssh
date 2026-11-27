@@ -38,7 +38,7 @@ func testRoutes(ran *atomic.Int32, release chan struct{}) func(*Server) {
 			protocol.Handle("test.panic", protocol.Spec{}, func(context.Context, protocol.Peer, protocol.Empty) (*protocol.Empty, error) {
 				panic("secret detail")
 			}),
-			protocol.Handle("test.limited", protocol.Spec{RateKey: "test"}, func(context.Context, protocol.Peer, protocol.Empty) (*protocol.Empty, error) {
+			protocol.Handle("test.limited", protocol.Spec{RateKey: "test", RateMessage: "Too many test changes."}, func(context.Context, protocol.Peer, protocol.Empty) (*protocol.Empty, error) {
 				return nil, nil
 			}),
 			protocol.Handle("test.slow", protocol.Spec{Async: true}, func(ctx context.Context, _ protocol.Peer, _ protocol.Empty) (*protocol.Empty, error) {
@@ -113,7 +113,7 @@ func TestRateLimit(t *testing.T) {
 	e.limiter.deny = true
 	c := e.open(1, "s1")
 	r := c.request(`{"v":1,"t":"test.limited","id":"r"}`)
-	if errCode(r) != fault.RateLimited || r.Err.RetryAfterMS != 1500 {
+	if errCode(r) != fault.RateLimited || r.Err.RetryAfterMS != 1500 || r.Err.Message != "Too many test changes." {
 		t.Fatalf("%+v", r.Err)
 	}
 	if r := c.request(`{"v":1,"t":"test.echo","id":"e","p":{}}`); !r.OK {

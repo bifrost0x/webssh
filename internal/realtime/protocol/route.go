@@ -46,6 +46,10 @@ type Spec struct {
 	Mutates bool
 	// RateKey groups types into one rate-limit bucket ("" = none).
 	RateKey string
+	// RateMessage is the message of a refusal by the rate limit ("" = the
+	// default of fault.RateLimited), for the areas whose Python handler
+	// had its own text.
+	RateMessage string
 }
 
 // Defaults the dispatcher applies to a zero Spec field.
