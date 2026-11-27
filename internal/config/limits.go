@@ -47,12 +47,13 @@ func loadLimits(p *parser, c *Config) {
 	in.UserBurstBytes = int(p.bounded("SSH_INPUT_USER_BURST_BYTES", 512*kib, int64(in.SessionBurstBytes), 4*mib))
 	in.UserBytesPerSecond = int(p.bounded("SSH_INPUT_USER_BYTES_PER_SECOND", 512*kib, 4*kib, 4*mib))
 
-	p.bounded("COMMAND_MAX_RECORDS", 500, 10, 2000)
-	p.bounded("COMMAND_SET_MAX_RECORDS", 500, 10, 2000)
-	p.bounded("COMMAND_SET_MAX_STEPS", 64, 1, 256)
-	p.bounded("COMMAND_OS_MAX_ENTRIES", 16, 1, 64)
+	c.Stores.CommandMaxRecords = int(p.bounded("COMMAND_MAX_RECORDS", 500, 10, 2000))
+	c.Stores.CommandSetMaxRecords = int(p.bounded("COMMAND_SET_MAX_RECORDS", 500, 10, 2000))
+	c.Stores.CommandSetMaxSteps = int(p.bounded("COMMAND_SET_MAX_STEPS", 64, 1, 256))
+	c.Stores.CommandOSMaxEntries = int(p.bounded("COMMAND_OS_MAX_ENTRIES", 16, 1, 64))
 	commandStore := p.bounded("COMMAND_STORE_MAX_BYTES", 2*mib, 64*kib, 8*mib)
-	p.bounded("COMMAND_CONFIG_MAX_BYTES", 4*mib, commandStore, 16*mib)
+	c.Stores.CommandStoreMaxBytes = int(commandStore)
+	c.Stores.CommandConfigMaxBytes = int(p.bounded("COMMAND_CONFIG_MAX_BYTES", 4*mib, commandStore, 16*mib))
 
 	p.bounded("FILE_CONTROL_MAX_PATH_BYTES", 4096, 512, 16*kib)
 	p.adminSwitch("SFTP_CHMOD_ENABLED", false)

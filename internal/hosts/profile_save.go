@@ -79,8 +79,14 @@ func (s *Service) saveProfile(ctx context.Context, owner int64, req protocol.Hos
 		if index >= 0 {
 			existing = &profiles[index]
 		}
-		if err := postConnect(&d.rec, p, existing); err != nil {
+		refsChecked := s.Commands != nil
+		if err := postConnect(&d.rec, p, existing, refsChecked); err != nil {
 			return err
+		}
+		if refsChecked {
+			if err := s.checkStartupRefs(ctx, tx, owner, p); err != nil {
+				return err
+			}
 		}
 		finishProfile(&d, p)
 		if err := checkRoutes(&d.rec, all); err != nil {

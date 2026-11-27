@@ -174,6 +174,7 @@ type RateLimits struct {
 	SSHKeyWrite        string
 	SSHKeyList         string
 	ConnectionMutation string
+	CommandMutation    string
 }
 
 // Network is the outbound network policy input.
@@ -266,6 +267,13 @@ type Stores struct {
 	SSHKeyStoreMaxBytes               int
 	MaxWebAuthnJSONSize               int
 	MaxRecoveryJSONSize               int
+	// The command library (COMMAND_*).
+	CommandMaxRecords     int
+	CommandSetMaxRecords  int
+	CommandSetMaxSteps    int
+	CommandOSMaxEntries   int
+	CommandStoreMaxBytes  int
+	CommandConfigMaxBytes int
 }
 
 // Files are the limits of the file workspace and the editor.

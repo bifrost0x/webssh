@@ -1,6 +1,7 @@
 package main
 
 import (
+	cmdlib "github.com/bifrost0x/webssh/internal/commands"
 	"os"
 	"strings"
 	"time"
@@ -129,6 +130,7 @@ func realtimeLimiter(cfg config.Config) *auth.Limiter {
 		"ssh_key_list":        auth.ParseRule(cfg.RateLimits.SSHKeyList, ruleKeyList),
 		"ssh_key_write":       auth.ParseRule(cfg.RateLimits.SSHKeyWrite, ruleKeyWrite),
 		"connection_mutation": auth.ParseRule(cfg.RateLimits.ConnectionMutation, ruleMutation),
+		cmdlib.RateMutation:   auth.ParseRule(cfg.RateLimits.CommandMutation, ruleMutation),
 		smb.RateConnect:       auth.ParseRule(cfg.SMB.ConnectRateLimit, ruleSMBConnect),
 		smb.RateShareMutation: auth.ParseRule(cfg.SMB.ShareMutationRateLimit, ruleSMBMutation),
 		smb.RateShareList:     auth.ParseRule(cfg.SMB.ShareListRateLimit, ruleSMBList),

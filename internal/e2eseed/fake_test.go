@@ -3,6 +3,7 @@ package e2eseed
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/json/jsontext"
 	"fmt"
 	"sync"
 )
@@ -20,6 +21,7 @@ type fakeStores struct {
 	jumps    map[string]JumpHostRecord
 	proxies  map[string]SOCKSProxyRecord
 	profiles map[int64][]ProfileRecord
+	commands map[int64][2][]jsontext.Value
 	failOn   string
 }
 
@@ -28,11 +30,17 @@ func newFakeStores() *fakeStores {
 		users: map[int64]string{}, admins: map[int64]bool{}, mfa: map[int64]bool{},
 		keys: map[string]ed25519.PrivateKey{}, jumps: map[string]JumpHostRecord{},
 		proxies: map[string]SOCKSProxyRecord{}, profiles: map[int64][]ProfileRecord{},
+		commands: map[int64][2][]jsontext.Value{},
 	}
 }
 
 func (f *fakeStores) stores() Stores {
-	return Stores{Accounts: f, AppSettings: f, UserSettings: f, FeatureGates: f, Factors: f, Keys: f, Hosts: f, Identities: f}
+	return Stores{Accounts: f, AppSettings: f, UserSettings: f, FeatureGates: f, Factors: f, Keys: f, Hosts: f, Identities: f, Commands: f}
+}
+
+func (f *fakeStores) SeedCommands(_ context.Context, owner int64, cmds, sets []jsontext.Value) error {
+	f.commands[owner] = [2][]jsontext.Value{cmds, sets}
+	return f.record(fmt.Sprintf("commands %d %d %d", owner, len(cmds), len(sets)))
 }
 
 func (f *fakeStores) record(call string) error {

@@ -71,7 +71,7 @@ func TestSystemServesThePreview(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `id="initialInventory"`) || !strings.Contains(body, `id="websshPreview"`) {
 		t.Fatalf("workspace: %d", resp.StatusCode)
 	}
-	for _, want := range []string{`"automation"`, `"commands"`} {
+	for _, want := range []string{`"automation"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("preview notice lacks %s", want)
 		}

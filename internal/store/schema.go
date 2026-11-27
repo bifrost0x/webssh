@@ -41,6 +41,8 @@ var Owners = []string{
 	"jobs",
 	// M2: saved SMB share definitions (FS3).
 	"smb",
+	// M2: the command library and command sets (CM1).
+	"commands",
 }
 
 // ledgerTable records applied migrations. It belongs to the store itself.

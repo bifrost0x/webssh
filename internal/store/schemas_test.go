@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"github.com/bifrost0x/webssh/internal/commands"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -55,6 +56,7 @@ func productionSchemas() []store.Schema {
 		github.Schema(),
 		oidc.Schema(),
 		smb.Schema(),
+		commands.Schema(),
 	}
 }
 

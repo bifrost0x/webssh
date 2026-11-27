@@ -62,6 +62,9 @@ type Service struct {
 	// Variants is optional; without it gateway selectors and Tailscale
 	// SSH hosts are refused.
 	Variants Variants
+	// Commands is optional; without it a saved host keeps the command or
+	// set it already starts with, and a new reference is refused.
+	Commands CommandRefs
 	// Now and NewID default to the clock and random UUIDs (tests set them).
 	Now   func() time.Time
 	NewID func() string

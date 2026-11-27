@@ -9,7 +9,7 @@ import "github.com/bifrost0x/webssh/internal/httpapi"
 // static/js/preview-notice.js. Every sign-in provider is built, so the
 // pages before sign-in carry no notice.
 var previewWorkspaceAreas = []string{
-	"automation", "credentials", "discovery", "commands",
+	"automation", "credentials", "discovery",
 }
 
 const previewWorkspaceMessage = "Preview: some areas are not available yet."

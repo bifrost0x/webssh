@@ -19,8 +19,7 @@ import (
 // HO3 fills in the hooks; no other package edits this file.
 //
 // The host context checks command-set references with
-// hostops.Contexts.Sets; until the command library is built (CM1) it is
-// nil, and only references already stored for the host are kept.
+// hostops.Contexts.Sets, the command library (area "commands").
 func hostcontextArea() extension {
 	return extension{
 		name: "hostcontext",
@@ -29,6 +28,9 @@ func hostcontextArea() extension {
 			(&hostkey.GlobalHTTP{Store: sys.hostkeys, StepUp: sys.stepup, Audit: sys.audit,
 				Enabled: sys.cfg.Features.HostKeyManagement, Logger: sys.log}).Register(mux)
 			contexts := &hostops.Contexts{DB: sys.db, Profiles: sys.hosts}
+			if lib := sys.optional.commandLibrary; lib != nil {
+				contexts.Sets = lib
+			}
 			(&hostops.ContextHTTP{Contexts: contexts, Logger: sys.log}).Register(mux)
 			limits := sys.factorLimits()
 			rule := auth.ParseRule(sys.cfg.RateLimits.SSHKeyList, ruleKeyList)

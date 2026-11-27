@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	cmdlib "github.com/bifrost0x/webssh/internal/commands"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -84,7 +85,11 @@ type optional struct {
 	// terminalCommands resolves the command and command-set startup modes
 	// (area "commands"); terminalHerdr grants Herdr (area "terminal").
 	terminalCommands terminal.Commands
-	terminalHerdr    terminal.HerdrGrants
+	// hostCommands checks the command and set references of saved hosts;
+	// commandLibrary is the library itself (area "commands").
+	hostCommands   hosts.CommandRefs
+	commandLibrary *cmdlib.Library
+	terminalHerdr  terminal.HerdrGrants
 	// discoveryAvailable is host_discovery_available of the pages,
 	// reachability the overview's reachability check and
 	// connectionObserver sees every new terminal connection (area

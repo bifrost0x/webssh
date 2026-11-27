@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 )
 
 // The interfaces below are what the applier needs from the Go stores. They
@@ -109,11 +110,12 @@ type Stores struct {
 	Keys         Keys
 	Hosts        Hosts
 	Identities   Identities
+	Commands     Commands
 }
 
 func (s Stores) complete() error {
 	if s.Accounts == nil || s.AppSettings == nil || s.UserSettings == nil || s.FeatureGates == nil ||
-		s.Factors == nil || s.Keys == nil || s.Hosts == nil || s.Identities == nil {
+		s.Factors == nil || s.Keys == nil || s.Hosts == nil || s.Identities == nil || s.Commands == nil {
 		return errors.New("e2e seed: a store is not wired")
 	}
 	return nil
@@ -129,7 +131,7 @@ type Applied struct {
 
 // Apply writes the seed into the stores, in the order of run_app.py:
 // admin settings, accounts, account settings, factors and feature gates,
-// keys, jump hosts, SOCKS proxies, profiles. Parts that belong to
+// keys, jump hosts, SOCKS proxies, commands and command sets, profiles. Parts that belong to
 // capabilities outside this build are logged and skipped (Skipped). The
 // first error stops the run; the caller discards the data directory.
 func Apply(ctx context.Context, s *Seed, st Stores, log *slog.Logger) (Applied, error) {
@@ -168,8 +170,6 @@ func (s *Seed) skipped() []string {
 		}
 	}
 	add(s.AdminSettings.AutomationEnabled != nil, "admin_settings.automation_enabled")
-	add(len(s.Commands) > 0, "commands")
-	add(len(s.CommandSets) > 0, "command_sets")
 	for _, h := range s.TestHooks {
 		add(h.Name == HookAutomationSSHPeer || h.Name == HookSocketHerdrSessions, "test_hooks."+h.Name)
 	}
@@ -266,6 +266,9 @@ func applyConnections(ctx context.Context, s *Seed, st Stores, users map[string]
 		if proxies[p.Ref], err = st.Hosts.AddSOCKSProxy(ctx, users[p.Account], rec); err != nil {
 			return fmt.Errorf("socks proxy %s: %w", p.Ref, err)
 		}
+	}
+	if err := applyCommands(ctx, s, st.Commands, users, time.Now()); err != nil {
+		return err
 	}
 	// Profiles are saved per account in first-appearance order.
 	var order []string
