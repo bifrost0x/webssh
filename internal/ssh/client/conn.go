@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"slices"
 	"sync"
 	"time"
@@ -24,6 +25,29 @@ type Conn struct {
 	once  sync.Once
 	done  chan struct{}
 	wg    sync.WaitGroup
+
+	route  Route
+	routed bool
+}
+
+// Route is the network path of an ordinary connection, kept so that an
+// open connection can be checked again when a network rule changes.
+type Route struct {
+	// Peer is the address the TCP connection was pinned to: the target,
+	// or the first jump host or the SOCKS5 proxy. It is the zero Addr
+	// when the connection reported no IP address.
+	Peer netip.Addr
+	// Onward lists what each relay was asked to reach, in order: further
+	// jump hosts and last the target, as the address or name sent. It is
+	// empty for a direct connection.
+	Onward []string
+}
+
+// Route returns the path of the connection. ok is false for a connection
+// a Variant dialled itself (Tailscale SSH), which the network policy did
+// not open.
+func (c *Conn) Route() (r Route, ok bool) {
+	return Route{Peer: c.route.Peer, Onward: slices.Clone(c.route.Onward)}, c.routed
 }
 
 func newConn(chain []*ssh.Client, keepalive, setup time.Duration) *Conn {
