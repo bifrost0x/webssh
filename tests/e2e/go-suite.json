@@ -120,6 +120,49 @@
     ]},
     {"file": "design-system.spec.js", "exclude": [
       {"title": "Warm Graphite Sand separates cream actions, selection and status across views", "reason": "iterates the file workspace (C-SFTP)", "package": "FS1"}
-    ]}
+    ]},
+    {"file": "host-discovery.spec.js", "exclude": []},
+    {"file": "overview-filters.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "pending security updates open the matching upgrade workflow as a draft with exactly those hosts", "reason": "the upgrade workflow draft needs the automation area (C-AUTO-10 prefill, WebSSHAutomation)", "package": "AU1"},
+      {"title": "a restart hint offers to check the same hosts again, as a draft and without contacting them", "reason": "the restart check draft needs the automation area (C-AUTO-10 prefill, WebSSHAutomation)", "package": "AU1"}
+    ]},
+    {"file": "overview-maintenance-dismissal.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "host-inventory-diagnostic.spec.js", "exclude": []},
+    {"file": "product-data-truth.spec.js", "exclude": [
+      {"title": "system command arguments are explicitly library defaults, not discovered host values", "reason": "the command library (C-CMD) is not built yet; it answers 501", "package": "CM1"}
+    ]},
+    {"file": "host-move-overview.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "access-inspector.spec.js", "exclude": []},
+    {"file": "access-scale.spec.js", "exclude": []},
+    {"file": "information-roles.spec.js", "exclude": [
+      {"title": "a command without parameters has one authoritative code display", "reason": "the command library (C-CMD) is not built yet; it answers 501", "package": "CM1"}
+    ]},
+    {"file": "compact-desktop.spec.js", "exclude": [
+      {"title": "compact command details reserve the view and return to the same searchable library", "reason": "the command library (C-CMD) is not built yet; it answers 501", "package": "CM1"}
+    ]},
+    {"file": "werkbank-fidelity.spec.js", "exclude": []},
+    {"file": "dashboard-localization.spec.js", "exclude": []},
+    {"file": "current-network-workflow.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "start-page-map-persistence.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "task-context.spec.js", "exclude": []},
+    {"file": "overview-clarity.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "overview-composition.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "command code and description clicks open the matching right inspector without taking over action buttons", "reason": "the command library (C-CMD) is not built yet; it answers 501", "package": "CM1"}
+    ]},
+    {"file": "overview-continue-panel.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "overview-group-journey.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "overview-group-order.spec.js", "serial": "e2e_admin", "exclude": [
+      {"title": "reordering preserves exact route assignments, host membership and session state", "reason": "after the test rewrites the workspace page (background scope) the Go page loses its realtime connection and key list; found in HO2, not a gap of the overview", "package": "FE1"}
+    ]},
+    {"file": "overview-map.spec.js", "exclude": []},
+    {"file": "overview-map-persistence.spec.js", "exclude": []},
+    {"file": "overview-mixed-routes.spec.js", "exclude": []},
+    {"file": "overview-navigation.spec.js", "serial": "e2e_admin", "exclude": []},
+    {"file": "overview-route-map.spec.js", "exclude": []},
+    {"file": "overview-route-summary.spec.js", "exclude": []},
+    {"file": "overview-themes.spec.js", "exclude": []},
+    {"file": "overview-topology.spec.js", "exclude": []},
+    {"file": "overview-topology-arrange.spec.js", "exclude": []},
+    {"file": "overview-wheel-scroll.spec.js", "serial": "e2e_admin", "exclude": []}
   ]
 }
