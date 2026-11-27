@@ -90,7 +90,8 @@ func (s *system) buildCapabilities(in bootInput) error {
 	if err != nil {
 		return fmt.Errorf("key vault: %w", err)
 	}
-	s.hosts = &hosts.Service{DB: s.db, Keys: s.vault, Persistent: opt.persistent, Variants: opt.hostVariants, Limits: hostLimits(cfg)}
+	s.hosts = &hosts.Service{DB: s.db, Keys: s.vault, Persistent: opt.persistent, Variants: opt.hostVariants, Limits: hostLimits(cfg),
+		Commands: opt.hostCommands}
 	s.notes = &hostops.Notes{DB: s.db}
 	s.hostkeys = hostkey.New(s.db, s.log)
 	if s.policy, err = s.networkPolicy(); err != nil {
