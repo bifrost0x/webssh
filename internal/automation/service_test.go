@@ -288,7 +288,7 @@ func TestRunOutcomes(t *testing.T) {
 	first := tg[0].(map[string]any)
 	steps := first["steps"].([]any)
 	if failed["status"] != "failed" || first["status"] != "failed" || tg[1].(map[string]any)["status"] != "skipped" ||
-		steps[0].(map[string]any)["reason"] != "nonzero_exit" || steps[0].(map[string]any)["stderr"] != "boom\n" ||
+		steps[0].(map[string]any)["reason"] != "nonzero_exit" || steps[0].(map[string]any)["name"] != "a" || steps[0].(map[string]any)["stderr"] != "boom\n" ||
 		steps[0].(map[string]any)["exit_code"] != float64(2) || steps[1].(map[string]any)["status"] != "skipped" {
 		t.Fatalf("stop on error: %v", failed)
 	}

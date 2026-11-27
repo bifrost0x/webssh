@@ -269,7 +269,7 @@ func (rs *runState) steps(i int, f Frozen, conn Conn, secrets []string) {
 		done()
 		rs.budget -= len(res.Stdout) + len(res.Stderr)
 		rs.a.update(func(r *Run) {
-			res.order = r.Targets[i].Steps[k].order
+			res.order, res.Name = r.Targets[i].Steps[k].order, r.Targets[i].Steps[k].Name
 			r.Targets[i].Steps[k] = res
 		})
 		if rs.s.o.Facts != nil {
