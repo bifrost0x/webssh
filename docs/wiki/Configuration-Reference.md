@@ -1,6 +1,6 @@
 # Configuration Reference
 
-WebSSH reads configuration from environment variables. A local `.env` file is loaded with `override=False`, so variables supplied by the operating system, container runtime, or secret manager take precedence.
+WebSSH reads configuration from environment variables. A `.env` file next to the binary (`/app/.env` in the image, the checkout when you build from source) is loaded with the rules of python-dotenv and `override=False`, so variables supplied by the operating system, container runtime, or secret manager take precedence. `PYTHON_DOTENV_DISABLED=true` turns the file off; a file that is not UTF-8, holds a NUL byte or is larger than 4 MiB stops the start.
 
 Start from the repository's `.env.example`. The tables below describe the operational contract; check that file when upgrading because new options may be added.
 
@@ -28,7 +28,7 @@ Treat `SECRET_KEY` as long-lived installation state. Replacing it without the su
 | `HOST_DISCOVERY_ENABLED` | Offers manual SSH host discovery in a network range under Hosts → Find hosts | `true`; `false` in production |
 | `SOCKETIO_ALLOW_ANY_ORIGIN` | With `CORS_ORIGINS=*`, realtime connections accept only pages served from the address used for WebSSH. `true` accepts any origin again; rejected in production | `false` |
 | `TRUSTED_PROXIES` | Number of trusted reverse-proxy layers; `0` means none. Saved passwords and automation still work behind a TLS proxy at `0`: a page the browser loaded over `https://` from the same host counts as HTTPS. Set it to trust forwarded client addresses, together with `TRUSTED_PROXY_CIDRS` |
-| `TRUSTED_PROXY_CIDRS` | Comma-separated networks or addresses (`10.0.0.0/8`, `172.18.0.5`) of the proxies whose forwarding headers count. Every proxy in a chain must be listed. Without it, `TRUSTED_PROXIES` above 0 trusts every direct client and logs a warning at every start; host bits or invalid entries stop the start |
+| `TRUSTED_PROXY_CIDRS` | Comma-separated networks or addresses (`10.0.0.0/8`, `172.18.0.5`) of the proxies whose forwarding headers count. Every proxy in a chain must be listed. Without it, `TRUSTED_PROXIES` above 0 trusts every direct client and logs a warning at every start (with `DEPLOYMENT_PROFILE=production` the warning names it as required; the start is not refused); host bits or invalid entries stop the start |
 | `SESSION_COOKIE_SECURE` | Sends the session cookie only over HTTPS. Default `true` (`false` only with `DEBUG=true`); the homelab Compose file sets `false`. With `true`, browsers drop the cookie on plain `http://` addresses other than localhost and sign-in fails; the homelab profile warns at start while the value is not set explicitly |
 | `SESSION_TIMEOUT` | Idle SSH session timeout in seconds; positive integer, default `1800` |
 | `SESSION_COOKIE_NAME` / `REMEMBER_COOKIE_NAME` | Cookie names, default `session` and `remember_token`. Give each instance its own names when several run on one host name, so they do not overwrite each other's sign-ins; the two names must differ. The known-device cookie follows the session name as `<SESSION_COOKIE_NAME>_device`, the CSRF binding cookie as `<SESSION_COOKIE_NAME>_binding`; `REMEMBER_COOKIE_NAME` must not use either |
@@ -342,7 +342,7 @@ as 3.3 did, so a way back still starts, and names them in a startup warning:
 | `GUNICORN_THREADS`, `BACKGROUND_WORKERS` | no thread pools in the Go server |
 | `RATELIMIT_STORAGE_URL` | Redis is not supported; `memory://` is accepted without a warning |
 | `TRANSFER_TEMP_DIR` | folder archives are streamed without a temporary file |
-| `PYTHONUNBUFFERED`, `PYTHONDONTWRITEBYTECODE`, `PYTHON_DOTENV_DISABLED` | Python runtime settings |
+| `PYTHONUNBUFFERED`, `PYTHONDONTWRITEBYTECODE` | Python runtime settings |
 
 Values that 3.3 parsed in a surprising way keep their 3.3 meaning and also log
 a warning, for example `yes` or `1` for a boolean (read as false) or `" *"` in

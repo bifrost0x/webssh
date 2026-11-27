@@ -50,9 +50,10 @@ issue or a question can point to one line.
 4. Stop and remove the 3.3 container. Never run 3.3 and 3.4 on the same
    data volume at the same time (`U05`).
 5. Update the Compose file, or at least remove changes that need a shell or
-   Python in the image: a `healthcheck` with `CMD-SHELL` and `python`, and
-   any `command:` or `entrypoint:` that starts `gunicorn` or `sh` (`U15`,
-   `U16`).
+   Python in the image: any `command:` or `entrypoint:` that starts
+   `gunicorn`, `sh` or `python`, and health checks of your own that run
+   other programs (`U15`, `U16`). The health checks of the 3.3 Compose
+   files keep working.
 6. Behind a reverse proxy, make sure it forwards WebSocket upgrades and the
    `Origin` header for every path below the WebSSH prefix (`U29`, `U30`).
 7. Optional: preview the migration without changing anything:
@@ -70,7 +71,7 @@ issue or a question can point to one line.
 |---|---|---|
 | U01 | On its first start 3.4 finds the 3.3 data in `DATA_DIR`, copies everything into its own database in `DATA_DIR/go/` and checks every copied record before it activates the result. The start takes a few seconds longer than usual. | Nothing. Watch the log for `migration completed`. |
 | U02 | The 3.3 data is only read, never changed or deleted. The exceptions are runtime paths: `logs/` and `keys/` get mode 0700, `keys/` is created when it is missing, and 3.4 appends its events to `logs/security_audit.log`. | Nothing. |
-| U03 | The migration writes a report to `DATA_DIR/go/migration-report-<UTC>.json` (mode 0600), also when it fails. It lists what was migrated, records that were flagged and actions left to users or administrators: legacy SSH keys 3.4 cannot use (`U45`), schedules that need a new approval (`U73`), an old automation vault to import (`U70`). | Read the report and act on its `warnings` and `pending_actions`. |
+| U03 | The migration writes a report to `DATA_DIR/go/migration-report-<UTC>.json` (mode 0600), also when it fails. It lists what was migrated, records that were flagged and actions left to users or administrators: legacy SSH keys 3.4 cannot use (`U45`), schedules that need a new approval (`U73`), an old automation vault to import (`U70`). | Read the report and act on its `warnings` and `pending_user_actions`. |
 | U04 | Everyone signs in once. Browser sessions, "remember me" cookies and known-device cookies are not carried over. Also discarded: enrollments in progress, step-up confirmations, issued first-factor bootstrap codes, sign-ins with OIDC or GitHub that were in progress, and the counters of the sign-in rate limits. Passwords, second factors and passkeys stay. | Tell users to expect one new sign-in. Issue new bootstrap codes where the report lists open ones. |
 | U05 | If the 3.3 data changes while 3.4 runs, for example because a forgotten 3.3 container still uses the volume, 3.4 notices within a minute, reports not ready and refuses new sign-ins and changes until it is restarted. | Stop the 3.3 container, then see [Starting 3.4 again after the way back](#starting-34-again-after-the-way-back). |
 | U06 | 3.4 creates `logs/.webssh-go/keyring-material` (32 random bytes). Together with `SECRET_KEY` it protects the secrets in the new database. While the 3.3 data exists the file lives below `logs/` on purpose, so that a backup made by 3.3 after a way back never carries it. | Do not delete `logs/.webssh-go/`. Keep it in volume backups. Without it, saved SSH keys, saved passwords and second factors cannot be read. |
@@ -90,7 +91,7 @@ the way out:
 | U11 | `python_restore_unfinished` | A 3.3 restore did not finish. | Start 3.3 once to finish or roll back the restore, stop it, then start 3.4. |
 | U12 | for example `legacy_unsafe_path`, `legacy_unreadable` | A symbolic link, an unreadable or damaged file or an invalid record in the 3.3 data, for example a corrupt `app.db` or an SMB share record that contains a password. The message names the file. | Fix or remove the named file in 3.3, then start 3.4 again. |
 | U13 | `migration_incomplete_build` | The 3.4 build cannot migrate every kind of data it found. | Use a released 3.4 image. |
-| U14 | "exceeds 67108864 bytes" | A single store file is larger than 64 MiB. A store close to that limit needs about 1 GB of memory for a moment. | Reduce the store in 3.3 (`connection-store`), or raise the container's memory limit for the first start. |
+| U14 | "exceeds 67108864 bytes" | A single store file is larger than 64 MiB. The migration handles one account at a time, so its memory depends on the largest account's stores, not on the number of accounts: accounts with stores close to that limit need about 0.9 GB for a moment. 3.4 sets the Go memory limit to three quarters of the container's `mem_limit` unless `GOMEMLIMIT` is set. | Reduce the store in 3.3 (`connection-store`), or raise the container's memory limit for the first start. |
 
 ## Changes you can notice
 
@@ -102,8 +103,8 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 
 | # | Change | Kind | What to do |
 |---|---|---|---|
-| U15 | The image has no shell and no Python. A Compose `command:` or `entrypoint:` that starts `sh`, `gunicorn` or `python` (other than the LDAP helper, `U18`) exits with "the image has no shell". `docker compose exec webssh sh` no longer works. | decided | Use the commands of `/app/webssh` (`docker compose exec webssh /app/webssh help`). |
-| U16 | The image's health check is `/app/webssh healthcheck`. The `healthcheck` of the 3.3 Compose file calls Python and leaves 3.4 permanently `unhealthy`. | decided | Use the 3.4 Compose file or delete the `healthcheck:` block. |
+| U15 | The image has no shell and no Python. `/bin/sh` and `python` exist only to run the health checks of the 3.3 Compose files (`U16`) and the LDAP helper (`U18`); a Compose `command:` or `entrypoint:` that starts anything else with `sh`, `gunicorn` or `python` exits with "the image has no shell". `docker compose exec webssh sh` no longer opens a shell. A `:debug` image with a BusyBox shell exists for troubleshooting. | decided | Use the commands of `/app/webssh` (`docker compose exec webssh /app/webssh help`). |
+| U16 | The image's health check is `/app/webssh healthcheck`, with the 3.3 timing (30 s interval, 5 s timeout, 10 s start period, 3 retries). The `healthcheck` blocks of the 3.3 Compose files (`python -c …` and the `CMD-SHELL` loop) still work: 3.4 answers exactly these commands and checks the same port or `/ready` as before. Health checks that run other commands report `unhealthy`. | decided | Nothing for the shipped Compose files; switch your own health checks to `/app/webssh healthcheck`. |
 | U17 | Unraid: the console of the container (**Console** in the Docker tab) has nothing to open, because the image has no shell. The 3.4 template drops the shell setting. | decided | Run commands with `docker exec webssh /app/webssh <command>` from the Unraid terminal. |
 | U18 | The command line is `webssh <command>`: `serve`, `healthcheck`, `create-admin`, `reset-password`, `ldap-secret`, `issue-factor-bootstrap`, `connection-store`, `rotate-secret-key`, `migrate`, `legacy purge`, `backup create\|verify\|restore`, `version`. The 3.3 forms `/app/entrypoint.sh flask --app start:app <command>` and `python /app/deployment/ldap_secret_cli.py <command>` (the `ldap-tools` Compose profile) still work with the same options, exit codes and messages and print a notice with the new form. They are removed in the next major release. | decided | Switch scripts to `/app/webssh <command>`. |
 | U19 | Admin commands (`create-admin`, `reset-password`, `issue-factor-bootstrap`) never migrate. On a 3.3 volume that 3.4 has not started on yet they stop with "has not been migrated yet". | new | Start 3.4 once first. |
@@ -116,10 +117,11 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 
 | # | Change | Kind | What to do |
 |---|---|---|---|
-| U24 | New `TRUSTED_PROXY_CIDRS`: the networks or addresses of your reverse proxies. Forwarded headers count only when the direct peer is inside them, and every proxy in a chain must be listed. With `TRUSTED_PROXIES` above 0 and no CIDRs, 3.4 trusts every direct client as 3.3 did and warns at every start. | new | Set `TRUSTED_PROXY_CIDRS` whenever `TRUSTED_PROXIES` is above 0. |
-| U25 | Variables without meaning in 3.4 are accepted, ignored and named in a startup warning: `GUNICORN_THREADS`, `BACKGROUND_WORKERS`, `RATELIMIT_STORAGE_URL` (Redis is no longer supported; rate limits live in the process) and `PYTHON*`. Their values are still checked as in 3.3, so a way back still starts. `TRANSFER_TEMP_DIR` is no longer used; `BACKUP_RECOVERY_DURABLE` is read but no longer required (`U83`). | decided | Remove them from the Compose file when the way back is no longer needed; drop the Redis service. |
+| U24 | New `TRUSTED_PROXY_CIDRS`: the networks or addresses of your reverse proxies. Forwarded headers count only when the direct peer is inside them, and every proxy in a chain must be listed. With `TRUSTED_PROXIES` above 0 and no CIDRs, 3.4 trusts every direct client as 3.3 did and warns at every start; with `DEPLOYMENT_PROFILE=production` the warning names `TRUSTED_PROXY_CIDRS` as a required setting, but the start is not refused. | new | Set `TRUSTED_PROXY_CIDRS` whenever `TRUSTED_PROXIES` is above 0. |
+| U25 | Variables without meaning in 3.4 are accepted, ignored and named in a startup warning: `GUNICORN_THREADS`, `BACKGROUND_WORKERS`, `RATELIMIT_STORAGE_URL` (Redis is no longer supported; rate limits live in the process) and `PYTHON*` other than `PYTHON_DOTENV_DISABLED` (`U92`). Their values are still checked as in 3.3, so a way back still starts. `TRANSFER_TEMP_DIR` is no longer used; `BACKUP_RECOVERY_DURABLE` is read but no longer required (`U83`). | decided | Remove them from the Compose file when the way back is no longer needed; drop the Redis service. |
 | U26 | Values that 3.3 parsed in a surprising way keep their 3.3 meaning and now log a warning, for example `yes` or `1` for a boolean (read as false), `" true"` with a space (false), or `" *"` in `CORS_ORIGINS` (not a wildcard). | fix | Read the startup warnings and correct the values. |
 | U27 | `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` add certificates to the system trust store instead of replacing it, and apply to OIDC and GitHub. LDAP trusts only `LDAP_CA_FILE`, as before. A missing or empty bundle is an error. | decided | Check that the bundle path exists. |
+| U92 | A `.env` file next to the binary (`/app/.env` in the image, the checkout for a build from source) is read with the rules of python-dotenv: variables already set in the environment win, `PYTHON_DOTENV_DISABLED` turns it off. A file that is not UTF-8, holds a NUL byte or is larger than 4 MiB stops the start. The image does not contain a `.env`. | keep | Nothing, unless you mount a `.env` into `/app`. |
 | U28 | A second cookie `<SESSION_COOKIE_NAME>_binding` binds the CSRF token to the browser, and a known device gets `<SESSION_COOKIE_NAME>_device`. `REMEMBER_COOKIE_NAME` must not use either name; the start fails if it does. | new | Allow the cookies in cookie policies. |
 
 ### Reverse proxy and live connection
