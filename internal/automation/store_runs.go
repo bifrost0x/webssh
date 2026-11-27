@@ -222,7 +222,7 @@ func recoverRun(r *Run) bool {
 			if !terminal(s.Status) {
 				s.Status = StatusUnknown
 				if s.Detailed {
-					s.Reason = ptr("run_interrupted")
+					s.Reason = new("run_interrupted")
 				}
 			}
 		}

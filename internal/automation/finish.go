@@ -20,7 +20,7 @@ func (s *Service) finish(rs *runState) {
 				st := &t.Steps[k]
 				switch st.Status {
 				case StatusRunning:
-					st.Status, st.Reason = StatusUnknown, ptr("run_interrupted")
+					st.Status, st.Reason = StatusUnknown, new("run_interrupted")
 				case StatusQueued:
 					st.Status = StatusSkipped
 				}
@@ -46,7 +46,7 @@ func (s *Service) finish(rs *runState) {
 				r.Status = StatusFailed
 			}
 		}
-		r.Finished, r.FinishedAt = true, ptr(pyISOTime(s.o.Now()))
+		r.Finished, r.FinishedAt = true, new(pyISOTime(s.o.Now()))
 	})
 	final := rs.a.snapshot()
 	if err := s.persist(context.Background(), rs.j.userID, final); err != nil {

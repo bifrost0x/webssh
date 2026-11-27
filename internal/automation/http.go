@@ -157,7 +157,6 @@ func errorBody(message, code string, hosts []string) jsontext.Value {
 func (h *HTTP) fail(w http.ResponseWriter, r *http.Request, err error) {
 	var ae *Error
 	var nd *NotDispatched
-	var se *storageError
 	switch {
 	case errors.As(err, &ae) && ae.Code == "storage_unavailable":
 		write(w, http.StatusConflict, errorBody("Automation storage could not be validated.", ae.Code, nil))
@@ -168,7 +167,7 @@ func (h *HTTP) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.As(err, &nd):
 		write(w, HTTPStatus(nd.Code), errorBody("Automation request could not be completed.", nd.Code, nil))
 	default:
-		if !errors.As(err, &se) {
+		if _, ok := errors.AsType[*storageError](err); !ok {
 			err = &storageError{err}
 		}
 		h.logger().ErrorContext(r.Context(), "automation request failed", "path", r.URL.Path, "error", err)

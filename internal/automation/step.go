@@ -85,34 +85,34 @@ func runStep(ctx context.Context, on Executor, step Step, cancelled func() bool,
 		return shapeResult(raw, over, status, reason, exit, secrets, budget, now().Sub(started))
 	}
 	if cancelled() {
-		return result(StatusCancelled, ptr("cancelled"), nil)
+		return result(StatusCancelled, new("cancelled"), nil)
 	}
 	cmd, err := remotecmd.Script(step.Command, step.Sudo)
 	if err != nil {
-		return result(StatusFailed, ptr("dispatch_failed"), nil)
+		return result(StatusFailed, new("dispatch_failed"), nil)
 	}
 	cmd.Timeout = time.Duration(step.Timeout) * time.Second
 	cmd.MaxOutput, cmd.MaxStderr = streamBytes, streamBytes
 	res, err := remotecmd.Run(ctx, c, cmd)
 	switch {
 	case err == nil && res.ExitStatus == 0:
-		return result(StatusSucceeded, nil, ptr(int64(0)))
+		return result(StatusSucceeded, nil, new(int64(0)))
 	case err == nil && res.ExitStatus > 0:
-		return result(StatusFailed, ptr("nonzero_exit"), ptr(int64(res.ExitStatus)))
+		return result(StatusFailed, new("nonzero_exit"), new(int64(res.ExitStatus)))
 	case err == nil:
-		return result(StatusUnknown, ptr("channel_lost"), nil)
+		return result(StatusUnknown, new("channel_lost"), nil)
 	case cancelled() || ctx.Err() != nil:
 		if c.started.Load() {
-			return result(StatusUnknown, ptr("cancelled"), nil)
+			return result(StatusUnknown, new("cancelled"), nil)
 		}
-		return result(StatusCancelled, ptr("cancelled"), nil)
+		return result(StatusCancelled, new("cancelled"), nil)
 	case fault.Is(err, fault.Timeout):
-		return result(StatusUnknown, ptr("timeout"), nil)
+		return result(StatusUnknown, new("timeout"), nil)
 	case errors.Is(err, client.ErrNoExitStatus), c.started.Load():
-		return result(StatusUnknown, ptr("channel_lost"), nil)
+		return result(StatusUnknown, new("channel_lost"), nil)
 	}
 	// The script never left WebSSH: the host cannot have run it.
-	return result(StatusFailed, ptr("dispatch_failed"), nil)
+	return result(StatusFailed, new("dispatch_failed"), nil)
 }
 
 // shapeResult is result() of execute_step: both streams decoded,

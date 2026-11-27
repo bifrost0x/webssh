@@ -104,7 +104,7 @@ type StepResult struct {
 	Truncated bool
 }
 
-func ptr[T any](v T) *T { return &v }
+//go:fix inline
 
 func strOrNull(s *string) jsontext.Value {
 	if s == nil {

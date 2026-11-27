@@ -136,7 +136,7 @@ func (rs *runState) skipFrom(i int, err error) {
 	rs.a.update(func(r *Run) {
 		for k := i; k < len(r.Targets); k++ {
 			r.Targets[k].Status = StatusSkipped
-			r.Targets[k].Reason = ptr(reason)
+			r.Targets[k].Reason = new(reason)
 		}
 	})
 }
@@ -203,11 +203,11 @@ func settleTarget(t *Target, connErr error, cancelled bool) {
 	if connErr != nil {
 		switch {
 		case open:
-			t.Reason, t.Status = ptr("run_interrupted"), StatusUnknown
+			t.Reason, t.Status = new("run_interrupted"), StatusUnknown
 		case cancelled:
-			t.Reason, t.Status = ptr(connectionReason(connErr)), StatusCancelled
+			t.Reason, t.Status = new(connectionReason(connErr)), StatusCancelled
 		default:
-			t.Reason, t.Status = ptr(connectionReason(connErr)), StatusFailed
+			t.Reason, t.Status = new(connectionReason(connErr)), StatusFailed
 		}
 	} else {
 		all, failed := true, false

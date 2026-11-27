@@ -64,7 +64,7 @@ type job struct {
 }
 
 func (s *Service) newRecord(j job) Run {
-	r := Run{ID: newUUID(), RunbookID: ptr(j.frozen.Runbook.ID), Name: j.frozen.Runbook.Name,
+	r := Run{ID: newUUID(), RunbookID: new(j.frozen.Runbook.ID), Name: j.frozen.Runbook.Name,
 		CreatedAt: pyISOTime(s.o.Now()), Status: StatusQueued}
 	for _, t := range j.frozen.Targets {
 		tr := Target{ID: t.ResourceID, Name: t.Name, Host: t.Host, Port: t.Port, Username: t.Username,
@@ -75,7 +75,7 @@ func (s *Service) newRecord(j job) Run {
 		r.Targets = append(r.Targets, tr)
 	}
 	if j.scheduled != nil {
-		r.ScheduleID, r.ClaimID = ptr(j.scheduled.ScheduleID), ptr(j.scheduled.ClaimID)
+		r.ScheduleID, r.ClaimID = new(j.scheduled.ScheduleID), new(j.scheduled.ClaimID)
 	}
 	return r
 }
@@ -127,12 +127,10 @@ func (s *Service) dispatch(ctx context.Context, j job) (Run, error) {
 		return Run{}, notDispatched(err)
 	}
 	s.active[j.userID] = a
-	s.work.Add(1)
-	go func() {
-		defer s.work.Done()
+	s.work.Go(func() {
 		defer release()
 		s.run(j, a, budget)
-	}()
+	})
 	s.audit("AUTOMATION_RUN_STARTED", "user_id", j.userID)
 	return record.clone(), nil
 }

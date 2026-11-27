@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"slices"
 
 	"github.com/bifrost0x/webssh/internal/store"
 )
@@ -82,10 +83,8 @@ func (s *Service) DeleteRuns(ctx context.Context, userID int64, ids []string) (i
 		activeID = a.snapshot().ID
 	}
 	s.mu.Unlock()
-	for _, id := range ids {
-		if id == activeID {
-			return 0, Fail("run_active")
-		}
+	if slices.Contains(ids, activeID) {
+		return 0, Fail("run_active")
 	}
 	var removed int
 	err := s.o.DB.Write(ctx, func(tx *store.Tx) error {

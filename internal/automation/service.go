@@ -157,19 +157,6 @@ func (s *Service) audit(event string, kv ...any) {
 	}
 }
 
-// enabled is _enabled without the transport check: the switch, then
-// whether the server takes work.
-func (s *Service) enabled(ctx context.Context) error {
-	on, err := s.o.Switches.AutomationEnabled(ctx)
-	if err != nil || !on {
-		return Fail("disabled")
-	}
-	if !s.o.Accepting() {
-		return Fail("unavailable")
-	}
-	return nil
-}
-
 // Sweep drops expired reviews (the cleanup loop).
 func (s *Service) Sweep() {
 	now := s.o.Now()
