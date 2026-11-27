@@ -10,6 +10,7 @@
 - [Install on Unraid](Install-on-Unraid)
 - [Production Deployment](Production-Deployment)
 - [Reverse Proxy and Subfolder Deployment](Reverse-Proxy-and-Subfolder-Deployment)
+- [Upgrading to 3.4](Upgrading-to-3.4)
 - [Upgrading, Rollback, and FAQ](Upgrading-Rollback-and-FAQ)
 
 **Identity and access**

@@ -9,6 +9,10 @@ This Wiki is the long-form operator and user guide. For the compact project
 overview, screenshots, release badges, and source code, visit the
 [WebSSH repository](https://github.com/bifrost0x/webssh).
 
+> **Upgrading from 3.3?** WebSSH 3.4 replaces the Python server with a Go
+> server and migrates the data once at the first start. Read
+> [Upgrading to 3.4](Upgrading-to-3.4) before the update.
+
 ## What WebSSH provides
 
 - Multiple simultaneous SSH sessions with tabs and split-pane layouts.
@@ -70,13 +74,12 @@ maintaining sessions. It is trusted infrastructure, not an end-to-end encrypted
 relay that is blind to session contents.
 
 Persistent state lives below `DATA_DIR` (normally `/app/data` in the container).
-Live Paramiko SSH transports, active terminal readers, temporary SFTP
+Live SSH connections, active terminal readers, temporary SFTP
 connections, and quota coordination are process-local.
 
-> **Single-worker requirement:** production must run exactly one Gunicorn
-> `gthread` worker. Increasing the thread count is supported within the
-> documented range; adding application workers or replicas is not supported
-> without an external session-state architecture.
+> **Single-process requirement:** exactly one WebSSH process serves a data
+> directory; a second one refuses to start. Replicas behind a load balancer are
+> not supported.
 
 ## Homelab versus production
 
