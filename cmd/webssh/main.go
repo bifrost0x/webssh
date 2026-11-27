@@ -79,13 +79,17 @@ func main() {
 
 // dispatch selects the argument form by the name the binary was started
 // under: the image links /app/entrypoint.sh to the binary for the documented
-// Python command form.
+// Python command form, and python and /bin/sh for the LDAP secret helper
+// and the health checks of the Python Compose files.
 func dispatch(ctx context.Context, argv []string, s streams) int {
 	if len(argv) > 0 && isLegacyEntrypoint(argv[0]) {
 		return runLegacyEntrypoint(ctx, argv[1:], s)
 	}
 	if len(argv) > 0 && isPythonShim(argv[0]) {
-		return runPythonShim(argv[1:], s)
+		return runPythonShim(ctx, argv[1:], s)
+	}
+	if len(argv) > 0 && isShellShim(argv[0]) {
+		return runShellShim(ctx, argv[1:], s)
 	}
 	var args []string
 	if len(argv) > 1 {

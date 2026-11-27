@@ -28,8 +28,14 @@ func runHealthcheck(ctx context.Context, args []string, s streams) int {
 	if fs.NArg() != 0 || *timeout <= 0 {
 		return usageError(s.stderr, "healthcheck takes only -timeout with a positive duration")
 	}
+	return probePorts(ctx, healthcheckPorts(os.Getenv("PORT")), *timeout, s)
+}
+
+// probePorts asks /ready on each port in turn and succeeds on the first
+// ready answer.
+func probePorts(ctx context.Context, ports []string, timeout time.Duration, s streams) int {
 	client := &http.Client{
-		Timeout: *timeout,
+		Timeout: timeout,
 		// Never through a proxy from the environment, never anywhere else.
 		Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true},
 		CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -37,7 +43,7 @@ func runHealthcheck(ctx context.Context, args []string, s streams) int {
 		},
 	}
 	var errs []error
-	for _, port := range healthcheckPorts(os.Getenv("PORT")) {
+	for _, port := range ports {
 		err := probeReady(ctx, client, port)
 		if err == nil {
 			return 0
