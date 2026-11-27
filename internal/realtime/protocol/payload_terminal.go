@@ -45,6 +45,10 @@ type SessionInfo struct {
 	TmuxSessionName     string `json:"tmux_session_name"`
 	DisplayName         string `json:"display_name"`
 	DetectedPlatform    string `json:"detected_platform"`
+	// Herdr is the Herdr overview the saved host granted when the session
+	// connected; UseHerdr says the session runs the Herdr client (HO1).
+	Herdr    bool `json:"herdr"`
+	UseHerdr bool `json:"use_herdr"`
 	// LastSeq is the sequence of the last output chunk; terminal.attach
 	// with after_seq = LastSeq replays nothing.
 	LastSeq uint64 `json:"last_seq"`
@@ -100,6 +104,9 @@ type OpenTarget struct {
 	// the name before it reaches a shell command.
 	UseTmux         bool   `json:"use_tmux,omitzero"`
 	TmuxSessionName string `json:"tmux_session_name,omitzero"`
+	// UseHerdr asks for the Herdr client instead of the login shell; only
+	// a saved host that grants the session mode runs it (HO1).
+	UseHerdr bool `json:"use_herdr,omitzero"`
 
 	JumpPassword       string `json:"jump_password,omitzero"`
 	SOCKSPassword      string `json:"socks_password,omitzero"`
