@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/accounts"
@@ -109,7 +108,7 @@ type system struct {
 	audit    *audit.Logger
 	optional optional
 
-	maintenance atomic.Bool
+	maintenance maintenanceSwitch
 
 	accounts *accounts.Service
 	local    *local.Provider

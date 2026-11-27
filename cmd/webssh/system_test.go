@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/bifrost0x/webssh/internal/backup"
 	"io"
 	"log/slog"
 	"maps"
@@ -107,7 +108,9 @@ func TestSystemServesThePreview(t *testing.T) {
 
 func TestMaintenanceAnswersOnlyTheProbes(t *testing.T) {
 	sys, ts := openTestSystem(t, nil)
-	sys.maintenance.Store(true)
+	if _, err := sys.maintenance.Enter(t.Context(), backup.MaintenanceRestore); err != nil {
+		t.Fatal(err)
+	}
 	jar, _ := cookiejar.New(nil)
 	c := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 	if resp, body := get(t, c, ts.URL+"/login"); resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(body, `"maintenance"`) {

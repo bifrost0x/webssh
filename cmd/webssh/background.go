@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/bifrost0x/webssh/internal/backup"
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
 )
 
@@ -88,8 +89,10 @@ func (s *system) sweepSessions(ctx context.Context) bool {
 // data directory again. Go stops serving the data until an administrator
 // resolves it; an unreadable source counts as a change (fail closed).
 func (s *system) sourceChanged(ctx context.Context, cause error) {
-	if !s.maintenance.CompareAndSwap(false, true) {
-		return
+	if _, err := s.maintenance.Enter(ctx, backup.MaintenanceSourceChange); err != nil {
+		// Another reason holds maintenance; the change still ends the
+		// service until a restart.
+		s.maintenance.forceSourceChange()
 	}
 	msg := "the legacy data changed while WebSSH runs; it now answers only the health checks. " +
 		"Stop the other process that uses this data directory, then restart; `webssh migrate --replace` migrates the current legacy data"
