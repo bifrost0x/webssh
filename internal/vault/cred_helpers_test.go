@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"maps"
 	"slices"
 	"sync"
 	"testing"
@@ -171,9 +172,7 @@ func (r *credRig) doGrant(t testing.TB, p principal.Principal, method, rid strin
 		return nil, err
 	}
 	body := map[string]any{"intent": token}
-	for k, v := range payload {
-		body[k] = v
-	}
+	maps.Copy(body, payload)
 	if grant == "issue" {
 		grant = r.grant(p, principal.ActionCredentialsVault, token)
 	}
@@ -183,9 +182,7 @@ func (r *credRig) doGrant(t testing.TB, p principal.Principal, method, rid strin
 func (r *credRig) prepare(t testing.TB, p principal.Principal, method, rid string, payload map[string]any) (string, error) {
 	t.Helper()
 	mutation := map[string]any{"method": method}
-	for k, v := range payload {
-		mutation[k] = v
-	}
+	maps.Copy(mutation, payload)
 	if rid != "" {
 		mutation["credential_id"] = rid
 	}

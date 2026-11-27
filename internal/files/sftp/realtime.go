@@ -132,7 +132,7 @@ func (a *Area) quickClose(ctx context.Context, _ protocol.Peer, req protocol.Fil
 	if err != nil {
 		return protocol.FilesQuickClosed{}, fault.New(fault.SourceUnavailable, "Unauthorized access to connection")
 	}
-	return protocol.FilesQuickClosed{ConnectionID: req.ConnectionID}, nil
+	return protocol.FilesQuickClosed(req), nil
 }
 
 func validIdentifier(s string) bool { return s != "" && len(s) <= maxIdentifier }

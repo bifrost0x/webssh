@@ -3,6 +3,7 @@ package vault
 import (
 	"bytes"
 	"encoding/json/jsontext"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -241,9 +242,7 @@ func TestReplacementAndPreviewChecks(t *testing.T) {
 	}
 	r.stores.set(1, Records{Profiles: []jsontext.Value{profileJSON("p1", "moved.example"), profileJSON("p2", "b.example")}, SMB: true})
 	body := map[string]any{"intent": token}
-	for k, v := range create {
-		body[k] = v
-	}
+	maps.Copy(body, create)
 	if _, err := r.svc.Apply(as(p), MethodCreate, "", obj(t, body), ""); codeOf(err) != fault.PreviewChanged {
 		t.Fatalf("moved host: %v", err)
 	}
