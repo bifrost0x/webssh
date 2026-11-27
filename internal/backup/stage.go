@@ -28,6 +28,14 @@ const (
 	previousSecretName = "previous-secret_key"
 )
 
+// stagedReportName is the migration report of a Python archive in the
+// staging directory; the activation keeps it in the Go directory as
+// restoreReportPrefix<UTC>.json (migration-spec 5.6).
+const (
+	stagedReportName    = "migration-report.json"
+	restoreReportPrefix = "restore-report-"
+)
+
 // Installation is the live installation a restore goes into.
 type Installation struct {
 	DataDir string
@@ -212,6 +220,9 @@ func stageLegacy(ctx context.Context, in *Installation, req StageRequest, f *os.
 	}
 	if err := moveFile(out.Database, filepath.Join(st.Dir, keyring.DatabaseName)); err != nil {
 		return st, fmt.Errorf("backup: stage the migrated database: %w", err)
+	}
+	if err := writePrivate(filepath.Join(st.Dir, stagedReportName), []byte(out.Report)); err != nil {
+		return st, fmt.Errorf("backup: stage the migration report: %w", err)
 	}
 	st.Kind, st.KeyID, st.Export, st.Report = out.Kind, ring.KeyID(), !keep, out.Report
 	return st, nil

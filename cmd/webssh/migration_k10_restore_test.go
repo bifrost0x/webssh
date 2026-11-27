@@ -52,6 +52,7 @@ func TestBuildRestoresPythonBackupsThroughTheMigration(t *testing.T) {
 			if code, out, e := runIn(t, "", argv...); code != 0 {
 				t.Fatalf("restore: %d %q %q", code, out, e)
 			}
+			keptRestoreReport(t, dir)
 			db, err := store.Open(t.Context(), filepath.Join(dir, keyring.GoDirName, keyring.DatabaseName), store.Options{})
 			if err != nil {
 				t.Fatal(err)
@@ -60,6 +61,32 @@ func TestBuildRestoresPythonBackupsThroughTheMigration(t *testing.T) {
 			restoreReport(t, tc.archive, tc.recovery)
 			signInMigrated(t, db, passwords)
 		})
+	}
+}
+
+// keptRestoreReport checks that the restore kept the migration report of
+// the archive in the Go directory (MG1-2, migration-spec 5.6): one file,
+// owner-only, every entity a step.
+func keptRestoreReport(t *testing.T, dir string) {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(dir, keyring.GoDirName, "restore-report-*.json"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("restore reports %v, %v", files, err)
+	}
+	info, err := os.Stat(files[0])
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("restore report %v, %v", info, err)
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep legacy.Report
+	if err := json.Unmarshal(data, &rep); err != nil {
+		t.Fatal(err)
+	}
+	if rep.Result != legacy.ResultCompleted || len(rep.Entities) != len(legacy.Entities) || len(rep.Pending) != 0 {
+		t.Fatalf("restore report: result %s, %d entities, pending %v", rep.Result, len(rep.Entities), rep.Pending)
 	}
 }
 

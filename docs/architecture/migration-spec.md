@@ -780,7 +780,9 @@ and `*-pre-rotation-*.zip`.
    stays valid; the restore is recorded separately.
 7. Members under `data/go/` (a Python backup taken after a way back
    carries the Go directory along) are never restored, never opened and
-   never executed; they are counted in the restore report. Members under
+   never executed; they are counted in the restore report. The restore
+   report is the migration report of the archive; the activation keeps it
+   as `<Go directory>/restore-report-<UTC>.json` (0600). Members under
    `data/logs/` are ignored as Python ignores them
    (`app/backup_manager.py:923-932`). A Python archive therefore cannot
    inject or roll back Go data through a Go restore.

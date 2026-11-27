@@ -95,6 +95,9 @@ While a failed rollback is unresolved, `/ready` and the sign-in page answer
 - A 3.3 archive is restored through the migration: the environment value
   wins, otherwise the archive's `data/secret_key`, and the restored secrets
   are sealed again with the installation's key material.
+  Its migration report is kept as `DATA_DIR/go/restore-report-<UTC>.json`
+  (mode 0600) once the restore is active, next to the report of the first
+  migration.
 
 3.4 archives are checked strictly. Links, devices, absolute or
 non-canonical paths, `..`, backslashes, members below `go/` or `logs/`

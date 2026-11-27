@@ -67,6 +67,10 @@ func activate(dataDir string, now func() time.Time, point func(string)) (*Journa
 	applyErr := apply(dataDir, goDir, j, point)
 	if applyErr == nil {
 		j.State, j.Message, j.Code = RestoreSucceeded, "Restore completed; WebSSH restarted with the restored data", ""
+		if err := keepReport(goDir, filepath.Join(goDir, j.Staged), now()); err != nil {
+			// The restore itself succeeded; the journal says what is missing.
+			j.Message += "; the migration report of the archive could not be kept: " + err.Error()
+		}
 		if err := writeJournal(goDir, *j, now()); err != nil {
 			return j, err
 		}
@@ -80,6 +84,17 @@ func activate(dataDir string, now func() time.Time, point func(string)) (*Journa
 	}
 	j.State, j.Message, j.Code = RestoreFailed, "Restore failed; original state was restored", "restore_failed"
 	return j, errors.Join(applyErr, writeJournal(goDir, *j, now()), removeStale(dataDir, goDir, j))
+}
+
+// keepReport moves the migration report of a restored Python archive from
+// the staging directory into the Go directory, next to the report of the
+// first migration. A Go archive has none.
+func keepReport(goDir, staged string, now time.Time) error {
+	from := filepath.Join(staged, stagedReportName)
+	if !exists(from) {
+		return nil
+	}
+	return moveFile(from, filepath.Join(goDir, restoreReportPrefix+now.UTC().Format("20060102T150405.000000000Z")+".json"))
 }
 
 // checkJournalPaths accepts only the paths Commit writes.
