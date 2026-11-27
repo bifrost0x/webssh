@@ -138,6 +138,13 @@ var v1 = []MessageType{
 	{TypeFilesRename, ClientRequest, "internal/files"},
 	{TypeFilesDelete, ClientRequest, "internal/files"},
 	{TypeFilesSourceClose, ClientRequest, "internal/files"},
+
+	// Area "smb" (FS3, payload_smb.go).
+	{TypeSMBShareList, ClientRequest, "internal/files/smb"},
+	{TypeSMBShareSave, ClientRequest, "internal/files/smb"},
+	{TypeSMBShareDelete, ClientRequest, "internal/files/smb"},
+	{TypeSMBConnect, ClientRequest, "internal/files/smb"},
+	{TypeSMBConnectCancel, ClientRequest, "internal/files/smb"},
 }
 
 // V1 returns the catalog of schema v1.

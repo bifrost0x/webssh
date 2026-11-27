@@ -71,6 +71,7 @@ type Config struct {
 	Stores Stores
 	Files  Files
 	Audit  Audit
+	SMB    SMB
 	// ShutdownGrace is RUNTIME_SHUTDOWN_GRACE_SECONDS.
 	ShutdownGrace time.Duration
 	// CABundle is the extra trust anchor file or directory from

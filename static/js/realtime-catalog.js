@@ -39,7 +39,7 @@
     }
 
     // Each area (realtime-shim-<area>.js) provides some of:
-    //   requests:    event: {type, payload?, ack?, push?: [[event, build]], errorEvent?, answeredByPage?, refresh?}
+    //   requests:    event: {type, payload?, ack?, push?: [[event, build]], failure?: [[event, build]], errorEvent?, answeredByPage?, refresh?}
     //   refresh:     list request type: [event, build] pushed after a refresh
     //   unavailable: event: data => [event, payload], a local reply while the area is not built
     //   features:    [[feature, pattern]] for the preview notice
@@ -51,7 +51,9 @@
     // an event name instead of true repeats it as that event. failure(failed,
     // data) rebuilds the failure for the acknowledgement and the event (the
     // correlation members Python sent with it). refresh names a list request
-    // whose result is pushed afterwards.
+    // whose result is pushed afterwards; failurePush builders
+    // get the failure and the request data and are pushed on a failure (the
+    // error events of their own the Python release sent).
     // Events without a v1 type are answered locally with not_available_in_preview.
     const REQUESTS = join('requests');
     const REFRESH_PUSH = join('refresh');
@@ -109,6 +111,7 @@
                 if (entry.errorEvent && !entry.answeredByPage?.(failed)) {
                     host.dispatch(entry.errorEvent === true ? 'error' : entry.errorEvent, {...failed});
                 }
+                for (const [event, build] of entry.failurePush || []) host.dispatch(event, build(failed, data));
                 acks.answer(ack, result, null, entry.failure ? () => failed : undefined);
                 return;
             }

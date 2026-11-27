@@ -112,6 +112,7 @@ func (pg *pages) workspace(w http.ResponseWriter, r *http.Request) {
 	d.ConnectionHistoryScope = page.ConnectionHistoryScope
 	d.InitialInventory = pg.inventory(r.Context(), d.User.ID)
 	d.MaxEditorFileSize = pg.cfg.Files.MaxEditorBytes
+	d.SMBEnabled = pg.cfg.SMB.Enabled
 	d.TransferLimits = httpapi.TransferLimits{UploadBytes: defaultUploadBytes, DownloadBytes: defaultDownloadBytes,
 		ArchiveBytes: defaultArchiveBytes, RemoteTransferBytes: defaultArchiveBytes}
 	d.SSHInputLimits = httpapi.SSHInputLimits{MaxEventBytes: int64(pg.cfg.Terminal.Input.MaxBytes)}

@@ -17,6 +17,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/auth/stepup"
 	"github.com/bifrost0x/webssh/internal/auth/totp"
 	"github.com/bifrost0x/webssh/internal/auth/webauthn"
+	"github.com/bifrost0x/webssh/internal/files/smb"
 	"github.com/bifrost0x/webssh/internal/hostops"
 	"github.com/bifrost0x/webssh/internal/hosts"
 	"github.com/bifrost0x/webssh/internal/jobs"
@@ -53,6 +54,7 @@ func productionSchemas() []store.Schema {
 		ldap.Schema(),
 		github.Schema(),
 		oidc.Schema(),
+		smb.Schema(),
 	}
 }
 

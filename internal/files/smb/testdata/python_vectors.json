@@ -1,0 +1,2264 @@
+{
+ "allowlist": [
+  {
+   "allowed": [
+    "nas.example"
+   ],
+   "host": "nas.example",
+   "ok": true,
+   "value": "nas.example"
+  },
+  {
+   "allowed": [
+    "nas.example"
+   ],
+   "host": "NAS.EXAMPLE.",
+   "ok": true,
+   "value": "nas.example"
+  },
+  {
+   "allowed": [
+    "NAS.example"
+   ],
+   "host": "nas.example",
+   "ok": true,
+   "value": "nas.example"
+  },
+  {
+   "allowed": [
+    "nas.example"
+   ],
+   "code": null,
+   "error": "ValueError",
+   "host": "other.example",
+   "ok": false
+  },
+  {
+   "allowed": [
+    "8.8.4.4"
+   ],
+   "host": "8.8.4.4",
+   "ok": true,
+   "value": "8.8.4.4"
+  },
+  {
+   "allowed": [
+    "8.8.4.4"
+   ],
+   "code": null,
+   "error": "ValueError",
+   "host": "8.8.4.004",
+   "ok": false
+  },
+  {
+   "allowed": [
+    "2606:4700:0::1111"
+   ],
+   "host": "2606:4700::1111",
+   "ok": true,
+   "value": "2606:4700::1111"
+  },
+  {
+   "allowed": [
+    "2606:4700::1111"
+   ],
+   "host": "[2606:4700::1111]",
+   "ok": true,
+   "value": "2606:4700::1111"
+  },
+  {
+   "allowed": [
+    "nas.example"
+   ],
+   "code": null,
+   "error": "ValueError",
+   "host": "8.8.4.4",
+   "ok": false
+  },
+  {
+   "allowed": [],
+   "code": null,
+   "error": "ValueError",
+   "host": "nas.example",
+   "ok": false
+  },
+  {
+   "allowed": [
+    "nas.example",
+    " "
+   ],
+   "host": "nas.example",
+   "ok": true,
+   "value": "nas.example"
+  }
+ ],
+ "connect": [
+  {
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": true,
+   "value": "ok"
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": ""
+   },
+   "ok": false
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": false
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "",
+    "share": "Data",
+    "username": ""
+   },
+   "ok": false
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "a\\b"
+   },
+   "ok": false
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "a/b"
+   },
+   "ok": false
+  },
+  {
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+   },
+   "ok": true,
+   "value": "ok"
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+   },
+   "ok": false
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "tab\tuser"
+   },
+   "ok": false
+  },
+  {
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "del"
+   },
+   "ok": true,
+   "value": "ok"
+  },
+  {
+   "in": {
+    "domain": "LAB",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": true,
+   "value": "ok"
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "L\\A",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": false
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "L@A",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": false
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "L/A",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": false
+  },
+  {
+   "in": {
+    "domain": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": true,
+   "value": "ok"
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": false
+  },
+  {
+   "in": {
+    "domain": null,
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": true,
+   "value": "ok"
+  },
+  {
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": true,
+   "value": "ok"
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": false
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "line\nbreak",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": false
+  },
+  {
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "ü",
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": true,
+   "value": "ok"
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "C$",
+    "username": "alice"
+   },
+   "ok": false
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "username": "alice"
+   },
+   "ok": false
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": "pw",
+    "share": "Data",
+    "username": null
+   },
+   "ok": false
+  },
+  {
+   "code": "INVALID_REQUEST",
+   "error": "SMBSourceError",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "password": null,
+    "share": "Data",
+    "username": "alice"
+   },
+   "ok": false
+  }
+ ],
+ "paths": [
+  {
+   "in": "/",
+   "ok": true,
+   "value": []
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "a",
+   "ok": false
+  },
+  {
+   "in": "/a",
+   "ok": true,
+   "value": [
+    "a"
+   ]
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a/",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "//a",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a//b",
+   "ok": false
+  },
+  {
+   "in": "/a/b/c",
+   "ok": true,
+   "value": [
+    "a",
+    "b",
+    "c"
+   ]
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a/./b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a/../b",
+   "ok": false
+  },
+  {
+   "in": "/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p",
+   "ok": true,
+   "value": [
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p"
+   ]
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p/p",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/ääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääää",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/x/CON",
+   "ok": false
+  },
+  {
+   "in": "/x/share$",
+   "ok": true,
+   "value": [
+    "x",
+    "share$"
+   ]
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/x/tab\tx",
+   "ok": false
+  },
+  {
+   "in": "/ä/ö",
+   "ok": true,
+   "value": [
+    "ä",
+    "ö"
+   ]
+  },
+  {
+   "in": "/a",
+   "ok": true,
+   "value": [
+    "a"
+   ]
+  },
+  {
+   "in": "/a.txt",
+   "ok": true,
+   "value": [
+    "a.txt"
+   ]
+  },
+  {
+   "in": "/dir name",
+   "ok": true,
+   "value": [
+    "dir name"
+   ]
+  },
+  {
+   "in": "/Ünïcødé",
+   "ok": true,
+   "value": [
+    "Ünïcødé"
+   ]
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/trailing.",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/trailing ",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/.",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/..",
+   "ok": false
+  },
+  {
+   "in": "/",
+   "ok": true,
+   "value": []
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/con",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/CON.txt",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/com1",
+   "ok": false
+  },
+  {
+   "in": "/COM0",
+   "ok": true,
+   "value": [
+    "COM0"
+   ]
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/lpt9.log",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/nul",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/aux.",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/prn",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a<b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a>b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a:b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a\"b",
+   "ok": false
+  },
+  {
+   "in": "/a/b",
+   "ok": true,
+   "value": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a\\b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a|b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a?b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/a*b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/tab\tname",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/bell\u0007",
+   "ok": false
+  },
+  {
+   "in": "/del",
+   "ok": true,
+   "value": [
+    "del"
+   ]
+  },
+  {
+   "in": "/share$",
+   "ok": true,
+   "value": [
+    "share$"
+   ]
+  },
+  {
+   "in": "/$",
+   "ok": true,
+   "value": [
+    "$"
+   ]
+  },
+  {
+   "in": "/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "ok": true,
+   "value": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  },
+  {
+   "in": "/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "ok": true,
+   "value": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ]
+  },
+  {
+   "in": "/yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+   "ok": true,
+   "value": [
+    "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+   ]
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+   "ok": false
+  },
+  {
+   "in": "/äääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääää",
+   "ok": true,
+   "value": [
+    "äääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääää"
+   ]
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "/ääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääää",
+   "ok": false
+  },
+  {
+   "in": "/​",
+   "ok": true,
+   "value": [
+    "​"
+   ]
+  },
+  {
+   "in": "/ lead",
+   "ok": true,
+   "value": [
+    " lead"
+   ]
+  },
+  {
+   "in": "/😀",
+   "ok": true,
+   "value": [
+    "😀"
+   ]
+  },
+  {
+   "in": "/C$",
+   "ok": true,
+   "value": [
+    "C$"
+   ]
+  },
+  {
+   "in": "/IPC$",
+   "ok": true,
+   "value": [
+    "IPC$"
+   ]
+  },
+  {
+   "in": "/Admin$",
+   "ok": true,
+   "value": [
+    "Admin$"
+   ]
+  },
+  {
+   "in": "/conin$",
+   "ok": true,
+   "value": [
+    "conin$"
+   ]
+  },
+  {
+   "in": "/CON .txt",
+   "ok": true,
+   "value": [
+    "CON .txt"
+   ]
+  }
+ ],
+ "payloads": [
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "  NAS  ",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "   ",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "a\u0000b",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "tab\tname",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": " nbsp ",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "nbsp",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "\u001cname\u001f",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "name",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "zero​width",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "é",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "é",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": 5,
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": null,
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "NAS.Example.",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "10.0.0.5",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "10.0.0.5",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "[fe80::1]",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "fe80::1",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "fe80::1",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "fe80::1",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "bad host",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "-x.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "x_y.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": 7,
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "7",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "C$",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "con",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": " Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": " Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data ",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": null,
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "  LAB  ",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "LAB",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "LAB\u0001",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": ""
+   },
+   "validated": null
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": " bob "
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "bob"
+   }
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+   }
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+   },
+   "validated": null
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "dom\\user"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "dom\\user"
+   }
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "ü"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "ü"
+   }
+  },
+  {
+   "error": null,
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "id": "abc",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": "Invalid SMB share ID",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share ID",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "id": "bad id",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Invalid SMB share ID",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "id": 5,
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Passwords cannot be saved",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "password": "x",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Passwords cannot be saved",
+   "in": {
+    "api_token": "",
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": "Passwords cannot be saved",
+   "in": {
+    "Credential": null,
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": null
+  },
+  {
+   "error": null,
+   "in": {
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   },
+   "validated": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data",
+    "username": "alice"
+   }
+  },
+  {
+   "error": "Invalid SMB share data",
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "name": "NAS",
+    "share": "Data"
+   },
+   "validated": null
+  }
+ ],
+ "records": [
+  {
+   "in": {
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "domain": "",
+    "host": "nas.example",
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": "NAS",
+    "share": "Data",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "username": "alice"
+   },
+   "valid": true
+  },
+  {
+   "in": {
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "domain": "",
+    "host": "NAS.example",
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": "NAS",
+    "share": "Data",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "username": "alice"
+   },
+   "valid": false
+  },
+  {
+   "in": {
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "domain": "",
+    "host": "nas.example",
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": " NAS",
+    "share": "Data",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "username": "alice"
+   },
+   "valid": false
+  },
+  {
+   "in": {
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "domain": "",
+    "extra": 1,
+    "host": "nas.example",
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": "NAS",
+    "share": "Data",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "username": "alice"
+   },
+   "valid": true
+  },
+  {
+   "in": {
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "domain": "",
+    "extra_token": "x",
+    "host": "nas.example",
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": "NAS",
+    "share": "Data",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "username": "alice"
+   },
+   "valid": false
+  },
+  {
+   "in": {
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "domain": "",
+    "host": "nas.example",
+    "id": "bad id",
+    "name": "NAS",
+    "share": "Data",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "username": "alice"
+   },
+   "valid": false
+  },
+  {
+   "in": {
+    "created_at": "",
+    "domain": "",
+    "host": "nas.example",
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": "NAS",
+    "share": "Data",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "username": "alice"
+   },
+   "valid": false
+  },
+  {
+   "in": {
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "domain": "",
+    "host": "nas.example",
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": "NAS",
+    "share": "Data",
+    "updated_at": 5,
+    "username": "alice"
+   },
+   "valid": false
+  },
+  {
+   "in": {
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "domain": " LAB",
+    "host": "nas.example",
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": "NAS",
+    "share": "Data",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "username": "alice"
+   },
+   "valid": false
+  },
+  {
+   "in": {
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "domain": "",
+    "host": "nas.example",
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": "NAS",
+    "share": "C$",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "username": "alice"
+   },
+   "valid": false
+  },
+  {
+   "in": {
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "host": "nas.example",
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": "NAS",
+    "share": "Data",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "username": "alice"
+   },
+   "valid": true
+  },
+  {
+   "in": {
+    "domain": "",
+    "host": "nas.example",
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": "NAS",
+    "share": "Data",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "username": "alice"
+   },
+   "valid": false
+  }
+ ],
+ "secret_fields": [
+  {
+   "in": "password",
+   "secret": true
+  },
+  {
+   "in": "Password",
+   "secret": true
+  },
+  {
+   "in": "pass_word",
+   "secret": true
+  },
+  {
+   "in": "PASSWD",
+   "secret": true
+  },
+  {
+   "in": "passphrase",
+   "secret": true
+  },
+  {
+   "in": "credential_id",
+   "secret": true
+  },
+  {
+   "in": "x-secret",
+   "secret": true
+  },
+  {
+   "in": "api_token",
+   "secret": true
+  },
+  {
+   "in": "tokenizer",
+   "secret": true
+  },
+  {
+   "in": "name",
+   "secret": false
+  },
+  {
+   "in": "host",
+   "secret": false
+  },
+  {
+   "in": "user",
+   "secret": false
+  },
+  {
+   "in": "pass",
+   "secret": false
+  },
+  {
+   "in": "pwd",
+   "secret": false
+  },
+  {
+   "in": "SeCrEt",
+   "secret": true
+  },
+  {
+   "in": "créd",
+   "secret": false
+  },
+  {
+   "in": "pass-word",
+   "secret": true
+  },
+  {
+   "in": "pass word",
+   "secret": true
+  },
+  {
+   "in": "credentials",
+   "secret": true
+  },
+  {
+   "in": "my_password_hint",
+   "secret": true
+  }
+ ],
+ "share_names": [
+  {
+   "in": "a",
+   "ok": true,
+   "value": "a"
+  },
+  {
+   "in": "a.txt",
+   "ok": true,
+   "value": "a.txt"
+  },
+  {
+   "in": "dir name",
+   "ok": true,
+   "value": "dir name"
+  },
+  {
+   "in": "Ünïcødé",
+   "ok": true,
+   "value": "Ünïcødé"
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "trailing.",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "trailing ",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": ".",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "..",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "con",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "CON.txt",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "com1",
+   "ok": false
+  },
+  {
+   "in": "COM0",
+   "ok": true,
+   "value": "COM0"
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "lpt9.log",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "nul",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "aux.",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "prn",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "a<b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "a>b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "a:b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "a\"b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "a/b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "a\\b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "a|b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "a?b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "a*b",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "tab\tname",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "bell\u0007",
+   "ok": false
+  },
+  {
+   "in": "del",
+   "ok": true,
+   "value": "del"
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "share$",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "$",
+   "ok": false
+  },
+  {
+   "in": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "ok": true,
+   "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "äääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääää",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "ääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääääää",
+   "ok": false
+  },
+  {
+   "in": "​",
+   "ok": true,
+   "value": "​"
+  },
+  {
+   "in": " lead",
+   "ok": true,
+   "value": " lead"
+  },
+  {
+   "in": "😀",
+   "ok": true,
+   "value": "😀"
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "C$",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "IPC$",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "Admin$",
+   "ok": false
+  },
+  {
+   "code": null,
+   "error": "SMBPathRejected",
+   "in": "conin$",
+   "ok": false
+  },
+  {
+   "in": "CON .txt",
+   "ok": true,
+   "value": "CON .txt"
+  }
+ ],
+ "statuses": [
+  {
+   "code": "AUTHENTICATION_REQUIRED",
+   "nt_status": "0xC000006D",
+   "status": 3221225581
+  },
+  {
+   "code": "AUTHENTICATION_REQUIRED",
+   "nt_status": "0xC000006A",
+   "status": 3221225578
+  },
+  {
+   "code": "AUTHENTICATION_REQUIRED",
+   "nt_status": "0xC0000071",
+   "status": 3221225585
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC0000072",
+   "status": 3221225586
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC000006E",
+   "status": 3221225582
+  },
+  {
+   "code": "PERMISSION_DENIED",
+   "nt_status": "0xC0000022",
+   "status": 3221225506
+  },
+  {
+   "code": "PERMISSION_DENIED",
+   "nt_status": "0xC0000061",
+   "status": 3221225569
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC00000CA",
+   "status": 3221225674
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC00000A2",
+   "status": 3221225634
+  },
+  {
+   "code": "NOT_FOUND",
+   "nt_status": "0xC0000034",
+   "status": 3221225524
+  },
+  {
+   "code": "NOT_FOUND",
+   "nt_status": "0xC000003A",
+   "status": 3221225530
+  },
+  {
+   "code": "NOT_FOUND",
+   "nt_status": "0xC0000225",
+   "status": 3221226021
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC000000F",
+   "status": 3221225487
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC0000033",
+   "status": 3221225523
+  },
+  {
+   "code": "SHARE_UNAVAILABLE",
+   "nt_status": "0xC00000CC",
+   "status": 3221225676
+  },
+  {
+   "code": "CONFLICT",
+   "nt_status": "0xC0000035",
+   "status": 3221225525
+  },
+  {
+   "code": "CONFLICT",
+   "nt_status": "0xC0000043",
+   "status": 3221225539
+  },
+  {
+   "code": "CONFLICT",
+   "nt_status": "0xC0000101",
+   "status": 3221225729
+  },
+  {
+   "code": "CONFLICT",
+   "nt_status": "0xC00000BA",
+   "status": 3221225658
+  },
+  {
+   "code": "CONFLICT",
+   "nt_status": "0xC0000103",
+   "status": 3221225731
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC0000056",
+   "status": 3221225558
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC0000121",
+   "status": 3221225761
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC00000B5",
+   "status": 3221225653
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0x8000002D",
+   "status": 2147483693
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC0000128",
+   "status": 3221225768
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC00000C9",
+   "status": 3221225673
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC0000203",
+   "status": 3221225987
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC0000001",
+   "status": 3221225473
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC000009A",
+   "status": 3221225626
+  },
+  {
+   "code": "OPERATION_FAILED",
+   "nt_status": "0xC00000BB",
+   "status": 3221225659
+  }
+ ],
+ "times": [
+  {
+   "iso": "2026-11-27T10:00:00+00:00",
+   "unix_ns": 1795773600000000000
+  },
+  {
+   "iso": "2026-11-27T10:00:00.000001+00:00",
+   "unix_ns": 1795773600000001000
+  },
+  {
+   "iso": "2026-11-27T10:00:00.123456+00:00",
+   "unix_ns": 1795773600123456000
+  }
+ ]
+}

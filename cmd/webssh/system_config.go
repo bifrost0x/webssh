@@ -7,6 +7,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/auth"
 	"github.com/bifrost0x/webssh/internal/config"
+	"github.com/bifrost0x/webssh/internal/files/smb"
 	"github.com/bifrost0x/webssh/internal/operations"
 	"github.com/bifrost0x/webssh/internal/settings"
 )
@@ -108,6 +109,10 @@ var (
 	ruleKeyWrite = auth.Rule{Limit: 30, Window: time.Minute}
 	ruleKeyList  = auth.Rule{Limit: 30, Window: time.Minute}
 	ruleMutation = auth.Rule{Limit: 60, Window: time.Minute}
+
+	ruleSMBConnect  = auth.Rule{Limit: 5, Window: time.Minute}
+	ruleSMBMutation = auth.Rule{Limit: 30, Window: time.Minute}
+	ruleSMBList     = auth.Rule{Limit: 60, Window: time.Minute}
 )
 
 // realtimeLimiter is the limiter of the realtime messages, separate from
@@ -120,6 +125,9 @@ func realtimeLimiter(cfg config.Config) *auth.Limiter {
 		"ssh_key_list":        auth.ParseRule(cfg.RateLimits.SSHKeyList, ruleKeyList),
 		"ssh_key_write":       auth.ParseRule(cfg.RateLimits.SSHKeyWrite, ruleKeyWrite),
 		"connection_mutation": auth.ParseRule(cfg.RateLimits.ConnectionMutation, ruleMutation),
+		smb.RateConnect:       auth.ParseRule(cfg.SMB.ConnectRateLimit, ruleSMBConnect),
+		smb.RateShareMutation: auth.ParseRule(cfg.SMB.ShareMutationRateLimit, ruleSMBMutation),
+		smb.RateShareList:     auth.ParseRule(cfg.SMB.ShareListRateLimit, ruleSMBList),
 	}
 	l.RealtimeDefault = ruleMutation
 	return l

@@ -15,6 +15,7 @@ test('every mapped event targets a type of the v1 catalog', () => {
         'prompt.respond', 'gateway.input', 'gateway.ack',
         'files.list', 'files.list.cancel', 'files.home', 'files.preview', 'files.preview.image', 'files.edit.open',
         'files.edit.save', 'files.mkdir', 'files.create', 'files.rename', 'files.delete', 'files.source.close',
+        'smb.share.list', 'smb.share.save', 'smb.share.delete', 'smb.connect', 'smb.connect.cancel',
     ]);
     const mapped = new Set(Object.values(catalog.REQUESTS).map(entry => entry.type));
     assert.deepEqual([...mapped].sort(), [...v1].sort());
