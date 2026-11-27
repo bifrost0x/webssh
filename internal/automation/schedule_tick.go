@@ -20,6 +20,9 @@ import (
 // run still holds its claim as an overlap. A schedule whose approval no
 // longer holds is paused and needs a new review.
 func (s *Schedules) Tick(ctx context.Context) error {
+	if !s.Runs() {
+		return nil
+	}
 	now := s.o.Now()
 	nowSec := unixSeconds(now)
 	err := s.o.DB.Write(ctx, func(tx *store.Tx) error {

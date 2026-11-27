@@ -14,9 +14,10 @@ import (
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-// ScheduleOptions are the dependencies of the schedules. DB, Workflows,
-// Accounts and Policy are required; without Passwords a schedule cannot
-// use saved passwords.
+// ScheduleOptions are the dependencies of the schedules. DB, Accounts and
+// Policy are required. Without Workflows the schedules can be listed,
+// paused and deleted, but not reviewed or run (unavailable); without
+// Passwords a schedule cannot use saved passwords.
 type ScheduleOptions struct {
 	DB        *store.DB
 	Workflows ScheduleWorkflows
@@ -43,7 +44,7 @@ type Schedules struct {
 
 // NewSchedules returns the schedules.
 func NewSchedules(o ScheduleOptions) (*Schedules, error) {
-	if o.DB == nil || o.Workflows == nil || o.Accounts == nil || o.Policy == nil {
+	if o.DB == nil || o.Accounts == nil || o.Policy == nil {
 		return nil, errors.New("automation: incomplete schedule options")
 	}
 	if o.Now == nil {
@@ -52,7 +53,34 @@ func NewSchedules(o ScheduleOptions) (*Schedules, error) {
 	if o.Draining == nil {
 		o.Draining = func() bool { return false }
 	}
+	if o.Workflows == nil {
+		o.Workflows = noWorkflows{}
+	}
 	return &Schedules{o: o, intents: newScheduleIntents(o.Now)}, nil
+}
+
+// Runs reports whether the run side is wired, so that Tick can be
+// registered; without it no due slot is touched.
+func (s *Schedules) Runs() bool {
+	_, none := s.o.Workflows.(noWorkflows)
+	return !none
+}
+
+// noWorkflows answers while the run side is not wired.
+type noWorkflows struct{}
+
+func (noWorkflows) Review(context.Context, principal.Principal, jsontext.Value) (Snapshot, error) {
+	return Snapshot{}, fault.New(fault.Unavailable, "")
+}
+
+func (noWorkflows) Current(context.Context, int64, Snapshot) error { return fault.New(fault.Unavailable, "") }
+
+func (noWorkflows) PrepareManual(context.Context, principal.Principal, Snapshot, func(context.Context) error) (jsontext.Value, error) {
+	return nil, fault.New(fault.Unavailable, "")
+}
+
+func (noWorkflows) StartScheduled(context.Context, ScheduledRun) error {
+	return &NotDispatchedError{Code: fault.Unavailable}
 }
 
 // Revoke drops the intents of an ended session.
