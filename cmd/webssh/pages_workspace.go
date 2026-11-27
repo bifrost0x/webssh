@@ -177,21 +177,10 @@ func (pg *pages) admin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, httpapi.BasePath(r)+"/security?section=users", http.StatusFound)
 }
 
-// recoveryCheck is GET /api/account/recovery-check. This preview restores
-// no backups, so there is never a restore to review.
-func (pg *pages) recoveryCheck(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(`{"coverage":{"account_authentication":"included","configuration":"included",` +
-		`"live_sessions":"excluded","remote_credentials":"excluded"},"hosts":[],"needs_review":false,` +
-		`"restored_at":null,"schedules":[]}` + "\n"))
-}
-
 // register adds the page routes to mux.
 func (pg *pages) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /{$}", pg.workspace)
 	mux.HandleFunc("GET /security", pg.security)
 	mux.HandleFunc("GET /settings", pg.security)
 	mux.HandleFunc("GET /admin", pg.admin)
-	mux.HandleFunc("GET /api/account/recovery-check", pg.recoveryCheck)
 }

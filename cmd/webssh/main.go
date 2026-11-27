@@ -46,6 +46,7 @@ func commands() []command {
 		{name: "issue-factor-bootstrap", summary: "issue a code for a GitHub account's first factor", run: runIssueFactorBootstrap},
 		{name: "migrate", summary: "--dry-run or --replace the migration of the Python data", run: runMigrate},
 		{name: "legacy", summary: "purge: remove the Python data after the migration", run: runLegacy},
+		{name: "backup", summary: "create, verify or restore a backup (offline)", run: runBackup},
 		{name: "version", summary: "print the version and source revision", run: runVersion},
 		{name: "help", summary: "show this help", run: runHelp},
 	}

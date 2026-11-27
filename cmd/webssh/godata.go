@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,6 +48,7 @@ func migrationOptions(cfg config.Config, lookup config.LookupFunc) (legacy.Optio
 		Registry:        reg,
 		Origin:          legacyOrigin(cfg),
 		RequireCoverage: true,
+		BeforeStart:     activateRestore(cfg.DataDir, slog.Default()),
 	}, nil
 }
 

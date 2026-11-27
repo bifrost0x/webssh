@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/auth"
+	"github.com/bifrost0x/webssh/internal/backup"
 	"github.com/bifrost0x/webssh/internal/httpapi"
 	"github.com/bifrost0x/webssh/internal/realtime"
 	"github.com/bifrost0x/webssh/internal/settings"
@@ -108,11 +109,15 @@ func (s *system) originPolicy() *realtime.OriginPolicy {
 }
 
 // handler is the HTTP entry of the server. In maintenance (the legacy
-// data changed under a running server) only the probes answer; every
-// other request gets 503 maintenance.
+// data changed under a running server, a restore or a rotation) only the
+// probes answer, and during a restore the restore status of the
+// administration (as in the Python release); every other request,
+// realtime connections included, gets 503 maintenance.
 func (s *system) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.maintenance.Load() && !isProbe(s.cfg.ApplicationRoot, r.URL.Path) {
+		reason, on := s.maintenance.Active()
+		if on && !isProbe(s.cfg.ApplicationRoot, r.URL.Path) &&
+			(reason != backup.MaintenanceRestore || strings.TrimPrefix(r.URL.Path, s.cfg.ApplicationRoot) != restoreStatusPath) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("Retry-After", "60")
@@ -123,6 +128,9 @@ func (s *system) handler() http.Handler {
 		s.edge.ServeHTTP(w, r)
 	})
 }
+
+// restoreStatusPath stays readable during a restore.
+const restoreStatusPath = "/admin/api/backups/restore/status"
 
 func isProbe(root, path string) bool {
 	path = strings.TrimPrefix(path, root)

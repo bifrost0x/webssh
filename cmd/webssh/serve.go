@@ -139,6 +139,9 @@ type application struct {
 	// grace replaces the shutdown limit when it is set
 	// (RUNTIME_SHUTDOWN_GRACE_SECONDS).
 	grace time.Duration
+	// restart, when it closes, shuts the application down gracefully and
+	// builds it again in the same process (after a restore). Optional.
+	restart <-chan struct{}
 }
 
 // buildFunc builds the application. It prepares the data directory
@@ -153,7 +156,8 @@ func buildSystem(console io.Writer) buildFunc {
 		if err != nil {
 			return application{}, err
 		}
-		return application{handler: sys.handler(), drain: sys.drain, close: sys.close, grace: sys.shutdownGrace()}, nil
+		return application{handler: sys.handler(), drain: sys.drain, close: sys.close, grace: sys.shutdownGrace(),
+			restart: sys.restart}, nil
 	}
 }
 
@@ -175,7 +179,19 @@ func runServe(ctx context.Context, args []string, s streams) int {
 // serve prepares the data directory, builds the application and serves HTTP
 // until ctx ends, then shuts down gracefully within opts.shutdownTimeout or
 // at once when force closes. ready, if set, receives the listen address.
+// An application that asks for a restart is shut down and built again,
+// so that a restore is activated at the start without a service manager.
 func serve(ctx context.Context, opts serveOptions, logger *slog.Logger, build buildFunc, force <-chan struct{}, ready func(net.Addr)) error {
+	for {
+		restart, err := serveOnce(ctx, opts, logger, build, force, ready)
+		if err != nil || !restart || ctx.Err() != nil {
+			return err
+		}
+		logger.Info("restarting the application")
+	}
+}
+
+func serveOnce(ctx context.Context, opts serveOptions, logger *slog.Logger, build buildFunc, force <-chan struct{}, ready func(net.Addr)) (bool, error) {
 	started := time.Now()
 	if err := platform.CheckTimeZone(opts.tz, opts.tzSet); err != nil {
 		logger.Warn("time zone not applied", "err", err)
@@ -183,7 +199,7 @@ func serve(ctx context.Context, opts serveOptions, logger *slog.Logger, build bu
 	state := &runtimeState{dataDir: opts.dataDir, logger: logger}
 	app, err := build(ctx, state)
 	if err != nil {
-		return fmt.Errorf("build application: %w", err)
+		return false, fmt.Errorf("build application: %w", err)
 	}
 	if app.close != nil {
 		defer func() {
@@ -198,7 +214,7 @@ func serve(ctx context.Context, opts serveOptions, logger *slog.Logger, build bu
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, listenNetwork(opts.addr), opts.addr)
 	if err != nil {
-		return fmt.Errorf("listen: %w", err)
+		return false, fmt.Errorf("listen: %w", err)
 	}
 	srv := &http.Server{
 		Handler:           app.handler,
@@ -218,12 +234,15 @@ func serve(ctx context.Context, opts serveOptions, logger *slog.Logger, build bu
 		ready(ln.Addr())
 	}
 
+	restart := false
 	select {
 	case err := <-serveErr:
-		return fmt.Errorf("http server: %w", err)
+		return false, fmt.Errorf("http server: %w", err)
 	case <-ctx.Done():
+	case <-app.restart:
+		restart = true
 	}
-	return shutdown(srv, app, state, opts.shutdownTimeout, force, serveErr)
+	return restart, shutdown(srv, app, state, opts.shutdownTimeout, force, serveErr)
 }
 
 // shutdown stops accepting work, lets running requests and long-lived

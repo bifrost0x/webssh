@@ -77,6 +77,7 @@ func startMigration(ctx context.Context, cfg config.Config, lookup config.Lookup
 	if err != nil {
 		return nil, err
 	}
+	o.BeforeStart = activateRestore(cfg.DataDir, log)
 	st, err := legacy.Start(ctx, o)
 	if err != nil {
 		if stop, ok := errors.AsType[*legacy.StopError](err); ok {
