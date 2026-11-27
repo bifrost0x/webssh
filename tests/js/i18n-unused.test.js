@@ -32,7 +32,6 @@ const DYNAMIC_PREFIXES = {
     'serverOps.': 'server-operations.js `serverOps.${code}`',
     'sessionCommands.search': 'session-command-launcher.js `sessionCommands.search${section}`',
     'sshErrors.': 'ssh-error-ui.js `sshErrors.${key}`',
-    'terminalAppearance.': 'terminal_appearance.html renders font and colour keys in Jinja loops',
     'tour.step': 'onboarding.js `tour.step${index}Title`',
     'transfer.error.': 'sftp-file-manager.js `transfer.error.${code}`',
     'transfer.limit.kind.': 'sftp-file-manager.js `transfer.limit.kind.${kind}`',
@@ -52,6 +51,8 @@ function productFiles() {
     };
     walk(path.join(root, 'static/js'), name => name.endsWith('.js') && name !== 'i18n-auth.js');
     walk(path.join(root, 'templates'), name => name.endsWith('.html'));
+    // The page templates of the Go server.
+    walk(path.join(root, 'internal/httpapi/pages'), name => name.endsWith('.gohtml'));
     walk(path.join(root, 'app'), name => /\.(py|json)$/.test(name));
     return files;
 }
