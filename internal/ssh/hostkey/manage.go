@@ -188,15 +188,20 @@ func entryOfLine(line []byte) (*Entry, error) {
 	return &e, nil
 }
 
-// without removes every line with entry id; it reports whether one was
-// found. Unrelated lines are kept byte for byte.
+// without removes every line with entry id from the user's store; it
+// reports whether one was found. Unrelated lines are kept byte for byte.
 func without(raw []byte, owner int64, id string) (kept []byte, removed *Entry, err error) {
+	return withoutLine(raw, ScopeUser, OwnerString(owner), id)
+}
+
+// withoutLine is without for any store: owner is "" for the global file.
+func withoutLine(raw []byte, scope Scope, owner, id string) (kept []byte, removed *Entry, err error) {
 	for _, line := range splitKeep(raw) {
 		e, err := entryOfLine(line)
 		if err != nil {
 			return nil, nil, err
 		}
-		if e != nil && EntryID(ScopeUser, OwnerString(owner), bytes.TrimRight(line, "\r\n")) == id {
+		if e != nil && EntryID(scope, owner, bytes.TrimRight(line, "\r\n")) == id {
 			removed = e
 			continue
 		}

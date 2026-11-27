@@ -14,10 +14,19 @@ import (
 // limit of its own (CONTROL_REQUEST_LIMIT of request_limits.py).
 const controlRequestLimit = 64 << 10
 
+// The host context and the host import have larger bodies
+// (request_limits.py): a context holds 100,000 characters of notes, an
+// import 64 KiB of source plus its selections.
+const (
+	hostContextRequestLimit     = 1 << 20
+	profileExchangeRequestLimit = 512 << 10
+)
+
 // bodyLimit returns the body limit of an unsafe request, as
 // request_limits.py chooses it for the routes of this preview: the
 // recovery and TOTP routes MAX_RECOVERY_JSON_SIZE, the passkey routes
-// MAX_WEBAUTHN_JSON_SIZE, everything else 64 KiB. The whole body is read
+// MAX_WEBAUTHN_JSON_SIZE, the host context 1 MiB, the host import
+// 512 KiB, everything else 64 KiB. The whole body is read
 // before the CSRF check, so no handler sees a partial body.
 func (h *Handler) bodyLimit(path string) int64 {
 	s := h.cfg.Stores
@@ -32,6 +41,10 @@ func (h *Handler) bodyLimit(path string) int64 {
 		if s.MaxWebAuthnJSONSize > 0 {
 			return int64(s.MaxWebAuthnJSONSize)
 		}
+	case strings.HasPrefix(path, "/api/profiles/") && strings.HasSuffix(path, "/context"):
+		return hostContextRequestLimit
+	case path == "/api/profiles/exchange" || path == "/api/profiles/exchange/preview":
+		return profileExchangeRequestLimit
 	}
 	return controlRequestLimit
 }

@@ -32,3 +32,23 @@ func FuzzGlob(f *testing.F) {
 		_ = globFold(pattern, name)
 	})
 }
+
+// An accepted global entry is one line that parses back to the same entry
+// and never carries the @cert-authority marker.
+func FuzzCanonicalEntry(f *testing.F) {
+	f.Add("h.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOL2WzJx0sV/B6VxWU9MnxKJFrrYYNJle330w6TBemSK comment")
+	f.Add("@revoked [h.test]:22,!x ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOL2WzJx0sV/B6VxWU9MnxKJFrrYYNJle330w6TBemSK")
+	f.Fuzz(func(t *testing.T, value string) {
+		line, entry, err := canonicalEntry(value)
+		if err != nil {
+			return
+		}
+		if entry.Marker == MarkerCertAuthority {
+			t.Fatalf("accepted a certificate authority: %q", value)
+		}
+		file, err := Parse([]byte(line + "\n"))
+		if err != nil || len(file.Trusted)+len(file.Revoked) != 1 {
+			t.Fatalf("canonical line %q does not parse back: %v", line, err)
+		}
+	})
+}

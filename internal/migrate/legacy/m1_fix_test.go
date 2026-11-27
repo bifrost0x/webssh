@@ -4,42 +4,91 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/accounts"
+	"github.com/bifrost0x/webssh/internal/hostops"
+	"github.com/bifrost0x/webssh/internal/pyjson"
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-// M1 of the review: what E28 does not migrate (directories and
-// command-set references, contexts of deleted profiles) is pending with
-// its number, so the purge guard sees it; the notes are migrated.
-func TestM1HostContextPartlyPending(t *testing.T) {
+// E28 is migrated completely: notes, directories and command-set
+// references of every context of an existing profile, with the context's
+// revision, so the next edit with the last revision the page saw succeeds
+// and a stale one conflicts (specification: "the revision counter
+// continues"). Nothing of E28 is pending any more.
+func TestM1HostContextComplete(t *testing.T) {
 	t.Parallel()
 	dir := copyGolden(t)
 	m := migrateM1(t, dir, golden.manifest.SecretKey.Value, M1{})
-	var found *Pending
-	for i, p := range m.report.Pending {
+	for _, p := range m.report.Pending {
 		if p.Entity == "E28" {
-			found = &m.report.Pending[i]
+			t.Fatalf("E28 still pending: %+v", p)
 		}
 	}
-	if found == nil || found.Phase != "B6" || found.Count != 1 {
-		t.Fatalf("E28 pending: %+v", found)
+	src := openLegacy(t, dir)
+	rows, err := src.AccountRows(t.Context())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if e := m.entity(t, "E28"); e.Written != 1 {
-		t.Fatalf("E28 notes: %+v", e)
-	}
-	kinds := map[string]bool{}
-	for _, c := range m.report.Coverage {
-		if c.Entity == "E28" {
-			kinds[c.Kind] = true
+	edge := golden.manifest.Values.EdgeCases.HostContext
+	checked := 0
+	for _, a := range rows {
+		doc, found, err := userStore(src, a.ID, "host_context")
+		if err != nil || !found {
+			continue
+		}
+		ids, err := profileIDs(src, a.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		hostsValue, _ := pyjson.Get(doc.Raw, "hosts")
+		members, _ := pyjson.Members(hostsValue)
+		for _, c := range members {
+			if !slices.Contains(ids, c.Name) {
+				continue
+			}
+			notes, revision, dirs, sets, ok := hostContext(c)
+			if !ok {
+				t.Fatalf("golden context %s invalid", c.Name)
+			}
+			contexts := &hostops.Contexts{DB: m.db, Profiles: staticProfiles(ids)}
+			got, err := contexts.Read(t.Context(), a.ID, c.Name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Revision != revision || got.Notes != notes || !slices.Equal(got.Directories, dirs) || !slices.Equal(got.CommandSets, sets) {
+				t.Fatalf("context %s: got %+v, want %q %v %v rev %d", c.Name, got, notes, dirs, sets, revision)
+			}
+			if edge["notes"] == notes && (len(dirs) == 0 || len(sets) == 0) {
+				t.Fatalf("golden context %s has no directories or references", c.Name)
+			}
+			// The stored reference is kept on save even without the
+			// command library; a stale revision conflicts.
+			content := hostops.Content{Notes: "edited after the update", Directories: dirs, CommandSets: sets}
+			if _, err := contexts.Write(t.Context(), a.ID, c.Name, content, revision-1); err == nil {
+				t.Fatal("stale revision accepted")
+			}
+			saved, err := contexts.Write(t.Context(), a.ID, c.Name, content, revision)
+			if err != nil || saved.Revision != revision+1 {
+				t.Fatalf("edit with the migrated revision: %+v %v", saved, err)
+			}
+			checked++
 		}
 	}
-	if !kinds[CoverStep] || !kinds[CoverPending] {
-		t.Fatalf("coverage of E28: %v", kinds)
+	if checked == 0 {
+		t.Fatal("no golden host context checked")
+	}
+	if e := m.entity(t, "E28"); e.Written != checked {
+		t.Fatalf("E28 written %d, checked %d", e.Written, checked)
 	}
 }
+
+type staticProfiles []string
+
+func (s staticProfiles) ProfileIDs(context.Context, int64) ([]string, error) { return s, nil }
 
 func TestRegistryPartlyPending(t *testing.T) {
 	t.Parallel()

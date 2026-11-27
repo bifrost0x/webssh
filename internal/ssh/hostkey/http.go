@@ -37,7 +37,10 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 
 type handler func(ctx context.Context, p principal.Principal, r *http.Request) (any, error)
 
-func (h *HTTP) serve(fn handler) http.HandlerFunc {
+func (h *HTTP) serve(fn handler) http.HandlerFunc { return h.serveStatus(http.StatusOK, fn) }
+
+// serveStatus answers a successful fn with status.
+func (h *HTTP) serveStatus(status int, fn handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !h.Enabled {
 			http.NotFound(w, r)
@@ -47,7 +50,7 @@ func (h *HTTP) serve(fn handler) http.HandlerFunc {
 		if err == nil {
 			var body any
 			if body, err = fn(r.Context(), p, r); err == nil {
-				writeJSON(w, http.StatusOK, body)
+				writeJSON(w, status, body)
 				return
 			}
 		}
@@ -93,7 +96,7 @@ type entryJSON struct {
 	Algorithm   string         `json:"algorithm"`
 	Fingerprint string         `json:"fingerprint"`
 	Scope       string         `json:"scope"`
-	OwnerID     int64          `json:"owner_id"`
+	OwnerID     *int64         `json:"owner_id"` // null for the global file
 	FirstSeen   string         `json:"first_seen"`
 	LastSeen    string         `json:"last_seen"`
 }
@@ -131,7 +134,7 @@ func (h *HTTP) list(ctx context.Context, p principal.Principal, _ *http.Request)
 	for _, e := range entries {
 		j := entryJSON{
 			ID: e.ID, Algorithm: e.Algorithm, Fingerprint: e.Fingerprint, Scope: string(ScopeUser),
-			OwnerID: e.Owner, FirstSeen: pythonISOTime(e.Modified), LastSeen: pythonISOTime(e.Modified),
+			OwnerID: &e.Owner, FirstSeen: pythonISOTime(e.Modified), LastSeen: pythonISOTime(e.Modified),
 			Hosts: make([]hostJSON, 0, len(e.Hosts)),
 		}
 		if e.Marker != MarkerNone {

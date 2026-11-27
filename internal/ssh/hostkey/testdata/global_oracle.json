@@ -1,0 +1,708 @@
+{
+ "paramiko": "5.1.0",
+ "list": [
+  {
+   "id": "98bb4989408c0ddb7d1f86a27632c14c9d50bdca47e336918f61ac06fa4142b9",
+   "host": "web.test",
+   "port": 22,
+   "hosts": [
+    {
+     "host": "web.test",
+     "port": 22
+    }
+   ],
+   "marker": null,
+   "algorithm": "ssh-ed25519",
+   "fingerprint": "SHA256:4N0IEWUeSn8UqUv9jBIMaLzz+fKOrIpAMCIsNGunLD4",
+   "scope": "global",
+   "owner_id": null
+  },
+  {
+   "id": "0025131a650098d6bf90d04682824a87947ddeae5dca0b9c5787ca869e357888",
+   "host": "db.test",
+   "port": 2222,
+   "hosts": [
+    {
+     "host": "db.test",
+     "port": 2222
+    }
+   ],
+   "marker": null,
+   "algorithm": "ecdsa-sha2-nistp256",
+   "fingerprint": "SHA256:0oAiT3GxDyAm77UDM1ms5YScV8MHw+obOibrmEy/VeQ",
+   "scope": "global",
+   "owner_id": null
+  },
+  {
+   "id": "079ff2b480efe631b48fe83ada70ba78229da552d7f2199d57115ce7b8a94279",
+   "host": "old.test",
+   "port": 22,
+   "hosts": [
+    {
+     "host": "old.test",
+     "port": 22
+    }
+   ],
+   "marker": "@revoked",
+   "algorithm": "ssh-ed25519",
+   "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+   "scope": "global",
+   "owner_id": null
+  },
+  {
+   "id": "cd3fc802e47c4b7eca57e6eed29e1400ec151551eff3abdb88689172c6f679fc",
+   "host": "*.corp.test",
+   "port": 22,
+   "hosts": [
+    {
+     "host": "*.corp.test",
+     "port": 22
+    }
+   ],
+   "marker": "@cert-authority",
+   "algorithm": "ssh-rsa",
+   "fingerprint": "SHA256:82wq/cgEWwstDanLW3eTel+qZCFnnw3kU0I6zi53mI0",
+   "scope": "global",
+   "owner_id": null
+  },
+  {
+   "id": "6a3d456c5bdaa8924780505452e72d574a31ef4a9fc92792e03ca50aca34ce7b",
+   "host": "(hashed hostname)",
+   "port": null,
+   "hosts": [
+    {
+     "host": "(hashed hostname)",
+     "port": null
+    }
+   ],
+   "marker": null,
+   "algorithm": "ssh-ed25519",
+   "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+   "scope": "global",
+   "owner_id": null
+  }
+ ],
+ "adds": [
+  {
+   "name": "plain",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "new.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\nnew.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "entry": {
+    "id": "bb4f82f90ade63f3764fbcb89786bc84c4a86c91b4f38849140b89b76433155f",
+    "host": "new.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "new.test",
+      "port": 22
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "with-comment",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "  new.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ operator laptop  ",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\nnew.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "entry": {
+    "id": "bb4f82f90ade63f3764fbcb89786bc84c4a86c91b4f38849140b89b76433155f",
+    "host": "new.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "new.test",
+      "port": 22
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "tabs",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "new.test\tssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\nnew.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "entry": {
+    "id": "bb4f82f90ade63f3764fbcb89786bc84c4a86c91b4f38849140b89b76433155f",
+    "host": "new.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "new.test",
+      "port": 22
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "port",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "[new.test]:2200 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n[new.test]:2200 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\n",
+   "entry": {
+    "id": "b7bd68c58af830cd343b3d09115d3d78133f018d063a1ed8c113cd3d6a67fce9",
+    "host": "new.test",
+    "port": 2200,
+    "hosts": [
+     {
+      "host": "new.test",
+      "port": 2200
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:4N0IEWUeSn8UqUv9jBIMaLzz+fKOrIpAMCIsNGunLD4",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "several-hosts",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "a.test,b.test,[c.test]:23 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\na.test,b.test,[c.test]:23 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n",
+   "entry": {
+    "id": "f883b19fbb4f95bca9fb1d792d1eee8027ea4d7b03cb08551182dd06a5910c71",
+    "host": "a.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "a.test",
+      "port": 22
+     },
+     {
+      "host": "b.test",
+      "port": 22
+     },
+     {
+      "host": "c.test",
+      "port": 23
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-rsa",
+    "fingerprint": "SHA256:82wq/cgEWwstDanLW3eTel+qZCFnnw3kU0I6zi53mI0",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "negated",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "a.test,!b.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\na.test,!b.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "entry": {
+    "id": "e98b4a2f527e950c4f53baa15515aa137586ab42a3d955872924f05052c37f4c",
+    "host": "a.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "a.test",
+      "port": 22
+     },
+     {
+      "host": "!b.test",
+      "port": 22
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "wildcard",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "*.lan ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n*.lan ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "entry": {
+    "id": "bc23781cc8dbfd98dfa7b4c374287e10abc4b8c5019d9bf77b4a6d0967237da6",
+    "host": "*.lan",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "*.lan",
+      "port": 22
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "hashed",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "|1|AAAAAAAAAAAAAAAAAAAAAAAAAAA=|lOeKemI0xpu0KAICzL+LMPoA/ns= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n|1|AAAAAAAAAAAAAAAAAAAAAAAAAAA=|lOeKemI0xpu0KAICzL+LMPoA/ns= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\n",
+   "entry": {
+    "id": "dac2bc279d4db30979ab577fabe4b3b65d9b913e292a40515bf8fe39558a8c9e",
+    "host": "(hashed hostname)",
+    "port": null,
+    "hosts": [
+     {
+      "host": "(hashed hostname)",
+      "port": null
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:4N0IEWUeSn8UqUv9jBIMaLzz+fKOrIpAMCIsNGunLD4",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "revoked",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "@revoked web.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@revoked web.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\n",
+   "entry": {
+    "id": "0c09e804d0349c80b43042177168c09a3dcba26bbde31766a596202b3ce2249b",
+    "host": "web.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "web.test",
+      "port": 22
+     }
+    ],
+    "marker": "@revoked",
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:4N0IEWUeSn8UqUv9jBIMaLzz+fKOrIpAMCIsNGunLD4",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "revoked-new",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "@revoked new.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@revoked new.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "entry": {
+    "id": "25d60a7f93ffb89bd282fcc480a479e99c7c6514f24176eb8097e9ec19ec5a4d",
+    "host": "new.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "new.test",
+      "port": 22
+     }
+    ],
+    "marker": "@revoked",
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "cert-authority",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "@cert-authority *.corp.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Invalid or unsupported known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "unknown-marker",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "@trusted new.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Invalid or unsupported known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "duplicate",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "web.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Host key entry already exists",
+   "status": 409
+  },
+  {
+   "name": "duplicate-case",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "WEB.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Host key entry already exists",
+   "status": 409
+  },
+  {
+   "name": "duplicate-in-list",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "x.test,web.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Host key entry already exists",
+   "status": 409
+  },
+  {
+   "name": "different-key",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "web.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "A different key already exists for this host and algorithm; verify and remove it first",
+   "status": 409
+  },
+  {
+   "name": "other-algorithm",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "web.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\nweb.test ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n",
+   "entry": {
+    "id": "6a9adbfcfe3adee18eaa9bba47ffd32ddd051d336e000b4156353eafb96547a7",
+    "host": "web.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "web.test",
+      "port": 22
+     }
+    ],
+    "marker": null,
+    "algorithm": "ecdsa-sha2-nistp256",
+    "fingerprint": "SHA256:0oAiT3GxDyAm77UDM1ms5YScV8MHw+obOibrmEy/VeQ",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "hashed-duplicate",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Host key entry already exists",
+   "status": 409
+  },
+  {
+   "name": "hashed-different",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "A different key already exists for this host and algorithm; verify and remove it first",
+   "status": 409
+  },
+  {
+   "name": "port-differs",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "[web.test]:2200 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n[web.test]:2200 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "entry": {
+    "id": "0964d5a5a24511b2c5d8aee9da27696793647c7f7d35e7f295e243dffb33cee3",
+    "host": "web.test",
+    "port": 2200,
+    "hosts": [
+     {
+      "host": "web.test",
+      "port": 2200
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "empty",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Enter exactly one known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "spaces",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "   ",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Invalid or unsupported known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "newline",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "a.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\nb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Enter exactly one known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "carriage-return",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "a.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\r",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Enter exactly one known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "too-few-fields",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "a.test ssh-ed25519",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Invalid or unsupported known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "bad-base64",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "a.test ssh-ed25519 AAAA$$$",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Invalid known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "wrong-type-name",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "a.test ssh-rsa AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Invalid known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "unknown-type",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "a.test ssh-dss AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Invalid known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "bad-hash",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "|1|abc|def ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Invalid known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "empty-pattern",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "a.test,,b.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Invalid known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "too-long",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": "a.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Enter exactly one known_hosts entry",
+   "status": 400
+  },
+  {
+   "name": "number",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": 42,
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Host key entry must be text",
+   "status": 400
+  },
+  {
+   "name": "null",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": null,
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Host key entry must be text",
+   "status": 400
+  },
+  {
+   "name": "list",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "value": [
+    "a.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA"
+   ],
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "error": "Host key entry must be text",
+   "status": 400
+  },
+  {
+   "name": "no-file",
+   "base": null,
+   "value": "new.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "after": "new.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\n",
+   "entry": {
+    "id": "9db1164a39786af4df0f541f6ed01f0a3d4aef5b869bed5a25ed0f21eab29e02",
+    "host": "new.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "new.test",
+      "port": 22
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:4N0IEWUeSn8UqUv9jBIMaLzz+fKOrIpAMCIsNGunLD4",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "no-trailing-newline",
+   "base": "web.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA",
+   "value": "new.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "web.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\nnew.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "entry": {
+    "id": "bb4f82f90ade63f3764fbcb89786bc84c4a86c91b4f38849140b89b76433155f",
+    "host": "new.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "new.test",
+      "port": 22
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "empty-file",
+   "base": "",
+   "value": "new.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "new.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "entry": {
+    "id": "bb4f82f90ade63f3764fbcb89786bc84c4a86c91b4f38849140b89b76433155f",
+    "host": "new.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "new.test",
+      "port": 22
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+    "scope": "global",
+    "owner_id": null
+   }
+  },
+  {
+   "name": "crlf-file",
+   "base": "web.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\r\n",
+   "value": "new.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ",
+   "after": "web.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\r\nnew.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "entry": {
+    "id": "bb4f82f90ade63f3764fbcb89786bc84c4a86c91b4f38849140b89b76433155f",
+    "host": "new.test",
+    "port": 22,
+    "hosts": [
+     {
+      "host": "new.test",
+      "port": 22
+     }
+    ],
+    "marker": null,
+    "algorithm": "ssh-ed25519",
+    "fingerprint": "SHA256:mx2oTJK32rPaa9QfmCxuDP0bOwhcuaCvpg1v0NPP4Mg",
+    "scope": "global",
+    "owner_id": null
+   }
+  }
+ ],
+ "deletes": [
+  {
+   "name": "entry-0",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "id": "98bb4989408c0ddb7d1f86a27632c14c9d50bdca47e336918f61ac06fa4142b9",
+   "removed": true,
+   "after": "# managed by the administrator\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n"
+  },
+  {
+   "name": "entry-1",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "id": "0025131a650098d6bf90d04682824a87947ddeae5dca0b9c5787ca869e357888",
+   "removed": true,
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n"
+  },
+  {
+   "name": "entry-2",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "id": "079ff2b480efe631b48fe83ada70ba78229da552d7f2199d57115ce7b8a94279",
+   "removed": true,
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n"
+  },
+  {
+   "name": "entry-3",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "id": "cd3fc802e47c4b7eca57e6eed29e1400ec151551eff3abdb88689172c6f679fc",
+   "removed": true,
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n"
+  },
+  {
+   "name": "entry-4",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "id": "6a3d456c5bdaa8924780505452e72d574a31ef4a9fc92792e03ca50aca34ce7b",
+   "removed": true,
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n"
+  },
+  {
+   "name": "crlf",
+   "base": "a.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\r\nb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\r\n",
+   "id": "91b72b2c6c81d2e3c3ec45d4a4693d1cd16345080f61242e0f697619aab54468",
+   "removed": true,
+   "after": "b.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\r\n"
+  },
+  {
+   "name": "same-line-twice",
+   "base": "a.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\nx.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\na.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA\n",
+   "id": "91b72b2c6c81d2e3c3ec45d4a4693d1cd16345080f61242e0f697619aab54468",
+   "removed": true,
+   "after": "x.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n"
+  },
+  {
+   "name": "unknown",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "id": "0000000000000000000000000000000000000000000000000000000000000000",
+   "removed": false,
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n"
+  },
+  {
+   "name": "not-hex",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "id": "98BB4989408C0DDB7D1F86A27632C14C9D50BDCA47E336918F61AC06FA4142B9",
+   "removed": false,
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n"
+  },
+  {
+   "name": "short",
+   "base": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n",
+   "id": "98bb4989408c0ddb7d1f86a27632c14c9d50bdca47e336918f61ac06fa4142b",
+   "removed": false,
+   "after": "# managed by the administrator\nweb.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEbypPkqB1pcL0CPK1dJ1wrUFY5Qnt2taQK00XU4eNfA comment\n[db.test]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBADjzXToFiiWDtcwIdUEmgPb7g/Pq6LW3JpfK8Y72auU/7UU5MXDR6/ZCZf8XkT+llVFGrvx1Tnjr58ka14yvpM=\n@revoked old.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n@cert-authority *.corp.test ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtGPUqNXnP5pLwg01inyWC0tmH+Hhco7qHMDxofaGExnNAyBsgQ+XVhTIrzYlc1mkzSW0ycYiJg6en1QXOZS8hHGh+bf7hRljRoGR8Dt66bQD2qFo9HpllMpEs03dSkxkbvSXJlNEVJ+EhIcaWzie3NsmnKK2FIl2g4Ggnuyaa25A8Y97lIzeP3YnLW5ymsPmt078/nVLDEFtGirNsSzJ/I3xNQ+sr5NKsFeDya51aExdL8SczD4uYQvOfaAb01EZX4Us+ahd2lxdNvvu1P8hp7rLCc5/VfYSz/inwHwpJKGuSNTAI59yVstjeiVCYn7ghJXLhv3Chby6qpRR8Wdi5\n|1|AAECAwQFBgcICQoLDA0ODxAREhM=|203+VbVVPGA+5jkNZyDgRDjy25s= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJUaaRGynsoaGGaEyWgyLJKaRUCSkibIX4FfSKnibmrZ\n"
+  },
+  {
+   "name": "no-file",
+   "base": null,
+   "id": "98bb4989408c0ddb7d1f86a27632c14c9d50bdca47e336918f61ac06fa4142b9",
+   "removed": false,
+   "after": null
+  }
+ ]
+}

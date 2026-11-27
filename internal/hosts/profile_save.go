@@ -15,6 +15,9 @@ var (
 	errJumpNotFound    = fault.New(fault.NotFound, "Jump host not found")
 	errSOCKSNotFound   = fault.New(fault.ValidationError, "SOCKS proxy not found") // Python: not in the not-found list
 	errKeyNotFound     = fault.New(fault.ValidationError, "SSH key not found")
+	// errDuplicateProfile and errImportUpdate are refusals of the import.
+	errDuplicateProfile = fault.New(fault.Conflict, "Duplicate profile")
+	errImportUpdate     = fault.New(fault.ValidationError, "Import cannot update profiles")
 )
 
 // SaveProfile creates or updates a saved host of owner (upsert_profile).
@@ -22,8 +25,17 @@ var (
 // this release does not know, the detected facts of the same endpoint and
 // the position in the group.
 func (s *Service) SaveProfile(ctx context.Context, owner int64, req protocol.HostsProfileSave) (jsontext.Value, error) {
+	return s.saveProfile(ctx, owner, req, false)
+}
+
+// saveProfile is upsert_profile. With importing it is the variant the
+// host import uses (skip_duplicate): it never updates a host, refuses a
+// host with the same name or the same endpoint as a saved one with
+// errDuplicateProfile, and leaves the Tailscale access check to the
+// launch, as the Python import route did.
+func (s *Service) saveProfile(ctx context.Context, owner int64, req protocol.HostsProfileSave, importing bool) (jsontext.Value, error) {
 	p := profilePayload(req)
-	if s.Variants != nil {
+	if s.Variants != nil && !importing {
 		// handle_save_profile checks Tailscale SSH access before the
 		// payload rules.
 		if a, _ := asString(p.get("auth_type")); a == "tailscale" {
@@ -73,6 +85,14 @@ func (s *Service) SaveProfile(ctx context.Context, owner int64, req protocol.Hos
 		finishProfile(&d, p)
 		if err := checkRoutes(&d.rec, all); err != nil {
 			return err
+		}
+		if importing {
+			if truthy(p.get("id")) {
+				return errImportUpdate
+			}
+			if duplicateProfile(profiles, &d.rec) {
+				return errDuplicateProfile
+			}
 		}
 		next := slices.Clone(profiles)
 		now := jsonString(isoUTC(s.now()))
