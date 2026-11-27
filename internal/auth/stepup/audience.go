@@ -43,4 +43,8 @@ var accountActions = []principal.Action{
 	// The target is the intent token of the saved-password change; the vault
 	// binds the intent to the user and the session.
 	principal.ActionCredentialsVault,
+
+	// The target is the review intent of the run; the automation binds
+	// it to the user and the session.
+	principal.ActionAutomationRun,
 }
