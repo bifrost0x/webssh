@@ -97,6 +97,9 @@ func (h *Handler) unauthorized(w http.ResponseWriter, r *http.Request) {
 		next += "?" + r.URL.RawQuery
 	}
 	target := base + pathLogin + "?next=" + url.QueryEscape(next)
+	if h.signInRequired != nil {
+		h.signInRequired(r)
+	}
 	http.Redirect(w, r, target, http.StatusFound)
 }
 

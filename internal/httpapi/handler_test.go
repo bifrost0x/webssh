@@ -184,6 +184,30 @@ func TestPageRedirectsToSignInWithNext(t *testing.T) {
 	}
 }
 
+// The sign-in page learns why it was shown, in the browser the redirect
+// goes to (Flask-Login flashed login_message); API clients get 401 and no
+// notice.
+func TestPageRedirectAnnouncesSignInRequired(t *testing.T) {
+	var bindings []string
+	e := newEdge(t, func(o *Options) {
+		o.SignInRequired = func(r *http.Request) { bindings = append(bindings, BrowserBinding(r)) }
+	})
+	w := e.do(req{target: "/settings", remote: "127.0.0.1:4000"})
+	if w.Code != http.StatusFound || len(bindings) != 1 || bindings[0] == "" {
+		t.Fatalf("status %d, notices %q", w.Code, bindings)
+	}
+	set := false
+	for _, c := range w.Result().Cookies() {
+		set = set || c.Value == bindings[0]
+	}
+	if !set {
+		t.Fatal("the notice is bound to a browser binding the response does not set")
+	}
+	if w := e.do(req{target: "/settings", remote: "127.0.0.1:4000", headers: map[string]string{"Accept": "application/json"}}); w.Code != http.StatusUnauthorized || len(bindings) != 1 {
+		t.Fatalf("API request: status %d, notices %d", w.Code, len(bindings))
+	}
+}
+
 func TestSessionLookupFailureFailsClosed(t *testing.T) {
 	e := newEdge(t)
 	e.h.Mux().HandleFunc("GET /login", echo)

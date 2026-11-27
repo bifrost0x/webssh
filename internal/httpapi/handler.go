@@ -35,6 +35,10 @@ type Options struct {
 	ErrorPageData func(r *http.Request) PageData
 	Readiness     Readiness
 	Logger        *slog.Logger
+	// SignInRequired is called before a page request without a session
+	// is sent to the sign-in page, so that the page can say why
+	// (Flask-Login's login_message); optional.
+	SignInRequired func(r *http.Request)
 }
 
 // Handler is the HTTP edge: it resolves the client address, applies the
@@ -59,6 +63,8 @@ type Handler struct {
 	// (StreamBody).
 	streamed map[string]bool
 	ready    *readiness
+	// signInRequired: Options.SignInRequired.
+	signInRequired func(r *http.Request)
 
 	finish    sync.Once
 	finishErr error
@@ -83,7 +89,7 @@ func New(o Options) (*Handler, error) {
 	path := cookiePath(cfg.ApplicationRoot)
 	h := &Handler{
 		cfg: cfg, sessions: o.Sessions, mac: o.MAC, renderer: o.Renderer,
-		pageData: o.ErrorPageData, log: log,
+		pageData: o.ErrorPageData, log: log, signInRequired: o.SignInRequired,
 		proxy:   newProxyTrust(cfg.Proxies.Hops, cfg.Proxies.CIDRs, log),
 		cop:     http.NewCrossOriginProtection(),
 		session: cookieJar{name: cfg.Cookies.SessionName, path: path, secure: cfg.Cookies.Secure},

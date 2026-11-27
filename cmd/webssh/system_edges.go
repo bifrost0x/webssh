@@ -55,7 +55,7 @@ func (s *system) buildEdges(in bootInput) error {
 		discoveryAvailable: s.optional.discoveryAvailable, log: s.log, now: time.Now}
 	s.edge, err = httpapi.New(httpapi.Options{
 		Config: cfg, Sessions: s.gatedSessions(), MAC: s.ring, Assets: assets, Renderer: renderer,
-		ErrorPageData: s.pages.errorData,
+		ErrorPageData: s.pages.errorData, SignInRequired: s.flow.SignInRequired,
 		Readiness: httpapi.Readiness{Maintenance: s.maintenance.Load, Stopping: in.stopping,
 			Database: dbPinger{s.db}, DataDir: cfg.DataDir},
 		Logger: s.log,

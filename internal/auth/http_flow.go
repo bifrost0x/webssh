@@ -173,6 +173,17 @@ func (f *Flow) AddFlash(r *http.Request, msgs ...Flash) {
 	f.flash.add(f.now(), f.binding(r), msgs...)
 }
 
+// MsgSignInRequired is Flask-Login's login_message of the Python release,
+// shown on the sign-in page after a page asked for a session.
+const MsgSignInRequired = "Please log in to access this page."
+
+// SignInRequired queues the notice the sign-in page shows when a page
+// request without a session was sent there; Flask-Login flashed it with
+// its default category "message".
+func (f *Flow) SignInRequired(r *http.Request) {
+	f.AddFlash(r, Flash{Category: "message", Message: MsgSignInRequired})
+}
+
 // TakeFlashes returns and removes the queued messages of this browser;
 // the workspace page calls it too.
 func (f *Flow) TakeFlashes(r *http.Request) []Flash {

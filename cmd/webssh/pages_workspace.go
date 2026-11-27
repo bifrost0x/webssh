@@ -61,6 +61,7 @@ func (pg *pages) inventory(ctx context.Context, owner int64) any {
 func (pg *pages) account(w http.ResponseWriter, r *http.Request) (httpapi.PageData, *settings.Page, session.Session, bool) {
 	u, err := pg.user(r)
 	if err == nil && u == nil {
+		pg.flow.SignInRequired(r)
 		// #nosec G710 -- BasePath is a cleaned local path prefix (no empty segment, so never "//host").
 		http.Redirect(w, r, httpapi.BasePath(r)+"/login", http.StatusFound)
 		return httpapi.PageData{}, nil, session.Session{}, false
