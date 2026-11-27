@@ -1,6 +1,7 @@
 package smb
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	"errors"
 	"strings"
@@ -147,6 +148,10 @@ func TestRealtimeConnectFailures(t *testing.T) {
 	svc.Sources = rejectSources{}
 	err = run(`{"request_id":"r","host":"nas.example","share":"Data","username":"u","credential_id":"c"}`)
 	wantCode(t, err, fault.CredentialUnavailable)
+	// The quota is taken before the target is resolved, as in the Python pool.
+	err = run(`{"request_id":"r","host":"evil.example","share":"Data","username":"u","password":"p"}`)
+	wantCode(t, err, fault.SMBQuotaExceeded)
+	svc.Sources = files.NewRegistry(files.RegistryOptions{})
 	err = run(`{"request_id":"r","host":"evil.example","share":"Data","username":"u","password":"p"}`)
 	wantCode(t, err, fault.SMBTargetNotAllowed)
 }
@@ -179,6 +184,6 @@ func TestConnectAttemptsAreExclusiveAndCancellable(t *testing.T) {
 
 type rejectSources struct{}
 
-func (rejectSources) Add(principal.Principal, files.SourceKind, files.Descriptor, files.Backend) (string, error) {
-	return "", fault.New(fault.SMBQuotaExceeded, "")
+func (rejectSources) Reserve(context.Context, principal.Principal, files.SourceKind) (*files.Slot, error) {
+	return nil, fault.New(fault.Busy, "quick_connection quota exceeded (per_user limit 3)")
 }

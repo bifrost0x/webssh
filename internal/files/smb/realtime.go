@@ -105,12 +105,12 @@ func (s *Service) handleConnect(ctx context.Context, peer protocol.Peer, req pro
 	}
 	defer clear(cr.Target.Password)
 	live := func() bool { return peer.Context().Err() == nil }
-	d, access, err := s.Connect(ctx, p, peer.ID(), cr, live)
+	d, caps, err := s.Connect(ctx, p, peer.ID(), cr, live)
 	if err != nil {
 		return protocol.SMBConnected{}, s.connectFailure(ctx, p, cr.Target.Host, cr.Target.Share, err)
 	}
 	s.logger().InfoContext(ctx, "SMB source connected", "user_id", p.UserID, "host", cr.Target.Host, "share", cr.Target.Share)
-	return protocol.SMBConnected{FileSource: publicSource(d, access)}, nil
+	return protocol.SMBConnected{FileSource: files.PublicSource(d, caps)}, nil
 }
 
 // connectRequest applies the input checks of handle_smb_quick_connect: a
@@ -146,15 +146,6 @@ func connectRequest(id string, req protocol.SMBConnect) (ConnectRequest, error) 
 	}
 	cr.Target.Password = []byte(pw)
 	return cr, nil
-}
-
-func publicSource(d files.Descriptor, a files.Access) protocol.SMBFileSource {
-	return protocol.SMBFileSource{
-		SourceID: d.SourceID, Kind: string(d.Kind), Label: d.Label, Endpoint: d.Endpoint, Protocol: d.Protocol,
-		Capabilities: files.CapAll.Names(), Ephemeral: d.Ephemeral,
-		Security: protocol.SMBSecurity{Encrypted: d.Security.Encrypted, Signed: d.Security.Signed, SecureNegotiate: d.Security.SecureNegotiate},
-		Access:   protocol.SMBAccess{List: a.List, CreateFile: a.CreateFile, CreateDirectory: a.CreateDirectory, DeleteChildren: a.DeleteChildren},
-	}
 }
 
 // ResourceTarget is the current target of the saved share id of owner,

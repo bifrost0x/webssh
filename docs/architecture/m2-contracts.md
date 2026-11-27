@@ -175,24 +175,37 @@ type Opener func(ctx context.Context, p principal.Principal, handle string) (Des
 func NewRegistry(o RegistryOptions) *Registry
 func (r *Registry) RegisterKind(kind SourceKind, open Opener)    // sftp-session: opened on first use
 func (r *Registry) Add(p principal.Principal, kind SourceKind, d Descriptor, b Backend) (string, error)
+func (r *Registry) Reserve(ctx, p principal.Principal, kind SourceKind) (*Slot, error) // quota before the connection
+func (s *Slot) Add(d Descriptor, b Backend) (string, error)
+func (s *Slot) Release()
 func (r *Registry) Resolve(ctx, p principal.Principal, sourceID string, need Capability) (Backend, func(), error)
 func (r *Registry) Close(p principal.Principal, sourceID string) error
 func (r *Registry) Revoke(rev principal.Revocation)              // K6: subscribed to the revocation feed
+func (r *Registry) PeerOpened(userID int64, peerID uint64)       // realtime OnOpen
+func (r *Registry) PeerClosed(userID int64, peerID uint64)       // realtime OnClose
 func (r *Registry) LastConnectionClosed(userID int64)            // Python: quick sources close with the last socket
+func (r *Registry) Sweep()                                       // SMB idle expiry, periodic
 ```
 
 - A source is bound to the user and the browser session that opened it;
   `Resolve` checks both and the capability, and returns a release
   function that holds the source open (transfer holds of Python).
 - A revocation closes every source of the session (of the user when the
-  revocation has no session) before `Revoke` returns; held sources are
-  closed when the hold ends, and every operation on them fails with
-  `SOURCE_UNAVAILABLE` from then on.
-- When the user's last realtime connection ends, quick and SMB sources
-  close as in Python (deferred while a transfer holds them). Terminal
-  sessions and their `sftp-session` sources stay.
-- Quick sources reserve quota `quick_connection`; SMB sources expire after
-  300 seconds without use (Python pool).
+  revocation has no session) before `Revoke` returns, held sources too
+  (K6): every operation still running on them fails with
+  `SOURCE_UNAVAILABLE`, and a hold that ends afterwards changes nothing.
+- The registry counts the user's realtime connections from the
+  endpoint's `OnOpen` and `OnClose` hooks. When the last one ends, quick
+  and SMB sources close as in Python (deferred while a transfer holds
+  them). Terminal sessions and their `sftp-session` sources stay.
+- The registry owns the quota and the idle expiry: Quick SFTP and SMB
+  sources reserve quota `quick_connection` (`Reserve` before dialling, as
+  the Python pools did; `Add` reserves itself), and SMB sources expire
+  after 300 seconds without use (Python pool, `Sweep`). The backends
+  reserve nothing.
+- `Descriptor.Access` carries the access probe of the source root when it
+  was opened (SMB); `PublicSource(d, caps)` builds the `file_source` of
+  every source, SMB included (`smb.connect` answers with it).
 - cmd/webssh registers the `sftp-session` opener over an adapter of
   `internal/terminal` (the session's `*client.Conn`) and `internal/files/sftp`.
 
@@ -1104,7 +1117,7 @@ event of today (the optional `failurePush` builders of an area entry in
 Consumer interfaces of `internal/files/smb` (compiled):
 
 ```go
-type Sources interface { Add(p principal.Principal, kind files.SourceKind, d files.Descriptor, b files.Backend) (string, error) }
+type Sources interface { Reserve(ctx, p principal.Principal, kind files.SourceKind) (*files.Slot, error) }
 type Passwords interface { ConnectionPassword(ctx, p principal.Principal, req CredentialRequest) ([]byte, error) }
 type Network interface { Admit(ctx, role netpolicy.Role, host string, port int) (netpolicy.Admitted, error) }
 ```

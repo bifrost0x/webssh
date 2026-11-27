@@ -66,39 +66,11 @@ type SMBConnect struct {
 	CredentialTargetToken jsontext.Value `json:"credential_target_token"`
 }
 
-// SMBConnected is the result of smb.connect (smb_quick_connect_success).
+// SMBConnected is the result of smb.connect (smb_quick_connect_success);
+// the descriptor is that of every file source (FileSource), with the
+// access probe of the share root.
 type SMBConnected struct {
-	FileSource SMBFileSource `json:"file_source"`
-}
-
-// SMBFileSource is the public descriptor of an SMB source
-// (FileSourceDescriptor.to_public_dict).
-type SMBFileSource struct {
-	SourceID     string      `json:"source_id"`
-	Kind         string      `json:"kind"`
-	Label        string      `json:"label"`
-	Endpoint     string      `json:"endpoint"`
-	Protocol     string      `json:"protocol"`
-	Capabilities []string    `json:"capabilities"`
-	Ephemeral    bool        `json:"ephemeral"`
-	Security     SMBSecurity `json:"security"`
-	Access       SMBAccess   `json:"access"`
-}
-
-// SMBSecurity is the transport security the page shows.
-type SMBSecurity struct {
-	Encrypted       bool `json:"encrypted"`
-	Signed          bool `json:"signed"`
-	SecureNegotiate bool `json:"secure_negotiate"`
-}
-
-// SMBAccess are the rights probed at the share root: granted, denied or
-// unknown.
-type SMBAccess struct {
-	List            string `json:"list"`
-	CreateFile      string `json:"create_file"`
-	CreateDirectory string `json:"create_directory"`
-	DeleteChildren  string `json:"delete_children"`
+	FileSource FileSource `json:"file_source"`
 }
 
 // SMBConnectCancel cancels the attempt of request_id on this connection

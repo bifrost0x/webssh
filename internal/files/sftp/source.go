@@ -26,16 +26,6 @@ type Dialer interface {
 	Dial(ctx context.Context, t client.Target, ix client.Interaction) (*client.Conn, error)
 }
 
-// Quota reserves one quick_connection slot of a user (internal/quota);
-// release frees it. A refusal is a *fault.Error with the text the user
-// sees ("Maximum number of quick connections reached").
-type Quota interface {
-	Reserve(ctx context.Context, kind string, userID int64) (release func(), err error)
-}
-
-// QuotaQuickConnection is the quota kind of Quick SFTP (quota.QuickConnection).
-const QuotaQuickConnection = "quick_connection"
-
 // openOn starts the backend on conn. closeConn closes the SSH connection
 // when the backend ends (Quick SFTP); a terminal session keeps its
 // connection. The backend also ends when the connection ends.
@@ -79,35 +69,27 @@ func descriptor(h client.Hop, name string, ephemeral bool) files.Descriptor {
 
 // Quick opens Quick SFTP sources: an SSH connection without a PTY for one
 // file source, also for a saved host (the caller resolves it to a
-// Target).
+// Target). The caller reserves the quota before it opens one
+// (files.Registry.Reserve); the source registry owns it.
 type Quick struct {
 	Dialer  Dialer
-	Quota   Quota
 	Options Options
 }
 
 // Open connects to t for p and starts SFTP. ix answers the host-key and
 // banner prompts like in the terminal; an unknown key is asked for, a
 // changed key is refused (D-22; the Python release refused unknown keys).
-// The returned backend owns the connection and the quota slot.
+// The returned backend owns the connection.
 func (q *Quick) Open(ctx context.Context, p principal.Principal, t client.Target, ix client.Interaction) (files.Descriptor, *Backend, error) {
-	if q.Dialer == nil || q.Quota == nil || p.UserID <= 0 {
+	if q.Dialer == nil || p.UserID <= 0 {
 		return files.Descriptor{}, nil, fault.New(fault.SourceUnavailable, "")
 	}
 	t.Owner = p.UserID
-	release, err := q.Quota.Reserve(ctx, QuotaQuickConnection, p.UserID)
-	if err != nil {
-		return files.Descriptor{}, nil, err
-	}
 	conn, err := q.Dialer.Dial(ctx, t, ix)
 	if err != nil {
-		release()
 		return files.Descriptor{}, nil, err
 	}
-	b, err := openOn(ctx, conn, q.Options, func() {
-		_ = conn.Close()
-		release()
-	})
+	b, err := openOn(ctx, conn, q.Options, func() { _ = conn.Close() })
 	if err != nil {
 		return files.Descriptor{}, nil, err
 	}

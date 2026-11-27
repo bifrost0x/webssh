@@ -193,8 +193,8 @@ func TestQuickSourcesQuotaAndLastConnection(t *testing.T) {
 	if _, err := extra.Home(context.Background()); !fault.Is(err, fault.SourceUnavailable) {
 		t.Fatal("refused backend left open")
 	}
-	f.reg.Seen(1, 7)
-	f.reg.Seen(1, 8)
+	f.reg.PeerOpened(1, 7)
+	f.reg.PeerOpened(1, 8)
 	f.reg.PeerClosed(1, 7)
 	if f.q.used[1] != 3 {
 		t.Fatalf("sources closed while a connection remains: %d", f.q.used[1])
@@ -268,5 +268,53 @@ func TestOpenerOnFirstUse(t *testing.T) {
 		t.Fatalf("terminal source closed with the last connection: %v", err)
 	} else {
 		release()
+	}
+}
+
+// The quota is taken before a quick source connects (Reserve), passes to
+// the source with Slot.Add and is freed by Release or by the source's end.
+func TestReserveBeforeOpen(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, files.Options{}) // one quick source of alice is open
+	ctx := context.Background()
+	unused, err := f.reg.Reserve(ctx, alice, files.SourceSMBQuick)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := f.reg.Reserve(ctx, alice, files.SourceSFTPQuick)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.reg.Reserve(ctx, alice, files.SourceSMBQuick); err == nil {
+		t.Fatal("quota not applied before the connection")
+	}
+	if _, err := f.reg.Reserve(ctx, alice, files.SourceSFTPSession); err != nil {
+		t.Fatalf("terminal session sources take no quota: %v", err)
+	}
+	unused.Release()
+	unused.Release() // idempotent
+	if f.q.used[1] != 2 {
+		t.Fatalf("released slot still counted: %d", f.q.used[1])
+	}
+	id, err := held.Add(files.Descriptor{Kind: files.KindSFTP}, filestest.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	held.Release() // used by Add: no effect
+	if f.q.used[1] != 2 {
+		t.Fatalf("release after Add freed the source's quota: %d", f.q.used[1])
+	}
+	reused := filestest.New()
+	if _, err := held.Add(files.Descriptor{Kind: files.KindSFTP}, reused); err == nil {
+		t.Fatal("slot used twice")
+	}
+	if _, err := reused.Home(ctx); !fault.Is(err, fault.SourceUnavailable) {
+		t.Fatal("refused backend left open")
+	}
+	if err := f.reg.Close(alice, id); err != nil {
+		t.Fatal(err)
+	}
+	if f.q.used[1] != 1 {
+		t.Fatalf("closed source keeps its quota: %d", f.q.used[1])
 	}
 }

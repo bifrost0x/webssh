@@ -141,7 +141,6 @@ type resolved struct {
 }
 
 func (s *Service) resolve(ctx context.Context, c Caller, sourceID string, need Capability) (resolved, error) {
-	s.reg.Seen(c.P.UserID, c.Peer)
 	b, release, err := s.reg.Resolve(ctx, c.P, sourceID, need)
 	if err != nil {
 		return resolved{}, err

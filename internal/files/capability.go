@@ -101,4 +101,7 @@ type Descriptor struct {
 	Protocol  string // "SFTP", "SMB 3.1.1"
 	Ephemeral bool
 	Security  Security
+	// Access is the probe of the source root when it was opened (SMB,
+	// AccessProber); nil when the backend cannot tell.
+	Access *Access
 }

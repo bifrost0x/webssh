@@ -107,8 +107,10 @@ func TestLabFileOperations(t *testing.T) {
 			if err != nil || !d.IsDir || d.Mode != 0o040111|0o666 {
 				t.Errorf("stat dir %+v %v", d, err)
 			}
-			_, err = b.Stat(ctx, dir+"/sub/a.txt", true)
-			wantCode(t, err, fault.SMBReparsePointRejected)
+			// follow describes an object that is no reparse point itself.
+			if f, err := b.Stat(ctx, dir+"/sub/a.txt", true); err != nil || f.Path != e.Path || f.Size != 11 {
+				t.Errorf("stat follow %+v %v", f, err)
+			}
 			if got := names(t, b, dir+"/sub"); !slices.Equal(got, []string{"a.txt"}) {
 				t.Errorf("listing %v", got)
 			}

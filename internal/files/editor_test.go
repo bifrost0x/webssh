@@ -336,8 +336,9 @@ func TestRealtimeRoutes(t *testing.T) {
 func TestPublicSource(t *testing.T) {
 	t.Parallel()
 	d := files.Descriptor{SourceID: "smb-quick:h1", Kind: files.KindSMB, Label: "s on h", Endpoint: "h/s", Protocol: "SMB 3.1.1",
-		Ephemeral: true, Security: files.Security{Encrypted: true, Signed: true, SecureNegotiate: true}}
-	got := files.PublicSource(d, files.Capabilities{Ops: files.CapList | files.CapRead}, &files.Access{List: "granted", CreateFile: "denied", CreateDirectory: "unknown", DeleteChildren: "granted"})
+		Ephemeral: true, Security: files.Security{Encrypted: true, Signed: true, SecureNegotiate: true},
+		Access: &files.Access{List: "granted", CreateFile: "denied", CreateDirectory: "unknown", DeleteChildren: "granted"}}
+	got := files.PublicSource(d, files.Capabilities{Ops: files.CapList | files.CapRead})
 	raw, _ := json.Marshal(got)
 	want := `{"source_id":"smb-quick:h1","kind":"smb","label":"s on h","endpoint":"h/s","protocol":"SMB 3.1.1","capabilities":["list","read"],"ephemeral":true,"security":{"encrypted":true,"secure_negotiate":true,"signed":true},"access":{"create_directory":"unknown","create_file":"denied","delete_children":"granted","list":"granted"}}`
 	if string(raw) != want {

@@ -227,8 +227,8 @@ func (s *Service) sourceCloseRoute(_ context.Context, c Caller, rq protocol.File
 
 // PublicSource is the file_source descriptor the page receives for an open
 // source (FileSourceDescriptor.to_public_dict of the Python release).
-// access is optional (SMB, AccessProber).
-func PublicSource(d Descriptor, c Capabilities, access *Access) protocol.FileSource {
+func PublicSource(d Descriptor, c Capabilities) protocol.FileSource {
+	access := d.Access
 	sec := map[string]bool{}
 	switch d.Kind {
 	case KindSFTP:

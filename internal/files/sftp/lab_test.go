@@ -123,31 +123,9 @@ func (p *prompts) HostKey(_ context.Context, q client.HostKeyPrompt) (bool, erro
 
 func (p *prompts) Banner(context.Context, client.BannerPrompt) (bool, error) { return true, nil }
 
-type quota struct {
-	mu   sync.Mutex
-	held int
-}
-
-func (q *quota) Reserve(_ context.Context, kind string, _ int64) (func(), error) {
-	if kind != sftp.QuotaQuickConnection {
-		return nil, fault.New(fault.Internal, "")
-	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if q.held >= 3 {
-		return nil, fault.New(fault.Busy, "Maximum number of quick connections reached")
-	}
-	q.held++
-	var once sync.Once
-	return func() { once.Do(func() { q.mu.Lock(); q.held--; q.mu.Unlock() }) }, nil
-}
-
-func (q *quota) count() int { q.mu.Lock(); defer q.mu.Unlock(); return q.held }
-
 type rig struct {
 	quick *sftp.Quick
 	ix    *prompts
-	quota *quota
 	pw    string
 }
 
@@ -159,10 +137,9 @@ func newRig(t testing.TB, o sftp.Options) *rig {
 		t.Fatal(err)
 	}
 	db := storetest.Open(t, hostkey.Schema())
-	q := &quota{}
 	return &rig{
-		quick: &sftp.Quick{Dialer: &client.Dialer{Net: policy, HostKeys: hostkey.New(db, logger)}, Quota: q, Options: o},
-		ix:    &prompts{t: t, fps: fingerprints(t)}, quota: q, pw: secret(t, "secrets/ssh-pwuser"),
+		quick: &sftp.Quick{Dialer: &client.Dialer{Net: policy, HostKeys: hostkey.New(db, logger)}, Options: o},
+		ix:    &prompts{t: t, fps: fingerprints(t)}, pw: secret(t, "secrets/ssh-pwuser"),
 	}
 }
 
@@ -269,6 +246,11 @@ func TestLabQuickSFTP(t *testing.T) {
 	if e, _ := b.Stat(c, dir+"/site.conf", false); e.Mode&0o777 == 0o600 {
 		t.Fatal("chmod followed the link")
 	}
+	// Stat(follow) names the canonical target (OpenSSH REALPATH), which
+	// the file layer opens instead of the link.
+	if e, err := b.Stat(c, link, true); err != nil || e.Path != dir+"/site.conf" || e.IsSymlink {
+		t.Fatalf("stat follow: %+v %v", e, err)
+	}
 	// The editor saves through the link (OpenSSH REALPATH) and keeps it.
 	edited := []byte("listen 8080;\n")
 	if _, err := b.Write(c, link, bytes.NewReader(edited), files.WriteOptions{
@@ -319,9 +301,6 @@ func TestLabQuickSFTP(t *testing.T) {
 	}
 	_ = b.Close()
 	<-b.Done()
-	if r.quota.count() != 0 {
-		t.Fatal("quota slot not released")
-	}
 }
 
 // exec runs a shell command as pwuser on ssh-modern through the dialer.

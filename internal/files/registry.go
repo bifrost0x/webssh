@@ -112,30 +112,17 @@ func (r *Registry) OnClose(f func(session, sourceID string)) {
 
 // Add registers an open backend for the principal and returns its new
 // source id. Add takes ownership of b: on failure b is closed. Quick SFTP
-// and SMB sources reserve quota "quick_connection" first.
+// and SMB sources reserve quota "quick_connection" first; Reserve does
+// that before the connection is made.
 func (r *Registry) Add(p principal.Principal, kind SourceKind, d Descriptor, b Backend) (string, error) {
-	id, err := FormatSourceID(kind, newHandle())
-	if err == nil {
-		var release func()
-		if release, err = r.reserve(p, kind); err == nil {
-			d.SourceID = id
-			if err = r.insert(p, kind, d, b, release); err == nil {
-				return id, nil
-			}
-			release()
-		}
-	}
-	_ = b.Close()
-	return "", err
-}
-
-func (r *Registry) reserve(p principal.Principal, kind SourceKind) (func(), error) {
-	if kind == SourceSFTPSession || r.opts.Quotas == nil {
-		return func() {}, nil
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return r.opts.Quotas.Reserve(ctx, quickConnection, p.UserID, 1)
+	slot, err := r.Reserve(ctx, p, kind)
+	if err != nil {
+		_ = b.Close()
+		return "", err
+	}
+	return slot.Add(d, b)
 }
 
 func (r *Registry) insert(p principal.Principal, kind SourceKind, d Descriptor, b Backend, release func()) error {
@@ -214,16 +201,12 @@ func (r *Registry) openKind(ctx context.Context, p principal.Principal, kind Sou
 		}
 		return err
 	}
-	d.SourceID = sourceID
-	release, err := r.reserve(p, kind)
-	if err == nil {
-		if err = r.insert(p, kind, d, b, release); err == nil {
-			return nil
-		}
-		release()
+	slot, err := r.Reserve(ctx, p, kind)
+	if err != nil {
+		_ = b.Close()
+		return err
 	}
-	_ = b.Close()
-	return err
+	return slot.add(sourceID, d, b)
 }
 
 // hold runs with r.mu held.
@@ -290,8 +273,9 @@ func (r *Registry) Revoke(rev principal.Revocation) {
 	})
 }
 
-// Seen notes a realtime connection of the user that uses files.
-func (r *Registry) Seen(userID int64, peerID uint64) {
+// PeerOpened notes a realtime connection of the user (realtime OnOpen);
+// PeerClosed forgets it again.
+func (r *Registry) PeerOpened(userID int64, peerID uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.peers[userID] == nil {
@@ -300,7 +284,7 @@ func (r *Registry) Seen(userID int64, peerID uint64) {
 	r.peers[userID][peerID] = true
 }
 
-// PeerClosed forgets a connection; when it was the user's last one seen,
+// PeerClosed forgets a connection; when it was the user's last one,
 // the user's quick sources close (LastConnectionClosed).
 func (r *Registry) PeerClosed(userID int64, peerID uint64) {
 	r.mu.Lock()

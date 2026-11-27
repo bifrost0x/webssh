@@ -19,9 +19,10 @@ import (
 func TestNoGoroutineLeakOnClose(t *testing.T) {
 	base := settledGoroutines(t, 0)
 	release := make(chan struct{})
-	var closed atomic.Int32
+	var opened, closed atomic.Int32
 	e := newEnv(t, Config{RecheckInterval: 20 * time.Millisecond, PingInterval: 30 * time.Millisecond}, func(s *Server) {
 		testRoutes(new(atomic.Int32), release)(s)
+		s.OnOpen(func(protocol.Peer) { opened.Add(1) })
 		s.OnClose(func(protocol.Peer) { closed.Add(1) })
 	})
 
@@ -53,6 +54,9 @@ func TestNoGoroutineLeakOnClose(t *testing.T) {
 	}
 	if got := closed.Load(); got != 9 {
 		t.Fatalf("OnClose ran %d times, want 9", got)
+	}
+	if got := opened.Load(); got != 9 {
+		t.Fatalf("OnOpen ran %d times, want 9 (one per closed connection)", got)
 	}
 	e.ts.Close()
 	close(release)

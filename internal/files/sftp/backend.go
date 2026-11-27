@@ -171,15 +171,27 @@ func (b *Backend) Stat(ctx context.Context, p string, follow bool) (files.Entry,
 		return files.Entry{}, err
 	}
 	defer cancel()
-	stat := b.w.lstat
-	if follow {
-		stat = b.w.stat
+	if !follow {
+		a, err := b.w.lstat(ctx, p)
+		if err != nil {
+			return files.Entry{}, b.mapErr(err, false)
+		}
+		return entryOf(p, path.Base(p), a), nil
 	}
-	a, err := stat(ctx, p)
+	// The target is described under its canonical path (REALPATH), which
+	// the file layer opens instead of the link.
+	target, err := b.w.resolve(ctx, p)
 	if err != nil {
 		return files.Entry{}, b.mapErr(err, false)
 	}
-	return entryOf(p, path.Base(p), a), nil
+	if target, err = files.Clean(target); err != nil {
+		return files.Entry{}, fault.New(fault.UnsupportedOperation, "")
+	}
+	a, err := b.w.stat(ctx, target)
+	if err != nil {
+		return files.Entry{}, b.mapErr(err, false)
+	}
+	return entryOf(target, path.Base(target), a), nil
 }
 
 // Mkdir implements files.Backend.

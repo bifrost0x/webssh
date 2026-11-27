@@ -15,12 +15,13 @@ import (
 	"github.com/bifrost0x/webssh/internal/principal"
 )
 
-// Sources registers an opened source for the user's browser session; the
-// file source registry of internal/files implements it. The registry owns
-// the source from then on: idle expiry, the last realtime connection,
-// revocation and the quick-connection quota.
+// Sources is the file source registry of internal/files: Reserve takes
+// the quick-connection quota before the share is dialled, and the slot
+// registers the opened source for the user's browser session. The
+// registry owns the source from then on: idle expiry, the last realtime
+// connection, revocation and the quota.
 type Sources interface {
-	Add(p principal.Principal, kind files.SourceKind, d files.Descriptor, b files.Backend) (string, error)
+	Reserve(ctx context.Context, p principal.Principal, kind files.SourceKind) (*files.Slot, error)
 }
 
 // Passwords resolves a saved password for a connection (internal/vault
@@ -123,46 +124,54 @@ func (s *Service) Cancel(user int64, peer uint64, requestID string) {
 // Connect opens the share for the principal's session and registers it as
 // a source. live reports whether the realtime connection that asked is
 // still there; a source nobody can use any more is closed again.
-func (s *Service) Connect(ctx context.Context, p principal.Principal, peer uint64, req ConnectRequest, live func() bool) (files.Descriptor, files.Access, error) {
+func (s *Service) Connect(ctx context.Context, p principal.Principal, peer uint64, req ConnectRequest, live func() bool) (files.Descriptor, files.Capabilities, error) {
 	ctx, done, err := s.begin(ctx, attemptKey{p.UserID, peer, req.RequestID})
 	if err != nil {
-		return files.Descriptor{}, files.Access{}, err
+		return files.Descriptor{}, files.Capabilities{}, err
 	}
 	defer done()
 	if s.Sources == nil {
-		return files.Descriptor{}, files.Access{}, fail(fault.SMBConnectionFailed, PhaseLifecycle, "NoRegistry", nil)
+		return files.Descriptor{}, files.Capabilities{}, fail(fault.SMBConnectionFailed, PhaseLifecycle, "NoRegistry", nil)
 	}
 	t := req.Target
 	if req.CredentialID != "" {
 		if s.Passwords == nil {
-			return files.Descriptor{}, files.Access{}, fault.New(fault.CredentialUnavailable, "")
+			return files.Descriptor{}, files.Capabilities{}, fault.New(fault.CredentialUnavailable, "")
 		}
 		if err := checkTarget(Target{Host: t.Host, Share: t.Share, Domain: t.Domain, Username: t.Username, Password: []byte{1}}); err != nil {
-			return files.Descriptor{}, files.Access{}, err
+			return files.Descriptor{}, files.Capabilities{}, err
 		}
 		pw, err := s.Passwords.ConnectionPassword(ctx, p, CredentialRequest{CredentialID: req.CredentialID, TargetToken: req.TargetToken,
 			Target: ShareFields{Host: t.Host, Share: t.Share, Domain: t.Domain, Username: t.Username}})
 		if err != nil {
-			return files.Descriptor{}, files.Access{}, err
+			return files.Descriptor{}, files.Capabilities{}, err
 		}
 		t.Password = pw
 	}
+	slot, err := s.Sources.Reserve(ctx, p, files.SourceSMBQuick)
+	if err != nil {
+		if fault.Is(err, fault.Busy) {
+			err = fail(fault.SMBQuotaExceeded, PhaseLifecycle, "QuotaExceeded", err)
+		}
+		return files.Descriptor{}, files.Capabilities{}, err
+	}
 	b, err := Connect(ctx, s.Config, t)
 	if err != nil {
-		return files.Descriptor{}, files.Access{}, err
+		slot.Release()
+		return files.Descriptor{}, files.Capabilities{}, err
 	}
 	if ctx.Err() != nil || !live() {
+		slot.Release()
 		_ = b.Close()
-		return files.Descriptor{}, files.Access{}, fail(fault.SMBConnectCancelled, PhaseLifecycle, "Canceled", ctx.Err())
+		return files.Descriptor{}, files.Capabilities{}, fail(fault.SMBConnectCancelled, PhaseLifecycle, "Canceled", ctx.Err())
 	}
 	d := b.Descriptor()
-	id, err := s.Sources.Add(p, files.SourceSMBQuick, d, b)
+	id, err := slot.Add(d, b)
 	if err != nil {
-		_ = b.Close()
-		return files.Descriptor{}, files.Access{}, err
+		return files.Descriptor{}, files.Capabilities{}, err
 	}
 	d.SourceID = id
-	return d, b.RootAccess(), nil
+	return d, b.Capabilities(), nil
 }
 
 // connectFailure is the error a failed connect sends: a code of

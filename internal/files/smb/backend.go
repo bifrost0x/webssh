@@ -131,10 +131,12 @@ func (b *Backend) Chmod(context.Context, string, fs.FileMode) error {
 // Descriptor is the public description of the source. SourceID is set by
 // the source registry.
 func (b *Backend) Descriptor() files.Descriptor {
+	access := b.access
 	return files.Descriptor{
 		Kind: files.KindSMB, Label: b.share + " on " + b.host, Endpoint: b.host + "/" + b.share,
 		Protocol: "SMB 3.1.1", Ephemeral: true,
 		Security: files.Security{Encrypted: true, Signed: true, SecureNegotiate: true},
+		Access:   &access,
 	}
 }
 

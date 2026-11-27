@@ -36,12 +36,10 @@ func entry(o object, p string) files.Entry {
 		IsSymlink: o.isReparse(), ModTime: o.ModTime}
 }
 
-// Stat describes the object at p. follow is refused: reparse points are
-// never followed.
+// Stat describes the object at p. Reparse points are never followed:
+// with follow one is refused, so a path that names no link describes
+// itself either way.
 func (b *Backend) Stat(ctx context.Context, p string, follow bool) (files.Entry, error) {
-	if follow {
-		return files.Entry{}, fail(fault.SMBReparsePointRejected, PhaseFileOperation, "ReparsePoint", nil)
-	}
 	if err := b.alive(); err != nil {
 		return files.Entry{}, err
 	}
@@ -59,6 +57,9 @@ func (b *Backend) Stat(ctx context.Context, p string, follow bool) (files.Entry,
 		e.Name = ""
 	} else {
 		e.Name = parts[len(parts)-1]
+	}
+	if follow && e.IsSymlink {
+		return files.Entry{}, fail(fault.SMBReparsePointRejected, PhaseFileOperation, "ReparsePoint", nil)
 	}
 	return e, nil
 }

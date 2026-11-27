@@ -49,6 +49,12 @@ func TestHomeStatAndCapabilities(t *testing.T) {
 	if err != nil || e.IsSymlink || e.Size != 3 || e.Mode != 0o100640 || e.Owner == nil {
 		t.Fatalf("stat: %+v %v", e, err)
 	}
+	// The path is the server's REALPATH answer; the request server of
+	// pkg/sftp only cleans it (the lab test covers OpenSSH, which
+	// resolves the link).
+	if want := filepath.Clean(root + "/l"); e.Path != want {
+		t.Fatalf("stat follow path %q, want %q", e.Path, want)
+	}
 	_, err = b.Stat(ctx(t), root+"/missing", false)
 	wantCode(t, err, fault.FileNotFound)
 	wantCode(t, b.Chmod(ctx(t), root+"/f", 0o600), fault.UnsupportedOperation)
