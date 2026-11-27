@@ -4,7 +4,6 @@ import (
 	"crypto/x509"
 	"os"
 	"os/exec"
-	"runtime"
 	"testing"
 )
 
@@ -24,9 +23,6 @@ func TestFallbackRootsWithoutBundle(t *testing.T) {
 			t.Fatal("system pool is empty without a bundle")
 		}
 		return
-	}
-	if runtime.GOOS != "linux" {
-		t.Skip("the platform verifier is used outside Linux")
 	}
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestFallbackRootsWithoutBundle$") // #nosec G204 -- the test binary itself
 	cmd.Env = append(os.Environ(), rootsChildEnv+"=1", "SSL_CERT_FILE=/nonexistent", "SSL_CERT_DIR=/nonexistent")

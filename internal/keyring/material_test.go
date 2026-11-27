@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"testing"
 
@@ -104,7 +103,7 @@ func checkMode(t *testing.T, path string, want fs.FileMode) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.GOOS != "windows" && info.Mode() != want {
+	if info.Mode() != want {
 		t.Errorf("%s: mode %v, want %v", path, info.Mode(), want)
 	}
 }
@@ -163,9 +162,6 @@ func TestUnusableMaterialStops(t *testing.T) {
 		"long file":  func(t *testing.T, mp materialPaths) { put(t, mp.stateFile, make([]byte, 33)) },
 		"empty file": func(t *testing.T, mp materialPaths) { put(t, mp.goFile, nil) },
 		"readable by others": func(t *testing.T, mp materialPaths) {
-			if runtime.GOOS == "windows" {
-				t.Skip("no mode bits")
-			}
 			put(t, mp.goFile, make([]byte, MaterialSize))
 			if err := os.Chmod(mp.goFile, 0o644); err != nil {
 				t.Fatal(err)

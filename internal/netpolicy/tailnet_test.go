@@ -165,21 +165,6 @@ func TestUpgradedInstallationFollowsTheSwitch(t *testing.T) {
 	}
 }
 
-func TestUnsupportedPlatform(t *testing.T) {
-	unsupported := func(context.Context, netip.Addr) (Route, error) { return Route{}, ErrRouteUnsupported }
-	addr := netip.MustParseAddr("100.100.100.10")
-	present := Tailnet{Interface: "tailscale0", FeatureEnabled: true, Lookup: unsupported,
-		InterfacePresent: func(string) bool { return true }}
-	absent := present
-	absent.InterfacePresent = func(string) bool { return false }
-	if !present.targetRestricted(t.Context(), addr) {
-		t.Error("interface present, no lookup: must fail closed")
-	}
-	if absent.targetRestricted(t.Context(), addr) {
-		t.Error("no tailnet interface: host is no node, CGNAT stays reachable")
-	}
-}
-
 func TestRelayRestricted(t *testing.T) {
 	tests := map[string]bool{
 		"127.0.0.1":        true,

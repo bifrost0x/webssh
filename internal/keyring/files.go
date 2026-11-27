@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 )
 
 // ErrMaterialFile reports a material path that is not a regular file of
@@ -30,9 +29,8 @@ func readMaterial(path string) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("%w: %s is not a regular file", ErrMaterialFile, path)
 	}
-	// The file must be readable by its owner only (mode 0600). Windows has
-	// no such mode bits; the data directory ACL protects it there.
-	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+	// The file must be readable by its owner only (mode 0600).
+	if info.Mode().Perm()&0o077 != 0 {
 		return nil, fmt.Errorf("%w: %s is readable by other users (mode %v); run chmod 600 on it", ErrMaterialFile, path, info.Mode().Perm())
 	}
 	f, err := os.Open(path) // #nosec G304 -- a fixed name below the configured DATA_DIR

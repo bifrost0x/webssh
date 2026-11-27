@@ -11,7 +11,6 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -58,14 +57,12 @@ func TestReadSecret(t *testing.T) {
 		"dir":   dir,
 		"none":  filepath.Join(dir, "missing"),
 	}
-	if runtime.GOOS != "windows" {
-		bad["group readable"] = writeFile(t, dir, "wide", "x", 0o640)
-		link := filepath.Join(dir, "link")
-		if err := os.Symlink(filepath.Join(dir, "ok"), link); err != nil {
-			t.Fatal(err)
-		}
-		bad["symlink"] = link
+	bad["group readable"] = writeFile(t, dir, "wide", "x", 0o640)
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(filepath.Join(dir, "ok"), link); err != nil {
+		t.Fatal(err)
 	}
+	bad["symlink"] = link
 	for name, path := range bad {
 		if _, err := readSecret(path); !errors.Is(err, ErrUnavailable) {
 			t.Errorf("%s: want ErrUnavailable, got %v", name, err)

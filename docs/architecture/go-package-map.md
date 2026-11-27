@@ -42,7 +42,7 @@ Existing installations are carried over once, automatically, by
 | Operation: backup, restore, secret rotation, maintenance, diagnostics, feature gates, admin CLI | `internal/backup`, `internal/operations`, `internal/admincli` |
 | Audit | `internal/audit` |
 | Limits: connection and storage quotas | `internal/quota` |
-| Platforms: Windows service, systemd, data directory permissions | `internal/platform` |
+| Platform (Linux: Docker, Unraid): data directory permissions, time zone check | `internal/platform` |
 | Upgrade from the Python release: one-time migration of `DATA_DIR`, restore of Python backups, removal of legacy data | `internal/migrate/legacy`, `internal/fernet` |
 | Runtime: process, HTTP, realtime | `cmd/webssh`, `internal/httpapi`, `internal/realtime`, `internal/realtime/protocol`, `internal/config`, `internal/store`, `internal/fault`, `internal/principal`, `internal/buildinfo` |
 | Testing: test doubles and the end-to-end seed | `internal/principal/principaltest`, `internal/realtime/protocol/protocoltest`, `internal/store/storetest`, `internal/auth/authtest`, `internal/backup/backuptest`, `internal/e2eseed` |
@@ -75,7 +75,7 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/realtime/protocol/protocoltest` | foundation | Test double of a realtime connection for capability handlers; imported by test files only | – | M1 |
 | `internal/store/storetest` | foundation | Throw-away databases for store tests; imported by test files only | – | M1 |
 | `internal/cron` | foundation | Cron expressions and schedules (tier C) | – | B6 |
-| `internal/platform` | foundation | Windows service, systemd notification, data directory owner, mode and ACLs | – | B8 |
+| `internal/platform` | foundation | Data directory owner and mode, time zone check (Linux only) | – | B8 |
 | `internal/pyjson` | foundation | JSON text as the Python release reads and writes it: duplicate member names (last wins), escaped lone surrogates, exact number texts, `ensure_ascii` strings; shared by the legacy migration and the settings import | – | M1 |
 | `internal/session` | capability | Browser sessions: issue, validate, expire, revoke | – | B2 |
 | `internal/accounts` | capability | Users, administrators (`ADMIN_USERS`), roles and permissions (including host discovery), account lifecycle | `internal/session` | B2 |

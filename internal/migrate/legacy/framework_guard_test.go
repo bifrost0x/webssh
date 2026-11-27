@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -52,9 +51,6 @@ func holdPythonLock(t *testing.T, appDB, begin string) func() {
 // detected through its SQLite lock, without changing app.db.
 func TestPythonHoldingSQLiteLockStops(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("no lock probe on Windows")
-	}
 	for _, begin := range []string{"BEGIN IMMEDIATE", "BEGIN"} {
 		dir := copyGolden(t)
 		before := legacySnapshot(t, dir)
@@ -76,9 +72,6 @@ func TestPythonHoldingSQLiteLockStops(t *testing.T) {
 
 func TestPythonBackupOperationStops(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("no lock probe on Windows")
-	}
 	dir := copyGolden(t)
 	o := testOptions(t, dir)
 	ns, err := BackupNamespace(o.BackupTempDir, dir)

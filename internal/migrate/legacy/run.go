@@ -132,10 +132,6 @@ func (r *run) checkSpace() error {
 		query = r.o.freeSpace
 	}
 	free, err := query(dir)
-	if errors.Is(err, errProbeUnsupported) {
-		r.report.Warnings = append(r.report.Warnings, Warning{Code: "free_space_not_checked", Message: err.Error()})
-		return nil
-	}
 	if err != nil {
 		return stop("", CodeNoSpace, "the free space of the data directory could not be determined", err)
 	}

@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -99,7 +98,7 @@ func ensurePrivateDir(dir string) error {
 	if err != nil {
 		return fmt.Errorf("legacy: inspect %s: %w", dir, err)
 	}
-	if runtime.GOOS == "windows" || info.Mode().Perm() == 0o700 {
+	if info.Mode().Perm() == 0o700 {
 		return nil
 	}
 	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- a directory needs the search bit; 0700 is owner-only

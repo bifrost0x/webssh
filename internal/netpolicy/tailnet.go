@@ -2,7 +2,6 @@ package netpolicy
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/netip"
 	"strings"
@@ -112,16 +111,6 @@ func (t Tailnet) lookup(ctx context.Context, addr netip.Addr) (Route, error) {
 	return LookupRoute(ctx, addr)
 }
 
-// unknownRoute decides a failed lookup. It fails closed, except where the
-// platform has no route lookup and the tailnet interface does not exist:
-// then this host is not a tailnet node.
-func (t Tailnet) unknownRoute(err error) bool {
-	if errors.Is(err, ErrRouteUnsupported) {
-		return t.present(t.iface())
-	}
-	return true
-}
-
 // targetRestricted reports whether an ordinary connection to addr must be
 // refused: a node address whose route uses the tailnet interface, this
 // host's own address (local route) or an unknown route. A 100.64.0.0/10
@@ -138,7 +127,7 @@ func (t Tailnet) targetRestricted(ctx context.Context, addr netip.Addr) bool {
 	}
 	route, err := t.lookup(ctx, node)
 	if err != nil {
-		return t.unknownRoute(err)
+		return true // an unknown route fails closed
 	}
 	return route.Local || route.Interface == "lo" || route.Interface == t.iface()
 }
@@ -157,7 +146,7 @@ func (t Tailnet) relayRestricted(ctx context.Context, addr netip.Addr) bool {
 	}
 	route, err := t.lookup(ctx, addr)
 	if err != nil {
-		return t.unknownRoute(err)
+		return true // an unknown route fails closed
 	}
 	return route.Local || route.Interface == "lo"
 }

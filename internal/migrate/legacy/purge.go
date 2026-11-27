@@ -336,7 +336,7 @@ func syncRootDir(root *os.Root, dir string) error {
 	if err != nil {
 		return fmt.Errorf("legacy: sync %s: %w", dir, err)
 	}
-	if err := errors.Join(syncFile(d), d.Close()); err != nil {
+	if err := errors.Join(d.Sync(), d.Close()); err != nil {
 		return fmt.Errorf("legacy: sync %s: %w", dir, err)
 	}
 	return nil

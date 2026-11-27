@@ -1,9 +1,6 @@
 package legacy
 
-import (
-	"errors"
-	"path/filepath"
-)
+import "path/filepath"
 
 // pythonIdle runs the checks of section 5.2 step 4 that refuse to migrate
 // beside a running Python release: a SQLite lock on app.db, a held backup
@@ -11,13 +8,11 @@ import (
 // middle of a transaction or a backup operation; an idle Python holds no
 // lock, so the decisive guard is the second digest comparison before
 // activation. A hot journal is checked when the source is opened. Nothing
-// is written. Checks this platform cannot run are returned as warnings.
+// is written.
 func pythonIdle(dataDir, backupTempDir string) ([]Warning, error) {
 	var warnings []Warning
 	held, err := probeSQLiteLock(filepath.Join(dataDir, "app.db"))
 	switch {
-	case errors.Is(err, errProbeUnsupported):
-		warnings = append(warnings, Warning{Code: "sqlite_lock_not_checked", Message: err.Error()})
 	case err != nil:
 		return nil, stop("", CodeLegacyInUse, "the lock of app.db could not be checked", err)
 	case held:
@@ -33,8 +28,6 @@ func pythonIdle(dataDir, backupTempDir string) ([]Warning, error) {
 	}
 	held, err = probeFlock(filepath.Join(namespace, "operation.lock"))
 	switch {
-	case errors.Is(err, errProbeUnsupported):
-		warnings = append(warnings, Warning{Code: "python_operation_lock_not_checked", Message: err.Error()})
 	case err != nil:
 		return nil, stop("", CodeLegacyInUse, "the Python backup operation lock could not be checked", err)
 	case held:

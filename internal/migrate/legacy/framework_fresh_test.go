@@ -3,7 +3,6 @@ package legacy
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -98,9 +97,6 @@ func TestPreparedDataDirIsNoLegacySource(t *testing.T) {
 // L1: an existing go/ with wider modes is restricted to 0700.
 func TestGoDirIsRestricted(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("no Unix modes")
-	}
 	dir := copyGolden(t)
 	if err := os.Mkdir(filepath.Join(dir, "go"), 0o700); err != nil {
 		t.Fatal(err)
@@ -122,8 +118,8 @@ func TestGoDirIsRestricted(t *testing.T) {
 // problem with the user Go runs as, not as an unsafe path.
 func TestUnreadableLegacyFile(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("needs Unix modes and a user that is not root")
+	if os.Geteuid() == 0 {
+		t.Skip("needs a user that is not root")
 	}
 	dir := copyGolden(t)
 	path := filepath.Join(dir, "known_hosts")

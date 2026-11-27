@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 	"strings"
 	"unicode/utf8"
 )
@@ -49,14 +48,14 @@ func openRegular(path string, limit int64) ([]byte, os.FileInfo, error) {
 }
 
 // readSecret applies the rules of _read_secret: a regular file, no group
-// or other permission bits on Unix, at most 16 KiB, trailing CR and LF
+// or other permission bits, at most 16 KiB, trailing CR and LF
 // removed, not empty, no NUL, UTF-8.
 func readSecret(path string) (string, error) {
 	data, info, err := openRegular(path, maxSecretBytes)
 	if err != nil {
 		return "", fmt.Errorf("%w: bind password file: %w", ErrUnavailable, err)
 	}
-	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+	if info.Mode().Perm()&0o077 != 0 {
 		return "", fmt.Errorf("%w: bind password file permissions are too broad", ErrUnavailable)
 	}
 	secret := strings.TrimRight(string(data), "\r\n")
