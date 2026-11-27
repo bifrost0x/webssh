@@ -133,6 +133,27 @@ updates:
     commit-message:
       prefix: "deps(docker)"
 
+  # Base images of the Go release image (golang, alpine with the CA bundle,
+  # busybox for the debug target), on the integration branch
+  - package-ecosystem: "docker"
+    directory: "/deploy/docker"
+    target-branch: "go"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:45"
+      timezone: "Europe/Berlin"
+
+    open-pull-requests-limit: 3
+
+    labels:
+      - "dependencies"
+      - "docker"
+      - "go"
+
+    commit-message:
+      prefix: "deps(docker)"
+
   # Go modules of the Go backend, which lives on the integration branch
   - package-ecosystem: "gomod"
     directory: "/"

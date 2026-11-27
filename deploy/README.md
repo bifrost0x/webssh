@@ -43,6 +43,15 @@ bundle is missing.
 
 - **Every release** is built with the newest Go patch release, a freshly
   pulled CA bundle and the newest `x509roots/fallback` pseudo-version.
+  Dependabot proposes the base images of `deploy/docker/Dockerfile`
+  (`golang`, `alpine`, `busybox`) and the tagged Go modules weekly
+  (`.github/dependabot.yml`). `x509roots/fallback` has no tagged
+  releases, and Dependabot is not relied on to move a pseudo-version, so
+  the release commit updates the fallback roots by hand:
+
+  ```sh
+  go get golang.org/x/crypto/x509roots/fallback@latest && go mod tidy
+  ```
 - **Go security release or a govulncheck/Trivy finding** in a shipped
   component: a patch release within 7 days, for critical findings as soon
   as possible.

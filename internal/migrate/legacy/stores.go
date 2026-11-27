@@ -24,6 +24,9 @@ type storeSpec struct {
 	// maxBytes is the file size above which Python refuses to read the
 	// store; 0 means Python has no limit and maxFileBytes applies.
 	maxBytes int64
+	// equalsOne marks a store whose validator compares the version with
+	// "== 1", which 1.0 and true pass as well (app/host_context.py).
+	equalsOne bool
 }
 
 // Size limits Python checks before it reads a store (MAX_STORE_BYTES in
@@ -50,7 +53,7 @@ var userStores = []storeSpec{
 	{name: "settings", file: "settings.json", versionKey: "schema_version", versions: upTo(2)},
 	keysStore,
 	{name: "commands", file: "commands.json", topList: true},
-	{name: "host_context", file: "host_context.json", versionKey: "version", versions: []int{1}, listKey: "hosts", maxBytes: hostContextStoreBytes},
+	{name: "host_context", file: "host_context.json", versionKey: "version", versions: []int{1}, listKey: "hosts", maxBytes: hostContextStoreBytes, equalsOne: true},
 	{name: "automation", file: "automation.json", versionKey: "version", versions: []int{1}, listKey: "runbooks", maxBytes: automationStoreBytes},
 	{name: "automation_runs", file: "automation-runs.json", versionKey: "version", versions: []int{1}, listKey: "runs", maxBytes: automationRunsBytes},
 	{name: "credentials", file: "credentials.json", versionKey: "version", versions: []int{1}, listKey: "credentials", maxBytes: automationStoreBytes},
@@ -198,6 +201,9 @@ func decodeStore(data []byte, spec storeSpec) (Document, error) {
 		return Document{}, errors.New("not a JSON object")
 	}
 	version, err := storeVersion(raw, spec.versionKey)
+	if v, _ := pyjson.Get(raw, spec.versionKey); err != nil && spec.equalsOne && equalsOne(v) {
+		version, err = 1, nil
+	}
 	if err != nil {
 		return Document{}, err
 	}
