@@ -34,6 +34,7 @@ func wireSFTP(sys *system) error {
 		o.ChmodEnabled = chmod(ctx)
 		return sftp.SessionOpener(sessions, o)(ctx, p, handle)
 	})
+	sys.terminal.SetFileSources(sessions.fileSource(sys.fileSources))
 	area := &sftp.Area{
 		Quick:    &sftp.Quick{Dialer: sys.shells, Options: opts, Chmod: chmod},
 		Registry: sys.fileSources, Connector: sessions, Sessions: sessions,
@@ -74,6 +75,26 @@ func (t terminalFiles) Session(_ context.Context, p principal.Principal, handle 
 	}
 	return sftp.Session{Conn: f.Conn, Exec: f.Conn, Tmux: f.Tmux, Name: f.Name, InputIdle: f.InputIdle,
 		Hop: client.Hop{Host: f.Host, Port: f.Port, User: f.Username}}, nil
+}
+
+// fileSource describes a terminal session's own source for the page: the
+// open source of the caller's browser session with its real capabilities,
+// else the descriptor before the first use (_public_file_source).
+func (terminalFiles) fileSource(reg *files.Registry) terminal.FileSources {
+	return func(p principal.Principal, info protocol.SessionInfo) *protocol.FileSource {
+		if id, err := files.FormatSourceID(files.SourceSFTPSession, info.SessionID); err == nil {
+			if d, caps, err := reg.Describe(p, id); err == nil {
+				fs := files.PublicSource(d, caps)
+				return &fs
+			}
+		}
+		fs, err := sftp.SessionSource(info.SessionID, sftp.Session{Name: info.DisplayName,
+			Hop: client.Hop{Host: info.Host, Port: info.Port, User: info.Username}})
+		if err != nil {
+			return nil
+		}
+		return &fs
+	}
 }
 
 func (t terminalFiles) Target(ctx context.Context, owner int64, req protocol.OpenTarget) (client.Target, error) {

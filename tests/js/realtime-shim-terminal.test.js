@@ -285,6 +285,32 @@ test('restorable sessions are attached and restored before connected', async () 
     socket.disconnect();
 });
 
+test('the session file source reaches ssh_connected and ssh_session_restored', async () => {
+    const source = {
+        source_id: 'sftp-session:sess-1', kind: 'sftp', label: 'u@h.test', endpoint: 'h.test:22', protocol: 'SFTP',
+        capabilities: ['list', 'read'], ephemeral: false, security: {host_key_verified: true}, access: {},
+    };
+    const window = loadShim();
+    const socket = window.io({path: '/socket.io', autoConnect: false});
+    const seen = [];
+    socket.on('ssh_session_restored', data => seen.push(['restored', plain(data.file_source)]));
+    socket.on('ssh_connected', data => seen.push(['connected', plain(data.file_source)]));
+    socket.connect();
+    const {FakeWebSocket} = require('./support/realtime-harness.js');
+    const ws = FakeWebSocket.instances.at(-1);
+    ws.hello([{...INFO, file_source: source}]);
+    const attach = ws.lastRequest('terminal.attach');
+    ws.reply(attach.id, {ch: 1, session_id: 'sess-1', seq: 0, full: true});
+    await tick(60);
+    const other = {...source, source_id: 'sftp-session:sess-2'};
+    socket.emit('ssh_connect', {host: 'h.test', port: '22', username: 'u', auth_type: 'password', password: 'pw', client_request_id: 'req_2'});
+    const open = ws.lastRequest('terminal.open');
+    ws.reply(open.id, {session_id: 'sess-2', info: {...INFO, session_id: 'sess-2', file_source: other}});
+    await tick();
+    assert.deepEqual(seen, [['restored', source], ['connected', other]]);
+    socket.disconnect();
+});
+
 test('an attach under backpressure is retried and a lost session is skipped', async () => {
     const window = loadShim();
     const socket = window.io({path: '/socket.io', autoConnect: false});

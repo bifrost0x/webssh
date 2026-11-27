@@ -83,6 +83,7 @@ type Manager struct {
 	dialHost    func(ctx context.Context, t client.Target, ix client.Interaction) (remoteHost, error)
 	tmuxEnabled func(context.Context) bool
 	audit       Auditor
+	fileSources FileSources
 
 	gatewayTmuxName func(prefix, host string, port int, selector string, userID int64) (string, error)
 
@@ -194,7 +195,7 @@ func (m *Manager) Restorable(_ context.Context, p principal.Principal) ([]protoc
 	out := make([]protocol.SessionInfo, 0, len(list))
 	for _, s := range list {
 		if info, ok := s.snapshot(); ok {
-			out = append(out, info)
+			out = append(out, m.withFileSource(p, info))
 		}
 	}
 	return out, nil

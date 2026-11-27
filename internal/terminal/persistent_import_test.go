@@ -2,6 +2,9 @@ package terminal
 
 import (
 	"testing"
+
+	"github.com/bifrost0x/webssh/internal/principal"
+	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 )
 
 // The migration keeps the legacy row id, writes the row detached and
@@ -31,7 +34,10 @@ func TestImportPersistentAtKeepsRowID(t *testing.T) {
 	if err != nil || len(got) != 2 || got[0].ID != 3 || got[0].Row != second || got[1].ID != 7 || got[1].Row != first {
 		t.Fatalf("read back %+v %v", got, err)
 	}
-	if list, err := r.m.Persistent(t.Context(), principalOf(1)); err != nil || len(list) != 1 || list[0].TmuxSessionName != "webssh_seven" {
+	// A reconnect offer has no connection yet, so no file source
+	// (persistent_session_available had none).
+	r.m.SetFileSources(func(principal.Principal, protocol.SessionInfo) *protocol.FileSource { return &protocol.FileSource{} })
+	if list, err := r.m.Persistent(t.Context(), principalOf(1)); err != nil || len(list) != 1 || list[0].TmuxSessionName != "webssh_seven" || list[0].FileSource != nil {
 		t.Fatalf("offer %+v %v", list, err)
 	}
 	for _, id := range []int64{0, -1, 7} {

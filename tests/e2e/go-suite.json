@@ -60,8 +60,7 @@
     {"file": "terminal-windows.spec.js", "exclude": []},
     {"file": "pane-assignment.spec.js", "exclude": []},
     {"file": "workspace-restore.spec.js", "requires": "e2e_hooks", "exclude": [
-      {"title": "sessions over polling at", "decision": "ADR 0005", "reason": "the Go server has no long polling; the realtime transport is the WebSocket endpoint (ADR 0005)"},
-      {"title": "sessions over websocket at", "reason": "the files of a restored terminal session stay unavailable: Go sends no file_source with terminal.attached/ssh_connected (Python sends it in session_restored and ssh_connected), so the page has no catalog entry for sftp-session:<id>; the SFTP stand-in of the fixture works (probe available)", "package": "FS1"}
+      {"title": "sessions over polling at", "decision": "ADR 0005", "reason": "the Go server has no long polling; the realtime transport is the WebSocket endpoint (ADR 0005)"}
     ]},
     {"file": "settings-layout.spec.js", "exclude": []},
     {"file": "settings-preference-states.spec.js", "serial": "e2e_admin", "exclude": []},

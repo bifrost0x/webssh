@@ -182,7 +182,7 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 		return protocol.TerminalOpened{}, attachErr
 	}
 	info, _ = s.snapshot()
-	return protocol.TerminalOpened{SessionID: s.id, Info: info}, nil
+	return protocol.TerminalOpened{SessionID: s.id, Info: m.withFileSource(p, info)}, nil
 }
 
 // cancelOpen is terminal.cancel: ok when the attempt was cancelled,
