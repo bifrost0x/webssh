@@ -159,6 +159,8 @@ type LegacyInspector interface {
 type LegacyOutcome struct {
 	Database string
 	Report   string
+	// Kind is the archive's format (python-v1 or python-v2).
+	Kind ArchiveKind
 }
 
 // LegacyRestorer restores a Python backup through the same steps as the
