@@ -187,6 +187,7 @@ func TestResolve(t *testing.T) {
 			v(`{"id":"ts","name":"T","host":"ts.example","username":"u","auth_type":"tailscale"}`),
 			v(`{"id":"gw","name":"G","host":"gw.example","username":"a:b","auth_type":"password"}`),
 			v(`{"id":"tmux","name":"Tm","host":"tm.example","username":"u","auth_type":"password","use_tmux":true,"startup_mode":"free_text","startup_commands":"ls"}`),
+			v(`{"id":"herdr","name":"Hd","host":"hd.example","username":"u","auth_type":"password","herdr":true,"use_herdr":true}`),
 			v(`{"id":"local-dns","name":"LD","host":"ld.example","username":"u","auth_type":"password","socks_proxy_id":"local"}`),
 		},
 		JumpHosts:    []jsontext.Value{v(`{"id":"pw-bastion","name":"B","host":"b.example","port":22,"username":"j","auth_type":"password","key_id":null}`)},
@@ -225,6 +226,13 @@ func TestResolve(t *testing.T) {
 	tmux, err := s.Resolve(ctx, oracleUser, "tmux")
 	if err != nil || !tmux.Display.UseTmux || !tmux.Display.StartupCommand || tmux.Hop.Port != 22 {
 		t.Fatalf("display flags: %+v %v", tmux, err)
+	}
+	if tmux.Display.Herdr || tmux.Display.UseHerdr {
+		t.Fatalf("herdr flags without the options: %+v", tmux.Display)
+	}
+	hd, err := s.Resolve(ctx, oracleUser, "herdr")
+	if err != nil || !hd.Display.Herdr || !hd.Display.UseHerdr {
+		t.Fatalf("herdr flags: %+v %v", hd.Display, err)
 	}
 	for id, want := range map[string]fault.Code{
 		"umlaut": fault.ValidationError, "ts": fault.NotAvailableInPreview, "gw": fault.NotAvailableInPreview,

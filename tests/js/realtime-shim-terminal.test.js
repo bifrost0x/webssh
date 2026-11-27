@@ -39,7 +39,8 @@ test('ssh_connect becomes terminal.open and early output follows ssh_connected',
     const open = ws.lastRequest('terminal.open');
     assert.deepEqual(open.p, {
         ch: 1, request_id: 'req_1', cols: 80, rows: 24,
-        target: {auth_type: 'password', interactive: true, host: 'h.test', username: 'u', password: 'pw', port: 2222, use_tmux: true},
+        target: {auth_type: 'password', interactive: true, host: 'h.test', username: 'u', password: 'pw', port: 2222, use_tmux: true,
+            display_name: 'web'},
     });
     ws.output(1, 1, 'motd\r\n');
     ws.reply(open.id, {session_id: 'sess-1', info: INFO});
@@ -61,7 +62,7 @@ test('a reconnect to a persistent tmux session sends its name', async () => {
     });
     assert.deepEqual(plain(ws.lastRequest('terminal.open').p.target), {
         auth_type: 'key', host: 'h.test', username: 'u', key_id: 'k1',
-        use_tmux: true, tmux_session_name: 'webssh_u_h_test_22_0a0b0c0d',
+        use_tmux: true, tmux_session_name: 'webssh_u_h_test_22_0a0b0c0d', display_name: 'Build',
     });
     socket.emit('ssh_connect', {
         host: 'h.test', username: 'u', auth_type: 'key', key_id: 'k1', client_request_id: 'req_u',
@@ -70,6 +71,27 @@ test('a reconnect to a persistent tmux session sends its name', async () => {
     assert.deepEqual(plain(ws.lastRequest('terminal.open').p.target), {
         auth_type: 'key', host: 'h.test', username: 'u', key_id: 'k1',
     }, 'a name without use_tmux is not sent');
+    socket.disconnect();
+});
+
+test('the post-connect members and Herdr travel in the target', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    socket.emit('ssh_connect', {
+        host: 'h.test', username: 'u', auth_type: 'password', password: 'pw', client_request_id: 'req_s',
+        startup_mode: 'command', command_id: 'c1', parameters_override: '', startup_commands: '', command_set_id: null,
+    });
+    assert.deepEqual(plain(ws.lastRequest('terminal.open').p.target), {
+        auth_type: 'password', host: 'h.test', username: 'u', password: 'pw',
+        startup: {startup_mode: 'command', command_id: 'c1', parameters_override: ''},
+    });
+    socket.emit('ssh_connect', {
+        host: 'h.test', username: 'u', auth_type: 'password', password: 'pw', client_request_id: 'req_h',
+        profile_id: 'p1', use_herdr: true, parameters_override: null, display_name: 'not without tmux',
+    });
+    assert.deepEqual(plain(ws.lastRequest('terminal.open').p.target), {
+        auth_type: 'password', profile_id: 'p1', host: 'h.test', username: 'u', password: 'pw', use_herdr: true,
+    });
     socket.disconnect();
 });
 

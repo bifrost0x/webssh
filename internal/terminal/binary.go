@@ -14,10 +14,21 @@ const queueRetry = 50 * time.Millisecond
 
 var errFrameKind = errors.New("terminal: unexpected binary frame kind")
 
+// maxDroppedFrames is how many input and acknowledgement frames in a row a
+// connection may send that are dropped unread (unknown channel, a
+// sequence other than the expected one) before it is closed with 4002.
+// Go-Back-N drops at most the frames in flight after a refusal, and a
+// late frame after a detach is a handful; a client that keeps sending
+// into the void only costs the server work.
+const maxDroppedFrames = 1024
+
+var errDroppedFrames = errors.New("terminal: too many dropped frames")
+
 // HandleBinary is the fast path for input and acknowledgement frames
 // (realtime.BinaryHandler). It runs on the connection's read loop and
 // never blocks. An error closes the connection with 4002: a frame that is
-// malformed, larger than SSH_INPUT_MAX_BYTES or of the output kind.
+// malformed, larger than SSH_INPUT_MAX_BYTES or of the output kind, and
+// a run of more than maxDroppedFrames dropped frames.
 func (m *Manager) HandleBinary(p protocol.Peer, data []byte) error {
 	f, err := protocol.DecodeFrame(data, m.cfg.Input.MaxFrameBytes)
 	if err != nil {
@@ -32,9 +43,11 @@ func (m *Manager) HandleBinary(p protocol.Peer, data []byte) error {
 		return nil
 	}
 	a := m.attachmentOf(p, f.Channel)
-	if a == nil {
-		return nil // the stream is gone; late frames are dropped
+	if a == nil || f.Kind == protocol.KindInput && (a.sess == nil || f.Seq != a.nextISeq) {
+		// The stream is gone or the frame is out of order: dropped.
+		return m.dropped(p)
 	}
+	m.resetDropped(p)
 	switch f.Kind {
 	case protocol.KindAck:
 		m.flow.ack(a.credit, f.Seq)
@@ -44,16 +57,41 @@ func (m *Manager) HandleBinary(p protocol.Peer, data []byte) error {
 	return nil
 }
 
-// input1 applies Go-Back-N. Only the expected sequence is evaluated; any
-// other frame is dropped silently. A refusal of the expected frame sends
+// dropped counts a dropped frame of p and fails once the connection
+// dropped maxDroppedFrames in a row (R1/R2 I-2).
+func (m *Manager) dropped(p protocol.Peer) error {
+	ps := m.peer(p)
+	if ps == nil {
+		return nil
+	}
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	ps.dropped++
+	if ps.dropped > maxDroppedFrames {
+		return errDroppedFrames
+	}
+	return nil
+}
+
+func (m *Manager) resetDropped(p protocol.Peer) {
+	m.mu.Lock()
+	ps := m.peers[p.ID()]
+	m.mu.Unlock()
+	if ps == nil {
+		return
+	}
+	ps.mu.Lock()
+	ps.dropped = 0
+	ps.mu.Unlock()
+}
+
+// input1 applies Go-Back-N to the frame with the expected sequence (any
+// other is dropped in HandleBinary). A refusal of the expected frame sends
 // one terminal.input_rejected, and the frames after it are dropped until
 // the client sends that sequence again, so input never reorders and
 // keystrokes need no acknowledgement each.
 func (m *Manager) input1(p protocol.Peer, a *attachment, f protocol.Frame) {
 	s := a.sess
-	if s == nil || f.Seq != a.nextISeq {
-		return
-	}
 	now := m.now()
 	ok, wait := m.input.allow(s.owner, s.id, len(f.Data), now)
 	if ok {

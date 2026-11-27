@@ -45,6 +45,11 @@ type SessionInfo struct {
 	TmuxSessionName     string `json:"tmux_session_name"`
 	DisplayName         string `json:"display_name"`
 	DetectedPlatform    string `json:"detected_platform"`
+	// Herdr says the saved host grants the Herdr overview to this session
+	// and the integration is on; UseHerdr that the session runs Herdr as
+	// its program (herdr.session_flags of the Python release).
+	Herdr    bool `json:"herdr"`
+	UseHerdr bool `json:"use_herdr"`
 	// LastSeq is the sequence of the last output chunk; terminal.attach
 	// with after_seq = LastSeq replays nothing.
 	LastSeq uint64 `json:"last_seq"`
@@ -100,6 +105,15 @@ type OpenTarget struct {
 	// the name before it reaches a shell command.
 	UseTmux         bool   `json:"use_tmux,omitzero"`
 	TmuxSessionName string `json:"tmux_session_name,omitzero"`
+	// DisplayName names a new persistent (tmux) session; it is ignored
+	// without tmux, as display_name of ssh_connect was.
+	DisplayName string `json:"display_name,omitzero"`
+	// UseHerdr asks for Herdr as the session's program; only a saved host
+	// that grants it gets it (use_herdr of ssh_connect).
+	UseHerdr bool `json:"use_herdr,omitzero"`
+	// Startup is what runs after the connection is made (the
+	// post-connect fields of ssh_connect); nil runs nothing.
+	Startup *Startup `json:"startup,omitzero"`
 
 	JumpPassword       string `json:"jump_password,omitzero"`
 	SOCKSPassword      string `json:"socks_password,omitzero"`
@@ -113,6 +127,23 @@ type OpenTarget struct {
 	// rounds asked with it.
 	Interactive bool `json:"interactive,omitzero"`
 }
+
+// Startup is the post-connect configuration of terminal.open, with the
+// members and modes of the Python release (app/post_connect_manager.py):
+// Mode "none", "free_text" (Commands), "command" (CommandID with an
+// optional ParametersOverride) or "command_set" (CommandSetID). An empty
+// Mode is inferred as infer_mode did for older profiles.
+type Startup struct {
+	Mode               string  `json:"startup_mode,omitzero"`
+	Commands           string  `json:"startup_commands,omitzero"`
+	CommandID          string  `json:"command_id,omitzero"`
+	CommandSetID       string  `json:"command_set_id,omitzero"`
+	ParametersOverride *string `json:"parameters_override,omitzero"`
+}
+
+// MaxStartupBytes bounds every text member of Startup in bytes (4096
+// characters of up to four bytes, MAX_STARTUP_COMMANDS_UTF8_BYTES).
+const MaxStartupBytes = 4096 * 4
 
 // TerminalOpened is the result of terminal.open.
 type TerminalOpened struct {
@@ -139,10 +170,19 @@ func (r *TerminalOpen) Validate() error {
 		return errors.New("host or profile_id is required")
 	case len(t.TmuxSessionName) > MaxTmuxSessionName:
 		return errors.New("tmux_session_name is too long")
+	case len(t.DisplayName) > MaxStartupBytes:
+		return errors.New("display_name is too long")
+	case t.Startup != nil && !t.Startup.bounded():
+		return errors.New("startup is too long")
 	case r.ReplacementOf != "" && !validToken(r.ReplacementOf, MaxIDLen, false):
 		return errors.New("replacement_of is invalid")
 	}
 	return nil
+}
+
+func (s *Startup) bounded() bool {
+	return len(s.Mode) <= 32 && len(s.Commands) <= MaxStartupBytes && len(s.CommandID) <= MaxIDLen &&
+		len(s.CommandSetID) <= MaxIDLen && (s.ParametersOverride == nil || len(*s.ParametersOverride) <= MaxStartupBytes)
 }
 
 // TerminalCancel aborts a pending terminal.open.

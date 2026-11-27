@@ -35,6 +35,7 @@ type fakeHost struct {
 	killStderr string
 	pty        *fakeShell
 	closed     int
+	noHerdr    bool // the Herdr lookup fails
 }
 
 func (h *fakeHost) run(_ context.Context, line string, _ time.Duration) (int, []byte, error) {
@@ -44,6 +45,11 @@ func (h *fakeHost) run(_ context.Context, line string, _ time.Duration) (int, []
 	switch {
 	case line == tmuxProbeCommand:
 		return h.probe, nil, nil
+	case line == herdrAvailableCommand:
+		if h.noHerdr {
+			return 1, nil, nil
+		}
+		return 0, nil, nil
 	case strings.Contains(line, "has-session"):
 		return h.has, nil, h.hasErr
 	case strings.Contains(line, "kill-session"):
@@ -65,6 +71,8 @@ func (h *fakeHost) commandShell(_ context.Context, line string, _, _ int) (clien
 }
 
 func (h *fakeHost) shell(context.Context, int, int) (client.Shell, error) { return h.open("") }
+
+func (h *fakeHost) sshConn() *client.Conn { return nil }
 
 func (h *fakeHost) Close() error {
 	h.mu.Lock()
@@ -217,7 +225,7 @@ func TestTmuxSwitchedOffUsesPlainShell(t *testing.T) {
 	r := newTmuxRig(t)
 	r.enabled.Store(false)
 	res := openTmux(t, r, user(t, 1), tmuxOpen(1, "r1", ""))
-	if res.Info.UseTmux || len(r.hosts) != 0 || len(r.shells.opened) != 1 {
+	if res.Info.UseTmux || len(r.hosts) != 1 || len(r.shells.opened) != 0 || r.host(t, 0).started[0] != "" || r.host(t, 0).ranAny("tmux") {
 		t.Fatalf("tmux used while off: %+v", res.Info)
 	}
 	r.seed(t, detachedRow("old", "webssh_u_h_22_0a0b0c0d"))
@@ -487,7 +495,7 @@ func TestNewTmuxNameFollowsTheScheme(t *testing.T) {
 
 func TestTmuxCommandsRefuseUncheckedNames(t *testing.T) {
 	for _, name := range []string{"", "a'b", "a b"} {
-		if _, err := tmuxAttachCommand(name, false); err == nil {
+		if _, err := tmuxAttachCommand("tmux", name, false); err == nil {
 			t.Fatalf("attach %q", name)
 		}
 		if _, err := tmuxTargetCommand("kill-session", name); err == nil {
@@ -505,7 +513,7 @@ func FuzzNewTmuxName(f *testing.F) {
 		if !validTmuxName(name) {
 			t.Fatalf("invalid name %q", name)
 		}
-		if _, err := tmuxAttachCommand(name, true); err != nil {
+		if _, err := tmuxAttachCommand("tmux", name, true); err != nil {
 			t.Fatalf("name %q not usable: %v", name, err)
 		}
 	})

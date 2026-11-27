@@ -181,6 +181,7 @@ and its own configuration, `-c tests/e2e/m2/playwright.config.js`.
 | Spec | Journey |
 |---|---|
 | `ldap` | LDAP from a secret volume against `ldap1`: wrong directory password refused, sign-in with auto-provisioning, the administrator unlinks the identity with a new local password (step-up), local sign-in, a new link, local password refused and directory sign-in again |
+| `tmux` | a saved host on `ssh-modern` with tmux and a startup command opens a tmux session; the server restarts; the page lists the persistent session, the user reattaches with the password, the shell state is that of before and the startup command ran once; closing the tab ends it |
 | `migration` | the Python release writes a `DATA_DIR` through its interface (`python-data-dir.js`: TOTP, key, two hosts, accepted host key); the server under test starts on a copy; old password and TOTP sign in, hosts and key are there, the host key is trusted. On Go also the migration report and an unchanged legacy listing |
 
 `node tests/e2e/m1/python-data-dir.js <empty dir>` writes the same fixture

@@ -32,6 +32,7 @@ type Session struct {
 	m       *Manager
 	shell   client.Shell
 	tmux    *tmuxBinding // nil without tmux; fixed before register
+	host    remoteHost   // the session's connection; nil for a shell from Shells
 	created time.Time
 	//lint:ignore U1000 set and read by the e2e hooks (fixtures.go)
 	fixture bool
@@ -222,6 +223,19 @@ func (s *Session) writeLoop() {
 				s.m.log.Debug("terminal resize failed", "session", s.id, "err", err)
 			}
 		}
+	}
+}
+
+// queueStartup puts the startup commands in front of all input. It runs
+// before start, so the queue is empty; text that does not fit the queue
+// is refused by the protocol bound before it gets here.
+func (s *Session) queueStartup(b []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	select {
+	case s.stdin <- b:
+		s.queued += len(b)
+	default:
 	}
 }
 

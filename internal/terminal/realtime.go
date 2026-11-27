@@ -8,8 +8,10 @@ import (
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
 )
 
-// openMaxPayload fits a typed password and every field of the target.
-const openMaxPayload = 8 << 10
+// openMaxPayload fits a typed password, every field of the target and
+// the largest startup text, parameter override and display name, escaped
+// as JSON.
+const openMaxPayload = 8<<10 + 3*2*protocol.MaxStartupBytes
 
 // Routes are the terminal and prompt message types for the realtime
 // endpoint. Handlers that wait on the network are Async; the others run on

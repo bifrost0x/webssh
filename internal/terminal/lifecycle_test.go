@@ -106,8 +106,11 @@ func TestOpenProfile(t *testing.T) {
 	if i := res.Info; i.ProfileID != "p1" || i.ViaJump != "bastion" || i.JumpHostID != "j1" || i.Port != 2222 {
 		t.Fatalf("info %+v", i)
 	}
-	// The profile asks for Herdr, which M1 does not run: a notice first.
-	eventually(t, "notice", func() bool { return strings.Contains(output(t, peer, 1), "not run yet") })
+	// The saved host asks for Herdr, but nothing grants it: the login
+	// shell runs, without a notice.
+	if res.Info.Herdr || res.Info.UseHerdr {
+		t.Fatalf("herdr without a grant: %+v", res.Info)
+	}
 	// Another user's profile does not resolve.
 	if werr := call(t, m, user(t, 2), protocol.TypeTerminalOpen, req, nil); werr == nil || werr.Code != fault.NotFound {
 		t.Fatalf("foreign profile: %+v", werr)

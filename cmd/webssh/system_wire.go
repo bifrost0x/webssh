@@ -21,6 +21,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/session"
 	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
+	"github.com/bifrost0x/webssh/internal/ssh/gateway"
 	"github.com/bifrost0x/webssh/internal/ssh/hostkey"
 	"github.com/bifrost0x/webssh/internal/terminal"
 	"github.com/bifrost0x/webssh/internal/vault"
@@ -110,7 +111,8 @@ func (s *system) buildCapabilities(in bootInput) error {
 	s.terminal, err = terminal.New(termCfg, terminal.Deps{
 		Shells: shells, Profiles: s.hosts, Routes: routes, Log: s.log,
 		Connections: shells, DB: s.db, TmuxEnabled: s.tmuxEnabled, Audit: s.audit, Quotas: s.quotas,
-		Variants: opt.terminalVariants})
+		Variants: opt.terminalVariants, GatewayTmuxName: gateway.TmuxName,
+		Commands: opt.terminalCommands, Herdr: opt.terminalHerdr})
 	if err != nil {
 		return fmt.Errorf("terminal: %w", err)
 	}
