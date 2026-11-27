@@ -71,9 +71,15 @@ func TestSystemServesThePreview(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `id="initialInventory"`) || !strings.Contains(body, `id="websshPreview"`) {
 		t.Fatalf("workspace: %d", resp.StatusCode)
 	}
-	for _, want := range []string{`"files"`, `"serverOps"`} {
+	for _, want := range []string{`"files"`, `"commands"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("preview notice lacks %s", want)
+		}
+	}
+	// Server operations and Herdr are built (HO1).
+	for _, gone := range []string{`"serverOps"`} {
+		if strings.Contains(body, gone) {
+			t.Errorf("preview notice still names %s", gone)
 		}
 	}
 	if resp, body := get(t, c, ts.URL+"/security"); resp.StatusCode != http.StatusOK || !strings.Contains(body, "WebSSH password") {

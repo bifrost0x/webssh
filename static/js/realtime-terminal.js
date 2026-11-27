@@ -50,7 +50,7 @@
     }
 
     // Projects the Socket.IO ssh_connect payload onto terminal.open; inline
-    // routes and Herdr are not projected. use_tmux carries the persistent
+    // routes are not projected. use_tmux carries the persistent
     // session to reattach, which the server checks. gateway_interaction and
     // ssh_interaction say the page answers prompt.interactive.
     function openTarget(data) {
@@ -69,6 +69,9 @@
         if (socks) Object.assign(target, routeSecrets(data.socks_proxy, 'socks_'));
         const port = typeof data.port === 'string' && /^\d{1,5}$/.test(data.port) ? Number(data.port) : data.port;
         if (Number.isInteger(port) && port > 0) target.port = port;
+        // Only a saved host that grants the Herdr session mode runs it; the
+        // server checks the profile and refuses tmux together with Herdr.
+        if (data.use_herdr === true) target.use_herdr = true;
         if (data.use_tmux !== true) return target;
         target.use_tmux = true;
         const reattach = data.reconnect_tmux_name;

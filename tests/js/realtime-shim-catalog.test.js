@@ -13,6 +13,7 @@ test('every mapped event targets a type of the v1 catalog', () => {
         'keys.rename', 'keys.replace', 'keys.delete', 'settings.theme.set', 'settings.confirm_close.set',
         'settings.disconnect_action.set', 'notes.get', 'notes.save',
         'prompt.respond', 'gateway.input', 'gateway.ack',
+        'insights.sample', 'inventory.sample', 'herdr.snapshot',
     ]);
     const mapped = new Set(Object.values(catalog.REQUESTS).map(entry => entry.type));
     assert.deepEqual([...mapped].sort(), [...v1].sort());
@@ -186,7 +187,7 @@ test('events without a v1 type are answered locally and reported to the notice',
     const sent = ws.sent.length;
     socket.emit('list_commands', {os_filter: 'all'});
     socket.emit('probe_session_sftp', {session_id: 's', request_id: 'r1'});
-    socket.emit('request_herdr_snapshot', {session_id: 's'}, ack => seen.push(['ack', ack]));
+    socket.emit('request_session_directory', {session_id: 's'}, ack => seen.push(['ack', ack]));
     socket.timeout(10000).emit('resolve_command_set_parameters', {}, (error, ack) => seen.push(['timed', error, ack.code]));
     socket.emit('list_directory', {source_id: 'src', request_id: 'r2', path: '/'});
     socket.emit('file_source_disconnect', {});
@@ -285,5 +286,33 @@ test('gateway answers, input and acks become v1 requests', async () => {
     assert.deepEqual(ws.lastRequest('gateway.ack').p, {request_id: 'gateway_1', sequence: 3});
     await tick();
     assert.deepEqual(plain(acks), [{success: true}]);
+    socket.disconnect();
+});
+
+test('insights, the inventory and Herdr reach the server and answer as Python did', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const seen = [];
+    socket.on('session_insights', data => seen.push(['insights', data]));
+    socket.on('session_runtime_inventory', data => seen.push(['inventory', data]));
+    socket.emit('request_session_insights', {session_id: 's1', request_id: 'r1', include_diagnostics: true});
+    const insights = ws.lastRequest('insights.sample');
+    assert.deepEqual(plain(insights.p), {session_id: 's1', request_id: 'r1', include_diagnostics: true});
+    ws.reply(insights.id, {success: true, session_id: 's1', request_id: 'r1', stats: {os_name: 'Linux'}});
+    socket.emit('request_session_runtime_inventory', {session_id: 7, request_id: 'r2', extra: 'x'});
+    const inventory = ws.lastRequest('inventory.sample');
+    assert.deepEqual(plain(inventory.p), {session_id: '', request_id: 'r2'}, 'only strings reach the server');
+    ws.reply(inventory.id, {success: false, session_id: '', request_id: '', error: 'Runtime inventory unavailable'});
+    let herdr;
+    socket.emit('request_herdr_snapshot', {session_id: 's1'}, ack => { herdr = ack; });
+    const snapshot = ws.lastRequest('herdr.snapshot');
+    assert.deepEqual(plain(snapshot.p), {session_id: 's1'});
+    ws.reply(snapshot.id, {success: false, agents: [], truncated: false, reason: 'not_enabled'});
+    await tick();
+    assert.deepEqual(plain(seen), [
+        ['insights', {success: true, session_id: 's1', request_id: 'r1', stats: {os_name: 'Linux'}}],
+        ['inventory', {success: false, session_id: '', request_id: '', error: 'Runtime inventory unavailable'}],
+    ]);
+    assert.deepEqual(plain(herdr), {success: false, agents: [], truncated: false, reason: 'not_enabled'});
     socket.disconnect();
 });

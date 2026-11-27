@@ -93,6 +93,7 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 		LDAPProviderID:           pg.cfg.LDAP.ProviderID,
 		GitHubAuthEnabled:        pg.github != nil && pg.github.githubActive != nil && pg.github.githubActive(ctx),
 		SSHGatewayEnabled:        app.SSHGatewayEnabled,
+		HerdrEnabled:             app.HerdrEnabled,
 		Preview:                  previewNotice(u == nil),
 	}
 	if u == nil {

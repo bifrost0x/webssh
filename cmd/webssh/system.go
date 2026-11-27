@@ -80,6 +80,9 @@ type optional struct {
 	terminalVariants terminal.Variants
 	hostVariants     hosts.Variants
 	tailscaleAllowed func(principal.Principal) bool
+	// terminalHerdr grants the Herdr overview and session mode (area
+	// "serverops", wire_serverops.go).
+	terminalHerdr terminal.Herdr
 	// passkeyPlaceholder stores a passkey that never authenticates (end-to-
 	// end seed only).
 	//lint:ignore U1000 read by the end-to-end build (e2e.go)
