@@ -26,10 +26,7 @@ const (
 	PreconditionFailed    Code = "precondition_failed"     // If-Match or a confirmed impact no longer holds
 	RateLimited           Code = "rate_limited"            // too many attempts; see RetryAfter
 	Busy                  Code = "busy"                    // a concurrent operation holds the resource
-	// NotAvailableInPreview keeps the spelling of the preview builds
-	// (codes are never renamed). It now only answers a capability built
-	// without an optional collaborator; a complete server never sends it.
-	NotAvailableInPreview Code = "not_available_in_preview"
+	NotAvailableInPreview Code = "not_available_in_preview" // spelling of the preview builds; only a capability built without an optional collaborator sends it
 	Maintenance           Code = "maintenance" // the server is in maintenance mode
 	Unavailable           Code = "unavailable" // a dependency is down or the server is stopping
 	StorageError          Code = "storage_error"

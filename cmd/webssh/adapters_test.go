@@ -36,7 +36,6 @@ func TestSettingsEnvironmentDefaults(t *testing.T) {
 	}
 }
 
-
 func TestIsProbe(t *testing.T) {
 	for path, want := range map[string]bool{"/health": true, "/ready": true, "/webssh/ready": true, "/login": false, "/readyx": false} {
 		if got := isProbe("/webssh", path); got != want {

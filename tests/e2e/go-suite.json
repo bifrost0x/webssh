@@ -60,8 +60,7 @@
     {"file": "terminal-windows.spec.js", "exclude": []},
     {"file": "pane-assignment.spec.js", "exclude": []},
     {"file": "workspace-restore.spec.js", "requires": "e2e_hooks", "exclude": [
-      {"title": "sessions over polling at", "decision": "ADR 0005", "reason": "the Go server has no long polling; the realtime transport is the WebSocket endpoint (ADR 0005)"},
-      {"title": "sessions over websocket at", "reason": "the Go hook e2e.workspace_restore seeds no SFTP stand-in (workspace_restore.py fakes the probe, the home directory and the listing), so #sessionFilesMount stays empty; the command library of the restored sessions works", "package": "FS2"}
+      {"title": "sessions over polling at", "decision": "ADR 0005", "reason": "the Go server has no long polling; the realtime transport is the WebSocket endpoint (ADR 0005)"}
     ]},
     {"file": "settings-layout.spec.js", "exclude": []},
     {"file": "settings-preference-states.spec.js", "serial": "e2e_admin", "exclude": []},
@@ -140,9 +139,7 @@
     {"file": "closed-issue-regressions.spec.js", "exclude": []},
     {"file": "primary-workspace-navigation.spec.js", "exclude": []},
     {"file": "ux-refinements.spec.js", "exclude": []},
-    {"file": "session-workspace.spec.js", "exclude": [
-      {"title": "single-session workspace keeps terminal primary with on-demand Files, Diagnostics, and Notes", "reason": "the Files tab of the seeded Linux session shows no session file panel against Go (no SFTP stand-in for seeded sessions); the commands part passes", "package": "FS2"}
-    ]},
+    {"file": "session-workspace.spec.js", "exclude": []},
     {"file": "product-captures.spec.js", "exclude": []},
     {"file": "commands-experience.spec.js", "exclude": []},
     {"file": "command-parameters.spec.js", "exclude": []},
