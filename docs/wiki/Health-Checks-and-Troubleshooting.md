@@ -48,7 +48,7 @@ Check in this order:
 
 1. `/health` and `/ready` on the application host.
 2. Reverse-proxy upstream address and port.
-3. WebSocket/Socket.IO upgrade forwarding.
+3. WebSocket upgrade forwarding for `<APPLICATION_ROOT>/ws`, including the `Origin` header.
 4. Exact public scheme and host in `CORS_ORIGINS`.
 5. Whether `TRUSTED_PROXIES` matches the real number of forwarding layers. The
    log warns once when requests carry forwarding headers at `0`, or arrive
@@ -77,7 +77,7 @@ For a changed host key, validate the new fingerprint independently before revoki
 
 ## SFTP or transfer problems
 
-Bulk transfers use HTTP, so proxy body-size, buffering, and timeout settings can fail even when terminal Socket.IO works. Also inspect:
+Bulk transfers use HTTP, so proxy body-size, buffering, and timeout settings can fail even when the terminal connection works. Also inspect:
 
 - per-user and global transfer slots;
 - temporary-byte quotas and free disk space;
@@ -164,7 +164,7 @@ claims, configured assurance mappings, and provider support for requested
 
 ## Capacity symptoms
 
-Slow or refused work can result from thread, socket, SSH, transfer, temporary-byte, or background-worker admission. Compare live diagnostics with every related limit. Preserve at least four HTTP threads and do not raise sockets above available Gunicorn capacity.
+Slow or refused work can result from realtime-connection, SSH, transfer or background-job admission. Compare the operations view with every related limit (`MAX_SOCKET_CONNECTIONS`, `QUOTA_*`).
 
 ## Safe evidence collection
 

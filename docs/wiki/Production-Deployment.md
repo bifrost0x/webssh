@@ -70,7 +70,7 @@ docker compose \
   -f docker-compose.yml \
   -f docker-compose.production.yml \
   exec webssh \
-  /app/entrypoint.sh flask --app start:app create-admin --username admin
+  /app/webssh create-admin --username admin
 ```
 
 For non-interactive automation, use `--password-file` with a private regular,
@@ -104,6 +104,11 @@ Production startup rejects:
 Set `TRUSTED_PROXIES=0` explicitly only when WebSSH accepts no proxy headers.
 When the value is non-zero, a client that can bypass the proxy may spoof
 forwarded information, so restrict the backend network path.
+
+With a non-zero value also set `TRUSTED_PROXY_CIDRS` to the address or network
+of the proxy, for example `TRUSTED_PROXY_CIDRS=172.18.0.10/32`. WebSSH then
+accepts forwarded headers only from that peer; without it, it trusts the
+forwarded headers of every direct client and warns at every start.
 
 ## Reverse proxy checklist
 
@@ -149,16 +154,15 @@ exception for review.
 
 ## Capacity contract
 
-Keep exactly one Gunicorn worker. Defaults are:
+Run exactly one WebSSH process per data directory. Defaults are:
 
-- `GUNICORN_THREADS=64`
-- `MAX_SOCKET_CONNECTIONS=48`
-- `MAX_SOCKET_CONNECTIONS_PER_USER=8`
-- at least four threads reserved for HTTP routes and streamed transfers.
+- `MAX_SOCKET_CONNECTIONS=48` realtime connections, one per browser tab;
+- `MAX_SOCKET_CONNECTIONS_PER_USER=8`;
+- `QUOTA_SSH_SESSION_GLOBAL=10` and `QUOTA_SSH_SESSION_PER_USER=5` SSH sessions.
 
-The bounded runtime executor defaults to the required minimum derived from
-cleanup loops, allowed SSH readers, and background jobs. Enabling LDAP adds one
-permanent revalidation job to that minimum.
+Two accounts with five sessions each lock everyone else out of new SSH
+sessions; raise the quotas for more users. Enabling LDAP adds a periodic
+revalidation job.
 
 ## Operational checks
 

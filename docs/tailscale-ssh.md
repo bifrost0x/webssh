@@ -25,8 +25,9 @@ Use this mode only in a trusted homelab or similarly controlled environment:
    identity while ordinary connections cannot reach tailnet hosts.
 
 Every authorized or denied Tailscale SSH attempt is written to the security
-audit log with the WebSSH username, target, remote username, client IP, and the
-`shared-node` identity marker.
+audit log (`TAILSCALE_SSH_AUTHORIZED`, `TAILSCALE_SSH_DENIED`) with the WebSSH
+username, target, remote username and the `shared-node` identity marker. The
+client IP is not part of the entry yet.
 
 ## WebSSH configuration
 
@@ -54,8 +55,10 @@ target or interface remains. Values stay dormant while the feature is disabled.
 After DNS resolution, WebSSH accepts only an
 address whose kernel route uses `TAILSCALE_SSH_INTERFACE` (default
 `tailscale0`), pins that address, and binds the connecting socket to the same
-interface. A route change cannot silently move the connection to another
-interface.
+interface with `SO_BINDTODEVICE` (Linux 5.7 or later, no extra capability). A
+route change cannot silently move the connection to another interface. The
+`IP_UNICAST_IF` option the 3.3 release used is ignored by Linux for TCP, so 3.3
+did not enforce this binding.
 
 Tailscale authentication cannot be combined with ProxyJump. The route and
 interface proof applies only to a direct connection from the WebSSH host.
@@ -70,20 +73,15 @@ remote-user allowlists.
 
 The admin setting **Block ordinary SSH to tailnet nodes** (Admin →
 Integrations, enabled by default) closes that path. Changes take effect for the
-next connection without a restart. Turning the block on also closes open
-terminal sessions and file-transfer connections that it would now refuse,
-judged by the address each was pinned to when it opened; tmux sessions are
-detached, not ended, and the owner sees why the session closed. Tailscale SSH
-sessions stay open, and an automation run already in progress finishes; the
-sweep is recorded as `TAILNET_RESTRICTED_CONNECTIONS_CLOSED`. The sweep runs
-only when the setting is changed in the admin menu: a connection still being
-opened at that moment, or a settings file changed by hand, is not swept, so
-restart WebSSH after such a change to be sure. The
+next connection without a restart and clear the cached reachability results.
+Turning the block on applies to new connections; terminal sessions and
+file-transfer connections that are already open stay until they end, so
+restart WebSSH to close them at once. The
 change is recorded in the security audit
 log as `APPLICATION_FEATURE_CHANGED` with
-`feature=tailscale_ssh_restrict_tailnet_routes`. While
-`TAILSCALE_SSH_ENABLED=true` and `TAILSCALE_SSH_INTERFACE` is set, WebSSH
-refuses, before opening a socket, every Tailscale node address for everything
+`feature=tailscale_ssh_restrict_tailnet_routes`. Whenever the WebSSH host is a
+tailnet node, that is the `TAILSCALE_SSH_INTERFACE` interface exists or the
+variable is set explicitly, WebSSH refuses, before opening a socket, every Tailscale node address for everything
 except Tailscale SSH. A node address is one in `100.64.0.0/10` or
 `fd7a:115c:a1e0::/48` (including the IPv4-mapped IPv6 form) whose kernel route
 uses that interface, and the WebSSH node's own tailnet address, which routes
@@ -119,9 +117,19 @@ Proxies and jump hosts that resolve names themselves are covered too:
   `.ts.net` (MagicDNS) or when it resolves locally to a restricted node
   address. A name that does not resolve on the WebSSH host is still passed on.
 
-**Disabling Tailscale SSH does not remove the node from the tailnet.** The
-restriction is only active while `TAILSCALE_SSH_ENABLED=true`. If the feature is
-switched off while the sidecar stays logged in to the tailnet and the tailnet
+The rule applies whether or not `TAILSCALE_SSH_ENABLED` is set. Installations
+upgraded from 3.3 keep the 3.3 rule, which applied the restriction only while
+Tailscale SSH was enabled: the migration records the setting
+`netpolicy.tailnet_follows_switch` and lists it in its report. While it is set,
+Tailscale SSH is off and the interface exists, WebSSH writes this warning to the
+log and the audit log at every start:
+
+> Tailscale SSH is disabled but the Tailscale interface exists; ordinary
+> SSH to tailnet nodes is not blocked
+
+**Disabling Tailscale SSH does not remove the node from the tailnet.** On an
+installation that keeps the 3.3 rule, the restriction is only active while
+`TAILSCALE_SSH_ENABLED=true`. If the feature is switched off while the sidecar stays logged in to the tailnet and the tailnet
 policy still contains an `ssh` rule with `"action": "accept"` for the WebSSH
 node or its tag, any WebSSH user can open a password connection with an
 arbitrary password to those Tailscale SSH nodes and get a shell under the node
@@ -188,7 +196,7 @@ Bootstrap the deployment in this order:
    It deliberately starts with `TAILSCALE_SSH_ENABLED=false`.
 2. Create the first administrator explicitly:
    ```bash
-   docker compose exec webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
+   docker compose exec webssh /app/webssh create-admin --username admin
    ```
 3. Keep self-registration disabled in production; the production profile requires
    this. Enable optional public registration only in a homelab deployment.

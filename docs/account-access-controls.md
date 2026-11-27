@@ -55,9 +55,15 @@ terminate existing browser, SSH or tmux sessions.
 ## Account deletion and retained files
 
 The deletion confirmation names the selected account. Deletion revokes its
-access and removes its database account. Its local user files are moved out of
-the active user namespace into `DATA_DIR/deleted_users/user_<id>_<random>/`.
-This is quarantine, not secure erasure, and no automatic cleanup is performed.
+access and removes the account from the database in one transaction. Before
+that, WebSSH writes a verified copy of the account's rows to
+`DATA_DIR/go/deleted_users/<id>-<UTC>/`: one JSON Lines file per table and a
+`manifest.json` with row counts and SHA-256 values, directory mode 0700, files
+0600. Sealed secrets stay sealed in the copy. If the deletion fails, the account
+stays locked. This is retention for recovery, not secure erasure, and no
+automatic cleanup is performed. Account IDs are never reused. On an
+installation upgraded from 3.3, earlier quarantine directories below
+`DATA_DIR/deleted_users/` stay untouched until `webssh legacy purge`.
 
 For later operator cleanup:
 
@@ -66,11 +72,11 @@ For later operator cleanup:
    account; inspect its contents and applicable retention requirements.
 2. Decide whether an offline archive is required. Existing backups and separate
    archives have their own retention lifecycle and are not erased by account
-   deletion or quarantine cleanup.
+   deletion or by this cleanup. Backups never include the copies.
 3. During a controlled maintenance window, explicitly remove only the verified
-   quarantine directory using the operating system or volume-management tools.
-   Verify the resolved path remains below `DATA_DIR/deleted_users/`. Do not remove
-   the active `users/` directory, the database, or the complete data volume.
+   directory using the operating system or volume-management tools. Verify the
+   resolved path remains below `DATA_DIR/go/deleted_users/`. Do not remove the
+   database, `go/` itself or the complete data volume.
 
 The application deliberately provides no automatic purge or browser action for
 this irreversible operator step.

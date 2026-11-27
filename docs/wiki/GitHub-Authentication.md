@@ -192,7 +192,7 @@ first Passkey (or TOTP authenticator) with a short-lived, single-use code. For
 example:
 
 ```bash
-docker compose exec webssh /app/entrypoint.sh flask --app start:app \
+docker compose exec webssh /app/webssh \
   issue-factor-bootstrap --username ACCOUNT --action passkey.enroll
 ```
 

@@ -31,13 +31,13 @@ SFTP remains synchronous.
 - Selectors opt in to a separate authentication path. They do not identify a server as trustworthy; existing per-user gateway host-key checks and network restrictions still apply.
 - The gateway controls access to its targets. WebSSH's network policy checks the gateway endpoint, not the destination hidden behind it.
 - Passwords, additional factors and approval responses are transient. They are never stored in profiles. Additional factors are explicitly answered; the original password is never reused as an OTP.
-- Each interaction belongs to one WebSSH user, socket and request. Challenges are one-shot, deadlines and byte limits are enforced, and pending gateway jobs share the existing background-job quota.
+- Each interaction belongs to one WebSSH user, socket and request. Challenges are one-shot, deadlines and byte limits are enforced, and pending gateway attempts count against the SSH session quota, with at most 64 waiting attempts per server.
 - Warpgate target host-key checks and approval policies remain enabled. There is no automatic target host-key acceptance.
 - Terminal setup requires a target supporting a PTY and a bounded `printf` exec probe. Only after the nonce response and successful exit does WebSSH run normal terminal/tmux setup or configured startup commands.
 - Quick SFTP uses a temporary PTY for gateway prompts and a separate SFTP channel. Targets must permit those two channels during setup; PTY-disabled or single-channel targets are not supported by this path.
 - Existing profile auth types remain unchanged. Older WebSSH versions can read the profile document, but cannot connect using the new selector syntax.
 - Ticket secrets, `#` selectors, automatic target discovery, gateway administration and non-SSH protocols are not supported.
 
-The reference implementation is tested against Warpgate 0.29.0 and Paramiko 5.0.0. The shared interactive authentication transport uses Paramiko's `ServiceRequestingTransport` so multi-factor authentication requests the SSH authentication service once. The compatibility overrides bound the initial service wait and register each authentication reply event before sending the request, so fast replies are not lost. Recheck these overrides when upgrading Paramiko.
+The Go client is tested against Warpgate 0.30.6. It always tries the `none` method first, which shows only in the gateway's log. Prompts carry the server's echo flag, but the page masks every answer. Output of the temporary gateway terminal keeps characters that span two 4 KiB frames. A gateway that asks for a password and then a one-time code asks for both in the browser; with a Warpgate user whose policy asks for the code first, a login without a saved password is refused, as in 3.3, and works with a saved password. Switching the gateway off ends pending gateway logins within a second.
 
 Cancel closes an unfinished gateway attempt. Once the existing startup/session commit boundary has been crossed, the ordinary WebSSH cancellation contract applies.

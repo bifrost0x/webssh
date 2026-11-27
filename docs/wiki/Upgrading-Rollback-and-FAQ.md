@@ -55,6 +55,16 @@ the production file removes those previously implicit limits on recreation.
 Existing image-only upgrades do not change container settings. Review the merged
 configuration before recreating containers; keep data and recovery volumes intact.
 
+## v3.4.0 compatibility
+
+3.4 replaces the Python server with a Go server. The first start migrates
+the 3.3 data once and leaves it unchanged, everyone signs in once, and the
+image no longer contains a shell or Python. Read
+[Upgrading to 3.4](Upgrading-to-3.4) before the update: it lists every
+visible change, the way back to 3.3 and how to remove the 3.3 data
+afterwards. Update the Compose file together with the image; the 3.3 file
+has a Python health check that keeps 3.4 `unhealthy`.
+
 ## v3.3.0 compatibility
 
 The [3.3 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v3.3.0.md)
@@ -160,13 +170,13 @@ See [SFTP permissions](SFTP-File-Workspace-and-Transfers.md) and
 - Optional identity providers work.
 - Logs show no migration, maintenance, or permission error.
 
-Browser tabs opened before an upgrade may still run an incompatible Socket.IO
-client. WebSSH rejects the mismatch before restoring or registering runtime
-sessions. Clients that support the wire-revision check reload once and then
-show a persistent manual reload action instead of retrying in a loop. A tab
-from an older release cannot interpret the structured refusal and may show
-only that it was disconnected; reload that tab manually. Clear an intervening
-proxy or browser cache if a current tab still reports a mismatch.
+Browser tabs opened before an upgrade may still run an incompatible client.
+WebSSH rejects the mismatch before restoring or registering runtime sessions.
+Clients that support the wire-revision check reload once and then show a
+persistent manual reload action instead of retrying in a loop. A 3.3 tab
+talks to `/socket.io/`, which 3.4 answers with 410 `version_unsupported`;
+reload that tab. Clear an intervening proxy or browser cache if a current tab
+still reports a mismatch.
 
 ## Image-only rollback
 
@@ -182,6 +192,11 @@ If the newer application migrated data beyond the older version's supported
 schema, image-only rollback may be blocked; consult release notes and the native
 backup compatibility result before forcing any change.
 
+From 3.4 back to 3.3 the image-only rollback works until `webssh legacy purge`
+has run, because 3.4 keeps the 3.3 data unchanged. Changes made in 3.4 are not
+visible in 3.3, and 3.4 backups do not restore there. See
+[Way back to 3.3](Upgrading-to-3.4#way-back-to-33).
+
 ## Restore rollback
 
 Use restore only when persistent state is damaged or an intentional state
@@ -193,16 +208,18 @@ See [Backup, Restore and Secret Rotation](Backup-Restore-and-Secret-Rotation).
 
 ## Frequently asked questions
 
-### Can I run multiple Gunicorn workers or replicas?
+### Can I run several WebSSH processes or replicas?
 
-No. Live SSH transports, Socket.IO coordination, and quota state are
-process-local. Use exactly one `gthread` worker. Increase threads only within
-the documented bounds and preserve at least four HTTP threads.
+No. Live SSH connections, realtime connections, rate limits and quota state
+belong to one process. A lock in `DATA_DIR/go/webssh.lock` refuses a second
+server on the same data directory.
 
-### Does Redis enable multiple workers?
+### Is Redis still supported?
 
-No. Redis can preserve rate-limit counters across restarts. It does not
-externalize live SSH sessions or runtime coordination.
+No. Since 3.4 rate-limit counters live in the process and start empty after
+a restart. `RATELIMIT_STORAGE_URL` is accepted, ignored and named in a
+startup warning; remove the Redis service once the way back to 3.3 is no
+longer needed.
 
 ### Is WebSSH end-to-end encrypted?
 
@@ -214,8 +231,8 @@ data between those links.
 
 Connection and jump-host passwords are not written to profiles, the database,
 or audit logs. They are used during connection establishment and references are
-dropped afterward. Python cannot guarantee secure zeroing of secret bytes from
-process memory.
+dropped afterward. Saved passwords are optional and stored encrypted. The Go
+runtime cannot guarantee secure zeroing of secret bytes in process memory.
 
 ### Why did tmux fall back to a normal shell?
 
@@ -285,7 +302,7 @@ Reset it from the host:
 
 ```bash
 docker compose exec webssh \
-  /app/entrypoint.sh flask --app start:app reset-password --username <name>
+  /app/webssh reset-password --username <name>
 ```
 
 See

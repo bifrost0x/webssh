@@ -14,7 +14,7 @@ Administrators can:
 - review host-key state and security-relevant configuration;
 - link or unlink supported external identities under the applicable safeguards.
 
-Disabling or deleting a user revokes live activity, including Socket.IO, SSH, pooled connections, and transfers. Deletion first quarantines the user's data directory and rolls back that move if the database operation fails.
+Disabling or deleting a user revokes live activity, including realtime connections, SSH, pooled connections, and transfers. Deletion writes a verified copy of the account's rows to `DATA_DIR/go/deleted_users/<id>-<UTC>/`, which an operator removes when it is no longer needed; a failed deletion leaves the account locked.
 
 ## Administrator step-up
 
@@ -109,7 +109,7 @@ transfer or SSH session.
 **View tasks** shows task categories, state and age. System tasks cannot be stopped
 from this list; use the existing backup controls for backup operations. Capacity
 settings are shown with configuration guidance and require a controlled restart.
-Keep one Gunicorn worker and at least four HTTP threads outside the socket limit.
+Run one WebSSH process per data directory. The background jobs listed here are those of the server; `http_reserve` is always 0 because the server has no HTTP thread pool.
 
 `GET /admin/api/operations/details` requires the same administrator access as the
 aggregate endpoint. Each list returns at most 200 entries and reports its total.

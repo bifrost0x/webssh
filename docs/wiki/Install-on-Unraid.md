@@ -24,7 +24,7 @@ registration for the first account.
   terminal:
 
   ```bash
-  docker exec -it WebSSH /app/entrypoint.sh flask --app start:app create-admin --username admin
+  docker exec -it WebSSH /app/webssh create-admin --username admin
   ```
 
 ## Install the template
@@ -143,7 +143,39 @@ and change it deliberately. Read the release notes before upgrading across
 versions; see
 [Upgrading, Rollback, and FAQ](Upgrading-Rollback-and-FAQ).
 
-WebSSH's graceful shutdown can take up to 30 seconds. Unraid stops containers
+The update to 3.4 replaces the Python server with a Go server and migrates the
+appdata once at the first start; the old data stays unchanged for a way back.
+Read [Upgrading to 3.4](Upgrading-to-3.4) first. Paths, port and the container
+user stay the same.
+
+## Commands and console
+
+The image has no shell, so the container's **Console** in the Docker tab has
+nothing to open. Run WebSSH's commands from the Unraid terminal instead:
+
+```bash
+docker exec WebSSH /app/webssh help
+docker exec -it WebSSH /app/webssh reset-password --username admin
+```
+
+Commands that need the server stopped, such as `backup create`, run in a
+one-off container with the same appdata folders while the WebSSH container is
+stopped:
+
+```bash
+docker stop WebSSH
+docker run --rm --user 99:100 \
+  -v /mnt/user/appdata/webssh/data:/app/data \
+  -v /mnt/user/appdata/webssh/recovery:/app/recovery \
+  -e BACKUP_TEMP_DIR=/app/recovery \
+  ghcr.io/bifrost0x/webssh:latest backup create --confirm-offline
+docker start WebSSH
+```
+
+Use the same image tag as the container and add the variables you changed in
+the template.
+
+WebSSH's graceful shutdown takes up to `RUNTIME_SHUTDOWN_GRACE_SECONDS` (5 by default, at most 30). Unraid stops containers
 with its own timeout, which may be shorter; an early stop ends open SSH sessions
 and transfers.
 
