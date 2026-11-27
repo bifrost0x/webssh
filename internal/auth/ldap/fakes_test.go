@@ -172,14 +172,21 @@ type fakeSessions struct {
 	revoked map[int64][]principal.Reason
 }
 
-func (s *fakeSessions) RevokeUser(_ context.Context, id int64, reason principal.Reason, _ string) (int, error) {
+func (s *fakeSessions) RevokeAccountTx(_ context.Context, _ *store.Tx, id int64, reason principal.Reason) ([]principal.Revocation, error) {
+	return []principal.Revocation{{UserID: id, Reason: reason}}, nil
+}
+
+// Publish records what a committed transaction ended, so a revocation of
+// a rolled-back transaction is not counted.
+func (s *fakeSessions) Publish(revs []principal.Revocation) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.revoked == nil {
 		s.revoked = map[int64][]principal.Reason{}
 	}
-	s.revoked[id] = append(s.revoked[id], reason)
-	return 1, nil
+	for _, r := range revs {
+		s.revoked[r.UserID] = append(s.revoked[r.UserID], r.Reason)
+	}
 }
 
 func (s *fakeSessions) count(id int64) int {

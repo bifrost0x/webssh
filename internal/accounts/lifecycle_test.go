@@ -34,6 +34,8 @@ type fakeSessions struct {
 	mu        sync.Mutex
 	published []principal.Revocation
 	fail      error
+	// onPublish runs after a publication, outside any transaction.
+	onPublish func()
 }
 
 // RevokeAccountTx returns one account-wide revocation when no session
@@ -68,8 +70,13 @@ func (f *fakeSessions) revokeUser(ctx context.Context, tx *store.Tx, userID int6
 
 func (f *fakeSessions) Publish(revs []principal.Revocation) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.published = append(f.published, revs...)
+	hook := f.onPublish
+	f.onPublish = nil
+	f.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
 }
 
 func (f *fakeSessions) list() []principal.Revocation {

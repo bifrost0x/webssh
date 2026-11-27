@@ -229,13 +229,21 @@ func (c *Conn) search(ctx context.Context, id int64, req SearchRequest) (SearchR
 	if _, err := c.conn.Write(envelope(id, req.encode())); err != nil {
 		return out, contextCause(ctx, err)
 	}
-	for {
+	refBytes := 0
+	for others := 0; ; {
 		msg, err := c.read(ctx)
 		if err != nil {
 			return out, err
 		}
 		if msg.id != id {
 			return out, fmt.Errorf("%w: response for unknown message %d", ErrMalformed, msg.id)
+		}
+		if msg.op.tag != opSearchEntry {
+			if others++; others > maxSearchOtherMessages {
+				c.broken = true
+				_ = c.conn.Close()
+				return out, fmt.Errorf("%w: too many messages in one search", ErrMalformed)
+			}
 		}
 		switch msg.op.tag {
 		case opSearchEntry:
@@ -256,7 +264,14 @@ func (c *Conn) search(ctx context.Context, id int64, req SearchRequest) (SearchR
 			if err != nil {
 				return out, err
 			}
-			out.References = append(out.References, refs...)
+			// References are never followed; only a bounded number is
+			// kept for diagnostics.
+			for _, ref := range refs {
+				if len(out.References) < maxReferences && refBytes+len(ref) <= maxReferenceBytes {
+					out.References = append(out.References, ref)
+					refBytes += len(ref)
+				}
+			}
 		case opIntermediate:
 		case opSearchDone:
 			return out, searchDone(msg.op)

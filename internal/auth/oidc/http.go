@@ -50,18 +50,34 @@ type HTTP struct {
 	results stepUpResults
 }
 
-// Register adds the routes to mux, relative to APPLICATION_ROOT.
+// Register adds the routes to mux, relative to APPLICATION_ROOT. The
+// routes the Python feature gate covered (request_feature_name: /oidc/,
+// /api/account/oidc and the administrator's oidc identity routes) answer
+// 404 before anything else while the feature "oidc" is off. The step-up
+// routes refuse an inactive provider on their own, as step_up_routes.py
+// did.
 func (h *HTTP) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET "+auth.PathOIDCLogin, h.login)
-	mux.HandleFunc("GET "+auth.PathOIDCCallback, h.callback)
-	mux.HandleFunc("GET /api/account/oidc", h.accountStatus)
-	mux.HandleFunc("POST /api/account/oidc/link/start", h.selfLinkStart)
+	mux.HandleFunc("GET "+auth.PathOIDCLogin, h.gated(h.login))
+	mux.HandleFunc("GET "+auth.PathOIDCCallback, h.gated(h.callback))
+	mux.HandleFunc("GET /api/account/oidc", h.gated(h.accountStatus))
+	mux.HandleFunc("POST /api/account/oidc/link/start", h.gated(h.selfLinkStart))
 	mux.HandleFunc("POST /api/account/step-up/oidc/start", h.accountStepUpStart)
 	mux.HandleFunc("POST /api/step-up/oidc/start", h.adminStepUpStart)
 	mux.HandleFunc("GET /api/step-up/oidc/result", h.adminStepUpResult)
-	mux.HandleFunc("GET /admin/api/users/{user_id}/oidc-identities", h.adminList)
-	mux.HandleFunc("POST /admin/api/users/{user_id}/oidc-link", h.adminLink)
-	mux.HandleFunc("DELETE /admin/api/users/{user_id}/oidc-identities/{identity_id}", h.adminUnlink)
+	mux.HandleFunc("GET /admin/api/users/{user_id}/oidc-identities", h.gated(h.adminList))
+	mux.HandleFunc("POST /admin/api/users/{user_id}/oidc-link", h.gated(h.adminLink))
+	mux.HandleFunc("DELETE /admin/api/users/{user_id}/oidc-identities/{identity_id}", h.gated(h.adminUnlink))
+}
+
+// gated answers 404 while the feature "oidc" is off.
+func (h *HTTP) gated(fn http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !h.active(r) {
+			http.NotFound(w, r)
+			return
+		}
+		fn(w, r)
+	}
 }
 
 // Texts of the Python release.
@@ -143,10 +159,6 @@ func (h *HTTP) login(w http.ResponseWriter, r *http.Request) {
 	if h.Limits.SourceLimited(r, "oidc_login") {
 		h.audit("RATE_LIMIT_EXCEEDED", "endpoint", "oidc_login")
 		errorJSON(w, http.StatusTooManyRequests, msgTooMany)
-		return
-	}
-	if !h.active(r) {
-		http.NotFound(w, r)
 		return
 	}
 	f := auth.NewFlight(auth.ProviderOIDC, auth.PurposeSignIn, h.now())

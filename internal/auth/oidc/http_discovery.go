@@ -22,6 +22,9 @@ const (
 	minJWKSAge     = time.Minute
 	maxJWKSAge     = 24 * time.Hour
 	minJWKSRefresh = 30 * time.Second
+	// metadataRetry is how long an old discovery document is served
+	// without a network attempt after a refresh failed.
+	metadataRetry = 30 * time.Second
 )
 
 // metadata is the part of the discovery document WebSSH uses (OIDC
@@ -47,6 +50,7 @@ type remote struct {
 	meta      metadata
 	allowed   map[string]bool
 	metaAt    time.Time
+	metaFail  time.Time // when the last refresh of an old document failed
 	keys      []jwk
 	keysAt    time.Time // when the keys were fetched
 	keysUntil time.Time // when they must be fetched again
@@ -72,21 +76,30 @@ func (r *remote) metadata(ctx context.Context) (metadata, map[string]bool, error
 	defer r.mu.Unlock()
 	if err != nil {
 		if !r.metaAt.IsZero() {
+			r.metaFail = r.s.now()
 			return r.meta, r.allowed, nil
 		}
 		return metadata{}, nil, err
 	}
-	r.meta, r.allowed, r.metaAt = m, allowed, r.s.now()
+	r.meta, r.allowed, r.metaAt, r.metaFail = m, allowed, r.s.now(), time.Time{}
 	return m, allowed, nil
 }
 
+// cachedMeta returns the document while it is fresh, and an old one for
+// metadataRetry after its refresh failed, so that sign-ins do not each
+// wait for an unreachable provider.
 func (r *remote) cachedMeta() (metadata, map[string]bool, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.metaAt.IsZero() || r.s.now().Sub(r.metaAt) >= metadataMaxAge {
+	now := r.s.now()
+	switch {
+	case r.metaAt.IsZero():
 		return metadata{}, nil, false
+	case now.Sub(r.metaAt) < metadataMaxAge,
+		!r.metaFail.IsZero() && now.Sub(r.metaFail) < metadataRetry:
+		return r.meta, r.allowed, true
 	}
-	return r.meta, r.allowed, true
+	return metadata{}, nil, false
 }
 
 // discover loads the discovery document (OIDC Discovery 1.0 section 4).

@@ -164,7 +164,7 @@ func (f *Flow) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if f.Limits.Enabled {
 		okIP, _ := f.Limiter.Allow("change_password:"+SourceBucket(ip, f.ipPrefix(ctx)), f.Limits.Login)
-		okUser, _ := f.Limiter.Allow("change_password_account:user:"+strconv.FormatInt(p.UserID, 10), f.Limits.Login)
+		okUser, _ := f.Limiter.AllowAccount("change_password_account:user:"+strconv.FormatInt(p.UserID, 10), f.Limits.Login)
 		okUserIP, _ := f.Limiter.Allow("change_password_account:ip:"+SourceBucket(ip, f.ipPrefix(ctx)), f.Limits.Login)
 		if !okIP || !okUser || !okUserIP {
 			if f.Audit != nil {

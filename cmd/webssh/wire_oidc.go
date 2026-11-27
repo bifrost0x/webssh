@@ -116,6 +116,15 @@ type oidcAccounts struct{ s *accounts.Service }
 
 func (a oidcAccounts) OIDCAccount(ctx context.Context, userID int64) (oidc.Account, error) {
 	acc, err := a.s.Get(ctx, userID)
+	return oidcAccountOf(acc, err)
+}
+
+func (a oidcAccounts) OIDCAccountTx(ctx context.Context, tx *store.Tx, userID int64) (oidc.Account, error) {
+	acc, err := a.s.GetTx(ctx, tx, userID)
+	return oidcAccountOf(acc, err)
+}
+
+func oidcAccountOf(acc accounts.Account, err error) (oidc.Account, error) {
 	if err != nil {
 		return oidc.Account{}, err
 	}

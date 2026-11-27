@@ -105,6 +105,10 @@ func (l *countingLimiter) Allow(key string, _ Rule) (bool, time.Duration) {
 	return l.hits[key] <= l.limit, 0
 }
 
+func (l *countingLimiter) AllowAccount(key string, r Rule) (bool, time.Duration) {
+	return l.Allow(key, r)
+}
+
 type recordingAudit struct {
 	mu     sync.Mutex
 	events []string

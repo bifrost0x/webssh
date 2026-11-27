@@ -84,10 +84,21 @@ func (s *Service) Gate(ctx context.Context, p principal.Principal) error {
 	}
 	defer s.release(p.UserID)
 	if err := s.check(ctx, p.UserID); err != nil {
+		if aborted(ctx, err) {
+			return fault.Wrap(fault.Unavailable, err, "")
+		}
 		s.logger().WarnContext(ctx, "LDAP session revalidation rejected", "user", p.Username, "error", err)
 		return s.refuse(ctx, p.UserID, "revalidation")
 	}
 	return nil
+}
+
+// aborted reports whether a failed check failed because the caller gave
+// up (a client abort or shutdown), not because the directory refused or
+// could not be reached. Such a check ends no access; the next request or
+// sweep checks again.
+func aborted(ctx context.Context, err error) bool {
+	return ctx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 }
 
 // refuse invalidates the account's credentials and answers the request as
@@ -105,6 +116,9 @@ func (s *Service) refuse(ctx context.Context, userID int64, reason string) error
 // closed). It implements auth.Revalidator.
 func (s *Service) Revalidate(ctx context.Context, userID int64) error {
 	if err := s.check(ctx, userID); err != nil {
+		if aborted(ctx, err) {
+			return err
+		}
 		if ierr := s.invalidate(ctx, userID); ierr != nil {
 			return errors.Join(err, ierr)
 		}
@@ -155,17 +169,52 @@ func (s *Service) check(ctx context.Context, userID int64) error {
 	return err
 }
 
+// invalidateTimeout bounds the persistence of an invalidation that no
+// longer follows the request that found it.
+const invalidateTimeout = 10 * time.Second
+
 // invalidate ends every credential of the account: the auth generation is
 // raised and every session ends with the reason directory_refused, which
 // closes its terminals as a lock does
-// (persist_ldap_authentication_invalidation).
+// (persist_ldap_authentication_invalidation). Both commit in one
+// transaction with an account-wide journal entry, so every process ends
+// the account's terminals. A request cancelled by its client does not
+// stop the invalidation. When the generation cannot be raised, the live
+// sessions still end, as revoke_user_access did after a failed
+// persistence.
 func (s *Service) invalidate(ctx context.Context, userID int64) error {
-	err := s.DB.Write(ctx, func(tx *store.Tx) error { return s.Accounts.RaiseGenerationTx(ctx, tx, userID) })
-	if err != nil && !fault.Is(err, fault.NotFound) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), invalidateTimeout)
+	defer cancel()
+	var revs []principal.Revocation
+	err := s.DB.Write(ctx, func(tx *store.Tx) error {
+		if err := s.Accounts.RaiseGenerationTx(ctx, tx, userID); err != nil && !fault.Is(err, fault.NotFound) {
+			return err
+		}
+		var err error
+		revs, err = s.Sessions.RevokeAccountTx(ctx, tx, userID, principal.ReasonDirectoryRefused)
+		return err
+	})
+	if err != nil {
+		return errors.Join(err, s.revoke(ctx, userID, principal.ReasonDirectoryRefused))
+	}
+	s.Sessions.Publish(revs)
+	return nil
+}
+
+// revoke ends every session of the account in its own transaction and
+// journals an account-wide revocation.
+func (s *Service) revoke(ctx context.Context, userID int64, reason principal.Reason) error {
+	var revs []principal.Revocation
+	err := s.DB.Write(ctx, func(tx *store.Tx) error {
+		var err error
+		revs, err = s.Sessions.RevokeAccountTx(ctx, tx, userID, reason)
+		return err
+	})
+	if err != nil {
 		return err
 	}
-	_, rerr := s.Sessions.RevokeUser(ctx, userID, principal.ReasonDirectoryRefused, "")
-	return rerr
+	s.Sessions.Publish(revs)
+	return nil
 }
 
 func (s *Service) claim(userID int64) bool {
@@ -216,7 +265,7 @@ func (s *Service) Sweep(ctx context.Context) (int, error) {
 		case !found:
 			continue
 		case st.required:
-			if _, err := s.Sessions.RevokeUser(ctx, id.UserID, principal.ReasonDirectoryRefused, ""); err != nil {
+			if err := s.revoke(ctx, id.UserID, principal.ReasonDirectoryRefused); err != nil {
 				s.audit("LDAP_BACKGROUND_AUTHENTICATION_INVALIDATION_FAILED", "user", st.account.Username, "error", "storage")
 			}
 			continue
@@ -230,6 +279,9 @@ func (s *Service) Sweep(ctx context.Context) (int, error) {
 		s.release(id.UserID)
 		if err == nil {
 			continue
+		}
+		if aborted(ctx, err) {
+			return ended, ctx.Err()
 		}
 		s.audit("LDAP_BACKGROUND_REVALIDATION_REJECTED", "user", st.account.Username, "error", errorKind(err))
 		if ierr := s.invalidate(ctx, id.UserID); ierr != nil {

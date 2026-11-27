@@ -28,6 +28,10 @@ func (d *denyAfter) Allow(string, auth.Rule) (bool, time.Duration) {
 	return d.n <= d.limit, 0
 }
 
+func (d *denyAfter) AllowAccount(key string, r auth.Rule) (bool, time.Duration) {
+	return d.Allow(key, r)
+}
+
 type httpEnv struct {
 	*env
 	mux     *http.ServeMux

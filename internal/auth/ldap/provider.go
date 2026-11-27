@@ -93,6 +93,7 @@ func (s *Service) linkedIdentity(ctx context.Context, entry Entry) (Identity, bo
 func (s *Service) signedIn(ctx context.Context, userID int64, username, dn string) error {
 	now := s.now()
 	var required bool
+	var revs []principal.Revocation
 	err := s.DB.Write(ctx, func(tx *store.Tx) error {
 		var err error
 		if required, _, err = RevalidationTx(ctx, tx, userID); err != nil {
@@ -106,17 +107,16 @@ func (s *Service) signedIn(ctx context.Context, userID int64, username, dn strin
 			if err := s.Accounts.RaiseGenerationTx(ctx, tx, userID); err != nil {
 				return err
 			}
+			if revs, err = s.Sessions.RevokeAccountTx(ctx, tx, userID, principal.ReasonDirectoryRefused); err != nil {
+				return err
+			}
 		}
 		return checkedTx(ctx, tx, userID, now)
 	})
 	if err != nil {
 		return fault.Wrap(fault.StorageError, err, "")
 	}
-	if required {
-		if _, err := s.Sessions.RevokeUser(ctx, userID, principal.ReasonDirectoryRefused, ""); err != nil {
-			return fault.Wrap(fault.Unavailable, err, messageOf(errUnavailable))
-		}
-	}
+	s.Sessions.Publish(revs)
 	return nil
 }
 

@@ -1,11 +1,13 @@
 package oidc
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/bifrost0x/webssh/internal/auth"
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
+	"github.com/bifrost0x/webssh/internal/store"
 )
 
 // methodOIDC is the authentication and step-up method name.
@@ -131,6 +133,9 @@ func (h *HTTP) linkable(r *http.Request, f auth.Flight) bool {
 	return err == nil && !acc.Locked && acc.Generation == f.Generation
 }
 
+// errAccountChanged marks a link whose account changed after the check.
+var errAccountChanged = errors.New("oidc: account changed during the link")
+
 // completeLink binds the identity to the signed-in account
 // (_complete_oidc_self_link). An identity already on this account is
 // confirmed; one on another account is a conflict and never moves.
@@ -161,7 +166,24 @@ func (h *HTTP) completeLink(w http.ResponseWriter, r *http.Request, p principal.
 		errorJSON(w, http.StatusServiceUnavailable, msgStorage)
 		return
 	}
-	if _, err := h.Links.Link(ctx, p.UserID, id); err != nil {
+	err = h.Links.DB.Write(ctx, func(tx *store.Tx) error {
+		// The account is checked again in the transaction that links, so
+		// a lock, a generation raise or a conversion to a managed account
+		// that commits meanwhile is not overtaken (the INSERT … SELECT of
+		// the Python release).
+		cur, err := h.Accounts.OIDCAccountTx(ctx, tx, p.UserID)
+		if err != nil || cur.Locked || cur.Generation != f.Generation || cur.Managed != "" {
+			return errors.Join(errAccountChanged, err)
+		}
+		_, err = h.Links.LinkTx(ctx, tx, p.UserID, id)
+		return err
+	})
+	if err != nil {
+		if errors.Is(err, errAccountChanged) {
+			h.audit("OIDC_IDENTITY_LINK_REJECTED", "issuer", id.Issuer, "reason", "account_session_changed")
+			errorJSON(w, http.StatusForbidden, msgLinkFailed)
+			return
+		}
 		if fault.Is(err, fault.Conflict) {
 			errorJSON(w, http.StatusConflict, msgLinked)
 			return

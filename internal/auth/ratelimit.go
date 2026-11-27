@@ -48,32 +48,26 @@ var (
 	DefaultGlobalRule   = Rule{Limit: 100, Window: time.Minute}
 )
 
-// maxBuckets bounds the limiter's memory. When it is reached and expired
-// buckets cannot make room, the bucket that was used least recently is
-// dropped. Refusing new keys instead would let a flood of fresh sources
-// lock every user out; dropping old buckets only forgets attempts that
-// lie furthest back.
-const maxBuckets = 1 << 16
-
-type event struct {
-	at time.Time
-	id uint64
-}
-
-type bucket struct {
-	events []event
-	window time.Duration
-}
-
 // Limiter is the in-process sliding-window limiter (decision D-16: no
 // Redis; counters live in the one process). Only allowed events are
 // recorded, so refused requests cannot grow a bucket. It is safe for
-// concurrent use.
+// concurrent use; every call does constant work apart from the events of
+// its own bucket.
+//
+// Buckets live in two pools of maxBuckets each. Source buckets (Reserve,
+// Allow: keys that contain a client address) are cheap to create with
+// fresh addresses; at capacity the least recently used one is dropped,
+// because refusing new sources would let a flood lock every user out.
+// Account buckets (ReserveAccount, AllowAccount: the ceilings per name,
+// account and known device) never compete with source buckets, so a
+// flood of fresh sources cannot reset them. At capacity an account
+// bucket that has reached its limit is kept; a new key is refused when
+// no other bucket near the eviction end can make room.
 type Limiter struct {
-	mu      sync.Mutex
-	buckets map[string]*bucket
-	seq     uint64
-	lastGC  time.Time
+	mu       sync.Mutex
+	sources  pool
+	accounts pool
+	seq      uint64
 	// Now replaces the clock in tests.
 	Now func() time.Time
 	// Realtime maps realtime RateKeys to their rule; unknown keys use
@@ -84,86 +78,78 @@ type Limiter struct {
 
 // NewLimiter returns an empty limiter.
 func NewLimiter() *Limiter {
-	return &Limiter{buckets: map[string]*bucket{}, Now: time.Now, RealtimeDefault: Rule{Limit: 200, Window: time.Hour}}
+	return &Limiter{
+		sources:  pool{buckets: map[string]*bucket{}},
+		accounts: pool{buckets: map[string]*bucket{}, keepFull: true},
+		Now:      time.Now, RealtimeDefault: Rule{Limit: 200, Window: time.Hour},
+	}
 }
 
 // Reservation identifies one recorded event, for Release.
 type Reservation struct {
-	key string
-	id  uint64
+	key     string
+	id      uint64
+	account bool
 }
 
-func (l *Limiter) gc(now time.Time, force bool) {
-	if !force && now.Sub(l.lastGC) < time.Minute {
-		return
-	}
-	l.lastGC = now
-	for k, b := range l.buckets {
-		if len(b.events) == 0 || !b.events[len(b.events)-1].at.Add(b.window).After(now) {
-			delete(l.buckets, k)
-		}
-	}
-}
-
-// Reserve records one event under key if fewer than r.Limit events are
-// in the window. It returns the reservation, or ok false and how long to
-// wait.
+// Reserve records one event under the source key key if fewer than
+// r.Limit events are in the window. It returns the reservation, or ok
+// false and how long to wait.
 func (l *Limiter) Reserve(key string, r Rule) (res Reservation, ok bool, retryAfter time.Duration) {
+	return l.reserve(&l.sources, key, r)
+}
+
+// ReserveAccount is Reserve for a ceiling per name, account or device.
+func (l *Limiter) ReserveAccount(key string, r Rule) (res Reservation, ok bool, retryAfter time.Duration) {
+	res, ok, retryAfter = l.reserve(&l.accounts, key, r)
+	res.account = true
+	return res, ok, retryAfter
+}
+
+func (l *Limiter) reserve(p *pool, key string, r Rule) (Reservation, bool, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if p.buckets == nil {
+		p.buckets = map[string]*bucket{}
+	}
 	now := l.Now()
-	l.gc(now, false)
-	b := l.buckets[key]
+	p.expireTail(now)
+	b := p.buckets[key]
 	if b != nil {
-		keep := b.events[:0]
-		for _, e := range b.events {
-			if e.at.Add(r.Window).After(now) {
-				keep = append(keep, e)
-			}
-		}
-		b.events = keep
+		b.trim(now, r.Window)
 	}
 	if r.Limit <= 0 {
 		return Reservation{}, false, r.Window
 	}
 	if b != nil && len(b.events) >= r.Limit {
+		b.limit = r.Limit
+		p.touch(b)
 		return Reservation{}, false, max(time.Second, b.events[0].at.Add(r.Window).Sub(now))
 	}
 	if b == nil {
-		if len(l.buckets) >= maxBuckets {
-			l.gc(now, true)
-			if len(l.buckets) >= maxBuckets {
-				l.evictOldest()
-			}
+		if len(p.buckets) >= maxBuckets && !p.makeRoom(now) {
+			return Reservation{}, false, time.Second
 		}
-		b = &bucket{}
-		l.buckets[key] = b
+		b = &bucket{key: key}
+		p.buckets[key] = b
 	}
 	b.window = max(b.window, r.Window)
+	b.limit = r.Limit
 	l.seq++
 	b.events = append(b.events, event{at: now, id: l.seq})
+	p.touch(b)
 	return Reservation{key: key, id: l.seq}, true, 0
-}
-
-func (l *Limiter) evictOldest() {
-	var oldest string
-	var at time.Time
-	for k, b := range l.buckets {
-		if len(b.events) == 0 {
-			delete(l.buckets, k)
-			return
-		}
-		last := b.events[len(b.events)-1].at
-		if oldest == "" || last.Before(at) {
-			oldest, at = k, last
-		}
-	}
-	delete(l.buckets, oldest)
 }
 
 // Allow is Reserve without keeping the reservation.
 func (l *Limiter) Allow(key string, r Rule) (bool, time.Duration) {
 	_, ok, after := l.Reserve(key, r)
+	return ok, after
+}
+
+// AllowAccount is ReserveAccount without keeping the reservation.
+func (l *Limiter) AllowAccount(key string, r Rule) (bool, time.Duration) {
+	_, ok, after := l.ReserveAccount(key, r)
 	return ok, after
 }
 
@@ -173,7 +159,11 @@ func (l *Limiter) Release(res ...Reservation) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for _, r := range res {
-		b := l.buckets[r.key]
+		p := &l.sources
+		if r.account {
+			p = &l.accounts
+		}
+		b := p.buckets[r.key]
 		if b == nil {
 			continue
 		}
@@ -184,7 +174,7 @@ func (l *Limiter) Release(res ...Reservation) {
 			}
 		}
 		if len(b.events) == 0 {
-			delete(l.buckets, r.key)
+			p.remove(b)
 		}
 	}
 }
@@ -196,7 +186,7 @@ func (l *Limiter) AllowUser(userID int64, key string) (bool, time.Duration) {
 	if !ok {
 		rule = l.RealtimeDefault
 	}
-	return l.Allow(key+":user:"+strconv.FormatInt(userID, 10), rule)
+	return l.AllowAccount(key+":user:"+strconv.FormatInt(userID, 10), rule)
 }
 
 // Realtime adapts the limiter to realtime.Limiter.

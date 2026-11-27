@@ -27,8 +27,11 @@ type Passwords interface {
 }
 
 // Sessions is the part of internal/session the commands use.
+// RevokeAccountTx journals an account-wide revocation even when the
+// account has no browser session left, so the running server ends its
+// terminals and persistent tmux sessions as well.
 type Sessions interface {
-	RevokeUserTx(ctx context.Context, tx *store.Tx, userID int64, reason principal.Reason, except string) ([]principal.Revocation, error)
+	RevokeAccountTx(ctx context.Context, tx *store.Tx, userID int64, reason principal.Reason) ([]principal.Revocation, error)
 }
 
 // Auditor writes security audit events (internal/audit).
@@ -202,7 +205,7 @@ func (a *Admin) resetPassword(ctx context.Context, p parsed, o IO) error {
 		if _, err := a.Accounts.PasswordChangedTx(ctx, tx, acc.ID, hash); err != nil {
 			return err
 		}
-		_, err := a.Sessions.RevokeUserTx(ctx, tx, acc.ID, principal.ReasonPasswordChanged, "")
+		_, err := a.Sessions.RevokeAccountTx(ctx, tx, acc.ID, principal.ReasonPasswordChanged)
 		return err
 	})
 	if err != nil {

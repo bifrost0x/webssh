@@ -103,10 +103,11 @@ func (m migratedAccounts) BreakGlassAdminTx(ctx context.Context, tx *store.Tx) (
 
 type countingSessions struct{ n int }
 
-func (c *countingSessions) RevokeUser(context.Context, int64, principal.Reason, string) (int, error) {
-	c.n++
-	return 0, nil
+func (c *countingSessions) RevokeAccountTx(_ context.Context, _ *store.Tx, userID int64, reason principal.Reason) ([]principal.Revocation, error) {
+	return []principal.Revocation{{UserID: userID, Reason: reason}}, nil
 }
+
+func (c *countingSessions) Publish(revs []principal.Revocation) { c.n += len(revs) }
 
 func ldapServiceOn(m migrated, provider, subject string) (*ldap.Service, *countingSessions) {
 	sessions := &countingSessions{}

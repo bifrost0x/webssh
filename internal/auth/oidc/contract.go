@@ -48,9 +48,11 @@ type Account struct {
 }
 
 // Accounts reads accounts (internal/accounts); an unknown account is
-// fault.NotFound.
+// fault.NotFound. OIDCAccountTx reads inside the caller's transaction, so
+// a check and the change it guards commit together.
 type Accounts interface {
 	OIDCAccount(ctx context.Context, userID int64) (Account, error)
+	OIDCAccountTx(ctx context.Context, tx *store.Tx, userID int64) (Account, error)
 }
 
 // ProviderStepUp is the part of internal/auth/stepup a provider step-up
