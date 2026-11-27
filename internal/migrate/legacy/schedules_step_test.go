@@ -356,6 +356,60 @@ func TestSchedulesMigrateClaimAndDeletedAccount(t *testing.T) {
 	}
 }
 
+// AU2-4: the extended fixture holds a schedule approved after the epoch
+// rotation, which Python accepts. It migrates with its approval and runs
+// at its next slot without a new review, while the schedules approved
+// before the rotation stay the negative case (stale, account_changed).
+func TestSchedulesMigrateApprovalAfterRotation(t *testing.T) {
+	t.Parallel()
+	fx := legacyFixture(t)
+	valid := fx.Values.Extended.ScheduleAfterRotation
+	if valid.ID == "" || !valid.Valid {
+		t.Fatalf("the fixture has no valid schedule: %+v", valid)
+	}
+	dir := extractLegacy(t, "datadir-extended.tar")
+	o := testOptions(t, dir)
+	o.Registry = schedulesRegistry(t)
+	o.Secret = fx.SecretKey.Value
+	st, err := startClosed(o)
+	if err != nil || !st.Migrated {
+		t.Fatalf("migration: %+v, %v", st, err)
+	}
+	m := openMigrated(t, dir, o.Secret, st.Report)
+	stored := storedSchedules(t, m)
+	var at time.Time
+	for _, s := range stored {
+		switch {
+		case s.ID == valid.ID:
+			if s.Stale || !s.Enabled {
+				t.Fatalf("the approval after the rotation did not hold: %+v", s)
+			}
+			at = time.Unix(int64(s.NextAt), 0).Add(time.Second)
+		case s.Enabled && !s.Stale:
+			t.Errorf("schedule %s approved before the rotation kept its approval", s.ID)
+		}
+	}
+	if at.IsZero() {
+		t.Fatal("the valid schedule is missing")
+	}
+	e := m.entity(t, "E15")
+	for _, f := range e.Flagged {
+		if f.ID == valid.ID {
+			t.Errorf("the valid schedule is flagged: %+v", f)
+		}
+	}
+	sched, wf := migratedSchedules(t, m, at)
+	if err := sched.Tick(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(wf.runs) != 1 || wf.runs[0].ScheduleID != valid.ID {
+		t.Fatalf("runs after the migration: %+v", wf.runs)
+	}
+	if err := wf.runs[0].Check(t.Context()); err != nil {
+		t.Fatalf("the migrated approval does not hold: %v", err)
+	}
+}
+
 // A grant or cron expression Python could not read stops the migration
 // without changing the legacy data (STOP).
 func TestSchedulesMigrateStopsOnUnreadableRows(t *testing.T) {

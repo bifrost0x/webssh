@@ -139,6 +139,14 @@ def extended(work, clock):
         clock.advance(minutes=1)
         facts['backups'] = variants.backups(data_dir, work / 'out' / 'backups')
         facts['variants'] = variants.variants(data_dir)
+        # Last, so that the backups and variants above stay as they were.
+        clock.advance(seconds=10)
+        application = runtime.create_application()
+        with application.app_context():
+            facts['schedule_after_rotation'] = extend.approved_after_rotation(
+                application, owner, values['automation']['runbook']['id'],
+                values['connections']['profiles']['Password server']['id'], clock)
+        runtime.shutdown(application)
     pack_data_dir(data_dir, work / 'out' / 'datadir-extended.tar')
     return facts
 

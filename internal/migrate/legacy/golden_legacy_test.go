@@ -100,6 +100,12 @@ type extendedValues struct {
 	Schedules map[string]struct {
 		ID string `json:"id"`
 	} `json:"schedules"`
+	// ScheduleAfterRotation was approved after the session epoch rotation
+	// of the base fixture; Python accepts it (AU2-4).
+	ScheduleAfterRotation struct {
+		ID    string `json:"id"`
+		Valid bool   `json:"valid"`
+	} `json:"schedule_after_rotation"`
 	TrustAndFences struct {
 		CertAuthorityLine string `json:"cert_authority_line"`
 	} `json:"trust_and_fences"`

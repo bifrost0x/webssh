@@ -249,6 +249,34 @@ def schedules(owner_id, deleted_former_id, deleted_incarnation, clock):
             for name, v in rows.items()}
 
 
+def approved_after_rotation(application, owner_id, runbook_id, profile_id, clock):
+    """A schedule approved after the session epoch rotation (AU2-4).
+
+    The schedules of the base fixture were approved before the generator
+    rotated the session epoch, so Python itself no longer accepts them
+    (preview_changed); they stay the negative case. This one is approved
+    through the application with the epoch of the time of approval, so it
+    still holds.
+    """
+    from app.models import AuthenticationSession, User
+    from .. import accounts, cookies
+    username = User.query.get(owner_id).username
+    cookies.login_cookie(application, username, accounts.PASSWORDS[username])
+    auth_id = AuthenticationSession.query.filter_by(
+        user_id=owner_id).order_by(AuthenticationSession.id.desc()).first().id
+    schedules = application.extensions['automation_schedules']
+    preview = schedules.prepare(owner_id, auth_id, dict(
+        runbook_id=runbook_id, profile_ids=[profile_id],
+        cron='45 4 * * 2', timezone='Europe/Berlin',
+    ), now=clock.now)
+    schedule = schedules.apply(owner_id, auth_id, preview['intent'], '1', now=clock.now)
+    from app.automation_schedule import AutomationSchedule
+    row = AutomationSchedule.query.filter_by(id=schedule['id']).one()
+    schedules._validate_snapshot(owner_id, row.grant)
+    return {'id': schedule['id'], 'user_id': owner_id, 'revision': row.revision,
+            'account': row.grant['account'], 'valid': True}
+
+
 def orphan_host_context(owner_id, command_set_id):
     """Host context of a deleted profile: delete_profile does not prune it."""
     from app.host_context import write_context

@@ -814,8 +814,8 @@
   {
    "deterministic": false,
    "path": "datadir-extended.tar",
-   "sha256": "ef7386b4811d0abebc7067e00ee1b8f45d555bf658b3c183fbadd23b2b14cb4a",
-   "size": 512000
+   "sha256": "72737e9f1900509ba3e379c8110e134c16794775e2b9a1f5a2c524ca7bf17b76",
+   "size": 522240
   },
   {
    "deterministic": false,
@@ -1239,6 +1239,17 @@
     },
     "location": "{BACKUP_TEMP_DIR}/instance-{sha256(realpath(DATA_DIR))[:32]}/restore-status.json",
     "source": "app/maintenance_mode.py"
+   },
+   "schedule_after_rotation": {
+    "account": [
+     "2026-11-02T09:00:02.250000",
+     0,
+     "4f73df5e685918c1dcea33563f2b476e4cf3ce705d82fead37babcdca8c5b1d9"
+    ],
+    "id": "174f9d5a-e390-47d0-919d-5443f08cc04d",
+    "revision": 1,
+    "user_id": 3,
+    "valid": true
    },
    "schedules": {
     "deleted_account": {
