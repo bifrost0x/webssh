@@ -1127,6 +1127,30 @@ and `backup_download` (MAC). New store owners: `authgithub`, `authldap`,
   next start, so an archive of another key is refused before anything
   changes (`ErrSecretMismatch`, fix: Python restored and then could not
   decrypt). An archive without `SECRET_KEY` opens with the active key.
+- **Restore beside legacy data (RS4-01, additive).** While
+  `DATA_DIR/app.db` of the Python release exists, Go never rewrites
+  `secret_key` or the keyring material, which the legacy data and the way
+  back to 3.3 need. `backup.Installation.KeepSecret` is then set: a Go
+  archive of another key brings no secret file and no material; its
+  secrets are resealed under the installation's ring in the same
+  transaction as the restore semantics (`Installation.Reseal`, the table
+  classification of `rotate-secret-key`; a value still sealed under the
+  archive's key fails with `backup.ErrRotationLeftover`; checkpoint
+  `PointRestoreResealed`). The rotation for this is
+  `keyring.NewRestoreRotation(archive, installation *Ring) (*Rotation,
+  error)`: like `NewRotation`, but without the legacy lock and without
+  equal material, because neither is touched; the same key gives
+  `ErrRotationSameKey`. Without legacy data OP1-1 applies unchanged.
+  `rotate-secret-key` is refused while the last restore is open, and a
+  failed rollback keeps the replaced files as `go/failed-restore-<id>/`.
+- **Stop code `legacy_record_damaged` (RS4-02, additive).** The migration
+  checks `SECRET_KEY` as passed as soon as any stored legacy secret
+  decrypts (TOTP per record, then the GitHub configuration, then SSH keys
+  and credentials per account); `secret_key_mismatch` stays for the case
+  that none decrypts. A single secret that does not decrypt after that is
+  `ErrRecordDamaged` and stops with `legacy_record_damaged`, naming the
+  entity, the user ID and the record (`totp_authenticators <id>`,
+  `credential <id>`, `github_auth_configuration`), never the value.
 - **States.** Operations use the Python statuses (`pending`, `running`,
   `uploading`, `verifying`, `verified`, `ready`, `downloading`,
   `restoring`, `failed`); `Active()` marks those that cannot be cancelled.
