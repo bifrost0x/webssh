@@ -178,7 +178,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | # | Change | Kind | What to do |
 |---|---|---|---|
 | U61 | New tmux session names are at most 190 characters, so a reattach never refuses a name WebSSH created. Reattaching without a display name keeps the stored one. | fix | Nothing. |
-| U62 | A connection that keeps receiving terminal output it never reads (more than 1024 dropped frames in a row) is closed with code 4002 and reconnects. | new | Nothing. |
+| U62 | A connection that keeps sending terminal input or acknowledgements the server drops unread (for a closed terminal or out of order, more than 1024 frames in a row) is closed with code 4002 and reconnects. | new | Nothing. |
 
 ### Files, SMB and transfers
 
