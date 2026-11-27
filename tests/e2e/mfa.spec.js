@@ -106,7 +106,33 @@ test('enrolls optional TOTP and completes password plus MFA login', async ({
     await page.locator('[data-auth-mode="totp"]').click();
     await expect(page.locator('#totpMfaPanel')).toBeVisible();
     await expect(page.locator('#recoveryMfaPanel')).toBeHidden();
-    await page.locator('#totpMfaCode').fill(totp(secret, Date.now()));
+    const acceptedCode = totp(secret, Date.now());
+    await page.locator('#totpMfaCode').fill(acceptedCode);
+    await page.locator('#submitTotpMfa').click();
+    await expect(page).toHaveURL(/\/$/);
+
+    // An accepted code is used up: a new sign-in cannot replay it, and
+    // the code of the next time step still works.
+    const replayLogout = await page.evaluate(async () => {
+        const csrf = document.querySelector('meta[name="csrf-token"]').content;
+        const response = await fetch('/logout', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrf },
+        });
+        return response.status;
+    });
+    expect(replayLogout).toBe(200);
+    await page.goto('/login');
+    await page.locator('#username').fill('e2e_mfa');
+    await page.locator('#password').fill('browser-password');
+    await page.locator('form button[type="submit"]').click();
+    await expect(page.locator('#totpMfaPanel')).toBeVisible();
+    await page.locator('#totpMfaCode').fill(acceptedCode);
+    await page.locator('#submitTotpMfa').click();
+    await expect(page.locator('#totpMfaError')).toBeVisible();
+    await expect(page).toHaveURL(/\/login/);
+    await expect(page.locator('#submitTotpMfa')).toBeEnabled({ timeout: 45_000 });
+    await page.locator('#totpMfaCode').fill(totp(secret, Date.now() + 30_000));
     await page.locator('#submitTotpMfa').click();
     await expect(page).toHaveURL(/\/$/);
 
