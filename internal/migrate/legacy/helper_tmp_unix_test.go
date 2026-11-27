@@ -45,8 +45,7 @@ func TestKilledHelperLeavesNothingBehind(t *testing.T) {
 	tmp := helperTempDir(t)
 	cmd.Env = append(cmd.Env, tmp)
 	out, err := cmd.Output()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) {
+	if _, ok := errors.AsType[*exec.ExitError](err); !ok {
 		t.Fatalf("helper did not die: %v\n%s", err, out)
 	}
 	dir := strings.TrimPrefix(tmp, "TMPDIR=")
