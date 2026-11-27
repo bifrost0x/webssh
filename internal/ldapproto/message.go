@@ -37,6 +37,15 @@ const (
 	maxSearchSize       = 1 << 20
 )
 
+// Bounds of one search beyond its entries: the continuation references
+// kept, their total size, and the messages other than entries (references
+// and intermediate responses) before the search counts as malformed.
+const (
+	maxReferences          = 64
+	maxReferenceBytes      = 64 << 10
+	maxSearchOtherMessages = 1024
+)
+
 // Result is an LDAPResult (RFC 4511 section 4.1.9).
 type Result struct {
 	Code       ResultCode
