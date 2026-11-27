@@ -158,7 +158,7 @@ type e2eStores struct{ sys *system }
 func (e e2eStores) stores() e2eseed.Stores {
 	return e2eseed.Stores{
 		Accounts: e, AppSettings: e.sys.settings, UserSettings: e.sys.settings,
-		FeatureGates: e, Factors: e, Keys: e, Hosts: e, Identities: e, Commands: e,
+		FeatureGates: e, Factors: e, Keys: e, Hosts: e, Identities: e, Commands: e, HostKeys: e.sys.hostkeys,
 	}
 }
 

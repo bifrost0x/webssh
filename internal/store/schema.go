@@ -43,6 +43,8 @@ var Owners = []string{
 	"smb",
 	// M2: the command library and command sets (CM1).
 	"commands",
+	// M2: automation runbooks and run history (AU1).
+	"automation",
 }
 
 // ledgerTable records applied migrations. It belongs to the store itself.

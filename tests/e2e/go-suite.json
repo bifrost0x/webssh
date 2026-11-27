@@ -33,9 +33,7 @@
     {"file": "overview-classic.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "connection-overview.spec.js", "exclude": []},
     {"file": "empty-states.spec.js", "exclude": []},
-    {"file": "onboarding.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "tour crosses workspaces, handles small screens and saves completion", "reason": "tour step 6 opens the automation workspace (C-AUTO)", "package": "AU1"}
-    ]},
+    {"file": "onboarding.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "management-dialogs-redesign.spec.js", "exclude": []},
     {"file": "management-persistence.spec.js", "exclude": [
       {"title": "command and command-set edits survive a reload at 1536px", "reason": "the preview notice (automation, saved passwords, host discovery) covers the actions menu of the duplicated set at 1536px; the notice goes with the last preview area", "package": "FE1"}
@@ -112,10 +110,7 @@
     {"file": "host-toolbar-layout.spec.js", "exclude": []},
     {"file": "containment-refinements.spec.js", "exclude": []},
     {"file": "host-discovery.spec.js", "exclude": []},
-    {"file": "overview-filters.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "pending security updates open the matching upgrade workflow as a draft with exactly those hosts", "reason": "the upgrade workflow draft needs the automation area (C-AUTO-10 prefill, WebSSHAutomation)", "package": "AU1"},
-      {"title": "a restart hint offers to check the same hosts again, as a draft and without contacting them", "reason": "the restart check draft needs the automation area (C-AUTO-10 prefill, WebSSHAutomation)", "package": "AU1"}
-    ]},
+    {"file": "overview-filters.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-maintenance-dismissal.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "host-inventory-diagnostic.spec.js", "exclude": []},
     {"file": "product-data-truth.spec.js", "exclude": []},
@@ -181,6 +176,40 @@
       {"title": "library and favorites scroll to the final card at 360px", "reason": "the preview notice takes about a quarter of the 529 px viewport, so the 48-card lists need more wheel gestures than the 30 s test budget allows (red also at load 14); the notice goes with the last preview area", "package": "FE1"}
     ]},
     {"file": "workspace-performance.spec.js", "exclude": []},
-    {"file": "palette-navigation.spec.js", "exclude": []}
+    {"file": "palette-navigation.spec.js", "exclude": []},
+    {"file": "automation.spec.js", "exclude": []},
+    {"file": "automation-real-journey.spec.js", "exclude": [
+      {"title": "own command set through real backend SSH run and exact overview history link", "reason": "commands and command sets (C-CMD): the page lists and resolves the user's command sets", "package": "CM1"},
+      {"title": "real parameterized command set imports server-quoted values and cancellation preserves the draft", "reason": "commands and command sets (C-CMD): the page lists and resolves the user's command sets", "package": "CM1"}
+    ]},
+    {"file": "automation-review-context.spec.js", "exclude": [
+      {"title": "delayed review rejects changed schedule context", "reason": "automation schedules (C-AUTO-06, /api/automation/schedules answers 501)", "package": "AU2"},
+      {"title": "delayed review rejects changed navigation context", "reason": "reviews a schedule: automation schedules (C-AUTO-06, /api/automation/schedules answers 501)", "package": "AU2"},
+      {"title": "existing schedule edits persist in place and can be paused after reapproval", "reason": "automation schedules (C-AUTO-06, /api/automation/schedules answers 501)", "package": "AU2"}
+    ]},
+    {"file": "automation-native.spec.js", "exclude": []},
+    {"file": "automation-editor-layout.spec.js", "exclude": []},
+    {"file": "automation-editor-roundtrip.spec.js", "exclude": []},
+    {"file": "automation-editor-sources.spec.js", "exclude": []},
+    {"file": "automation-library.spec.js", "exclude": []},
+    {"file": "automation-library-safety.spec.js", "exclude": []},
+    {"file": "automation-templates.spec.js", "exclude": []},
+    {"file": "automation-workspace.spec.js", "exclude": [
+      {"title": "workspace sequence and target inventory fit narrow and wide themes", "reason": "the preview notice raised by automation schedules (C-AUTO-06, /api/automation/schedules answers 501) takes the height the test measures", "package": "AU2"}
+    ]},
+    {"file": "automation-design.spec.js", "exclude": []},
+    {"file": "automation-followthrough.spec.js", "exclude": [
+      {"title": "source search preserves selected source and draft, without execution", "reason": "commands and command sets (C-CMD): the page lists and resolves the user's command sets as a third source group", "package": "CM1"}
+    ]},
+    {"file": "automation-import-race.spec.js", "exclude": []},
+    {"file": "automation-integrated-journey.spec.js", "exclude": []},
+    {"file": "automation-lock-races.spec.js", "exclude": []},
+    {"file": "automation-state.spec.js", "exclude": []},
+    {"file": "automation-results-refinement.spec.js", "exclude": []},
+    {"file": "automation-admin-tools.spec.js", "exclude": []},
+    {"file": "automation-diagnostics.spec.js", "exclude": []},
+    {"file": "feature-availability.spec.js", "exclude": []},
+    {"file": "session-diagnostics-automation.spec.js", "exclude": []},
+    {"file": "management-width.spec.js", "exclude": []}
   ]
 }

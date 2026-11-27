@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/bifrost0x/webssh/internal/automation"
 	cmdlib "github.com/bifrost0x/webssh/internal/commands"
 	"io"
 	"log/slog"
@@ -140,8 +141,10 @@ type system struct {
 	realtime *realtime.Server
 	quotas   *quota.Policy  // wire_jobs.go
 	jobs     *jobs.Registry // wire_jobs.go
-	edge     *httpapi.Handler
-	pages    *pages
+	// automation is the run engine; the schedules start their runs on it.
+	automation *automation.Service // wire_automation.go
+	edge       *httpapi.Handler
+	pages      *pages
 
 	// The file workspace (wire_files.go); backend areas register their
 	// source kinds on fileSources.

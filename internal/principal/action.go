@@ -45,7 +45,7 @@ var m1Actions = []Action{
 	ActionSecurityFeatureUpdate, ActionUserCreate,
 }
 
-var actions = slices.Concat(m1Actions, dataActions, identityActions, operationActions)
+var actions = slices.Concat(m1Actions, dataActions, identityActions, operationActions, automationActions)
 
 // Actions returns the catalog.
 func Actions() []Action {

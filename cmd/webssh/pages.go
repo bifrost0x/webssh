@@ -97,6 +97,7 @@ func (pg *pages) base(r *http.Request, u *signedIn) (httpapi.PageData, *settings
 		GitHubAuthEnabled:        pg.github != nil && pg.github.githubActive != nil && pg.github.githubActive(ctx),
 		SSHGatewayEnabled:        app.SSHGatewayEnabled,
 		HerdrEnabled:             app.HerdrEnabled,
+		AutomationEnabled:        app.AutomationEnabled,
 		Preview:                  previewNotice(u == nil),
 	}
 	if u == nil {

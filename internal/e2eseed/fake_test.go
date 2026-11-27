@@ -5,24 +5,26 @@ import (
 	"crypto/ed25519"
 	"encoding/json/jsontext"
 	"fmt"
+	"golang.org/x/crypto/ssh"
 	"sync"
 )
 
 // fakeStores records what the applier writes, in order.
 type fakeStores struct {
-	mu       sync.Mutex
-	calls    []string
-	nextUser int64
-	nextID   int
-	users    map[int64]string
-	admins   map[int64]bool
-	mfa      map[int64]bool
-	keys     map[string]ed25519.PrivateKey
-	jumps    map[string]JumpHostRecord
-	proxies  map[string]SOCKSProxyRecord
-	profiles map[int64][]ProfileRecord
-	commands map[int64][2][]jsontext.Value
-	failOn   string
+	keyByName map[string]string
+	mu        sync.Mutex
+	calls     []string
+	nextUser  int64
+	nextID    int
+	users     map[int64]string
+	admins    map[int64]bool
+	mfa       map[int64]bool
+	keys      map[string]ed25519.PrivateKey
+	jumps     map[string]JumpHostRecord
+	proxies   map[string]SOCKSProxyRecord
+	profiles  map[int64][]ProfileRecord
+	commands  map[int64][2][]jsontext.Value
+	failOn    string
 }
 
 func newFakeStores() *fakeStores {
@@ -35,7 +37,7 @@ func newFakeStores() *fakeStores {
 }
 
 func (f *fakeStores) stores() Stores {
-	return Stores{Accounts: f, AppSettings: f, UserSettings: f, FeatureGates: f, Factors: f, Keys: f, Hosts: f, Identities: f, Commands: f}
+	return Stores{Accounts: f, AppSettings: f, UserSettings: f, FeatureGates: f, Factors: f, Keys: f, Hosts: f, Identities: f, Commands: f, HostKeys: f}
 }
 
 func (f *fakeStores) SeedCommands(_ context.Context, owner int64, cmds, sets []jsontext.Value) error {
@@ -79,6 +81,14 @@ func (f *fakeStores) SetRegistrationEnabled(_ context.Context, enabled bool) err
 	return f.record(fmt.Sprintf("registration %t", enabled))
 }
 
+func (f *fakeStores) SetAutomationEnabled(_ context.Context, enabled bool) error {
+	return f.record(fmt.Sprintf("automation %t", enabled))
+}
+
+func (f *fakeStores) Record(_ context.Context, owner int64, host string, port int, _ ssh.PublicKey) error {
+	return f.record(fmt.Sprintf("host key %d %s:%d", owner, host, port))
+}
+
 func (f *fakeStores) SetLoginUsernameLimits(_ context.Context, per, global int) error {
 	return f.record(fmt.Sprintf("limits %d %d", per, global))
 }
@@ -102,6 +112,10 @@ func (f *fakeStores) AddPasskeyPlaceholder(_ context.Context, userID int64, name
 func (f *fakeStores) AddKey(_ context.Context, owner int64, name string, key ed25519.PrivateKey) (string, error) {
 	id := f.id("key")
 	f.keys[id] = key
+	if f.keyByName == nil {
+		f.keyByName = map[string]string{}
+	}
+	f.keyByName[name] = id
 	return id, f.record(fmt.Sprintf("key %d %s", owner, name))
 }
 

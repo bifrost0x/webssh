@@ -79,7 +79,7 @@ func loadCore(p *parser, c *Config, in *pending) {
 
 	c.Features.HostKeyManagement = p.flag("HOST_KEY_MANAGEMENT_ENABLED", "HOST_KEY_MANAGEMENT_ENABLED", "true")
 	p.adminSwitch("AUTOMATION_ENABLED", false)
-	p.flag("AUTOMATION_ALLOW_INSECURE_LOOPBACK", "AUTOMATION_ALLOW_INSECURE_LOOPBACK", "false")
+	c.Features.AutomationInsecureLoopback = p.flag("AUTOMATION_ALLOW_INSECURE_LOOPBACK", "AUTOMATION_ALLOW_INSECURE_LOOPBACK", "false")
 	p.adminSwitch("SERVER_OPERATIONS_ENABLED", false)
 	c.Features.RecoveryCodes = p.flag("RECOVERY_CODES_ENABLED", "RECOVERY_CODES_ENABLED", "true")
 	c.Audit.ExportEnabled = p.flag("AUDIT_EXPORT_ENABLED", "AUDIT_EXPORT_ENABLED", "true")
