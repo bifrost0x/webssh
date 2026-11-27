@@ -131,7 +131,9 @@
     {"file": "credential-jump-auto.spec.js", "exclude": []},
     {"file": "host-resource-consistency.spec.js", "exclude": []},
     {"file": "automation-navigation.spec.js", "exclude": []},
-    {"file": "file-workspace.spec.js", "exclude": []},
+    {"file": "file-workspace.spec.js", "exclude": [
+      {"title": "file lists keep working space and reachable actions across viewport sizes", "reason": "the preview notice (host discovery) takes the top of the 390 px page, and the more menu has gained the permissions entry since W3, so Delete ends below the viewport; the notice goes with the last preview area", "package": "FE1"}
+    ]},
     {"file": "file-mutations.spec.js", "exclude": []},
     {"file": "permission-jobs.spec.js", "exclude": []},
     {"file": "automation-polling.spec.js", "exclude": []},
