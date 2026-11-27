@@ -176,8 +176,7 @@ func scheduleFault(err error) error {
 	if err == nil {
 		return nil
 	}
-	var se *storageError
-	if errors.As(err, &se) {
+	if _, ok := errors.AsType[*storageError](err); ok {
 		return fault.Wrap(fault.StorageError, err, "")
 	}
 	e, ok := errors.AsType[*Error](err)
