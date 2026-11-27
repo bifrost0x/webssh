@@ -85,7 +85,7 @@ func TestM1NegativeCases(t *testing.T) {
 			if !ok {
 				t.Fatalf("no STOP: %v", err)
 			}
-			if se.Entity != tc.entity && se.Code != CodeSecretMismatch {
+			if se.Entity != tc.entity || se.Code == CodeSecretMismatch {
 				t.Fatalf("STOP %v, want entity %s", se, tc.entity)
 			}
 			assertUntouched(t, dir, before)

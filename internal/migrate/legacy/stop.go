@@ -42,6 +42,7 @@ const (
 	CodeUnsafeSource      = "legacy_unsafe_path"
 	CodeUnreadable        = "legacy_unreadable"
 	CodeStepFailed        = "migration_step_failed"
+	CodeRecordDamaged     = "legacy_record_damaged"
 	CodeVerifyFailed      = "migration_verification_failed"
 	CodeActivation        = "activation_failed"
 	CodeReplaceDamaged    = "replace_refused_damaged_database"
@@ -108,6 +109,10 @@ type StepError struct {
 
 func (e *StepError) Error() string { return e.Err.Error() }
 func (e *StepError) Unwrap() error { return e.Err }
+
+// ErrRecordDamaged reports a stored secret that does not decrypt although
+// SECRET_KEY matches the legacy data: the record was changed or damaged.
+var ErrRecordDamaged = errors.New("legacy: a stored secret is damaged or was changed outside WebSSH")
 
 // ErrSecretMismatch reports a SECRET_KEY that does not decrypt the
 // legacy data (A02).

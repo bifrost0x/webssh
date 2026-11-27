@@ -55,7 +55,11 @@ func (s *Source) decryptFernet(p fernetPurpose, userID int64, token []byte) ([]b
 	if err != nil {
 		return nil, err
 	}
-	return key.Decrypt(token)
+	plain, err := key.Decrypt(token)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrRecordDamaged, err)
+	}
+	return plain, nil
 }
 
 // pythonISOFormat renders t as Python's datetime.isoformat() does for a

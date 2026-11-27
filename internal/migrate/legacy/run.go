@@ -326,8 +326,14 @@ func stepStop(entity, message string, err error) *StopError {
 	if se, ok := errors.AsType[*StepError](err); ok {
 		s.UserID, s.Record = se.UserID, se.Record
 	}
-	if errors.Is(err, ErrUnsafePath) {
+	switch {
+	case errors.Is(err, ErrUnsafePath):
 		s.Code = CodeUnsafeSource
+	case errors.Is(err, ErrRecordDamaged):
+		// SECRET_KEY decrypted other records (CheckSecret): this one was
+		// changed (migration specification 8.3).
+		s.Code, s.Message = CodeRecordDamaged, "a stored secret does not decrypt with the SECRET_KEY that decrypts the other records; "+
+			"it is damaged or was changed outside WebSSH. Restore the legacy data from a backup or remove the record in the Python release"
 	}
 	return s
 }

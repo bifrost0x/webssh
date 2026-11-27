@@ -67,15 +67,25 @@ func (s *Source) totpSecrets(ctx context.Context, query string) ([]TOTPSecret, e
 		}
 		plain, err := s.decryptFernet(totpPurpose, t.UserID, token)
 		if err != nil {
-			return nil, fmt.Errorf("legacy: TOTP secret %d of user %d: %w", t.ID, t.UserID, err)
+			return nil, totpError(t, err)
 		}
 		t.Base32 = string(plain)
 		if t.Key, err = otp.DecodeSecret(t.Base32); err != nil {
-			return nil, fmt.Errorf("legacy: TOTP secret %d of user %d: %w", t.ID, t.UserID, err)
+			return nil, totpError(t, err)
 		}
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// totpError names the TOTP record that failed.
+func totpError(t TOTPSecret, err error) error {
+	table := "totp_authenticators"
+	if t.Pending {
+		table = "totp_enrollments"
+	}
+	return &StepError{UserID: t.UserID, Record: fmt.Sprintf("%s %d", table, t.ID),
+		Err: fmt.Errorf("legacy: TOTP secret %d of user %d: %w", t.ID, t.UserID, err)}
 }
 
 // RecoveryCodeHashes returns the stored recovery code hashes per user.
@@ -163,7 +173,7 @@ func (s *Source) GitHubConfiguration(ctx context.Context) (*GitHubConfiguration,
 	if len(token) > 0 {
 		plain, err := s.decryptFernet(githubPurpose, 0, token)
 		if err != nil {
-			return nil, fmt.Errorf("legacy: GitHub client secret: %w", err)
+			return nil, &StepError{Record: "github_auth_configuration", Err: fmt.Errorf("legacy: GitHub client secret: %w", err)}
 		}
 		c.ClientSecret = string(plain)
 	}
