@@ -32,8 +32,8 @@ import (
 // so migrated schedules keep their approval.
 func schedulesArea() extension {
 	return extension{
-		name:    "schedules",
-		wire:    wireSchedules,
+		name: "schedules",
+		wire: wireSchedules,
 		migrate: func(r *legacy.Registry, _ config.Config, _ config.LookupFunc) error {
 			return legacy.AddSchedules(r)
 		},
