@@ -10,8 +10,11 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/accounts"
@@ -348,12 +351,17 @@ func signInMigrated(t *testing.T, db *store.DB, passwords map[string]string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hasher, err := local.NewHasher(local.Params{Memory: 64, Time: 1, Threads: 1, KeyLen: 32, SaltLen: 16}, 2)
+	// The bcrypt hashes of the golden accounts dominate the run time, so
+	// the accounts sign in concurrently; each one is checked as before.
+	workers := min(4, runtime.GOMAXPROCS(0))
+	hasher, err := local.NewHasher(local.Params{Memory: 64, Time: 1, Threads: 1, KeyLen: 32, SaltLen: 16}, workers)
 	if err != nil {
 		t.Fatal(err)
 	}
 	provider := &local.Provider{DB: db, Accounts: &accounts.Service{DB: db}, Hasher: hasher}
-	signed := 0
+	var signed atomic.Int64
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, workers)
 	for _, a := range list {
 		password, ok := passwords[a.name]
 		if !ok {
@@ -366,17 +374,22 @@ func signInMigrated(t *testing.T, db *store.DB, passwords map[string]string) {
 		if !hash.Valid {
 			continue // a local account without a password (password login off)
 		}
-		_, err := provider.Authenticate(t.Context(), a.name, password)
-		switch {
-		case a.locked && err == nil:
-			t.Errorf("locked account %s signed in", a.name)
-		case !a.locked && err != nil:
-			t.Errorf("account %s: %v", a.name, err)
-		case !a.locked:
-			signed++
-		}
+		slots <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			_, err := provider.Authenticate(t.Context(), a.name, password)
+			switch {
+			case a.locked && err == nil:
+				t.Errorf("locked account %s signed in", a.name)
+			case !a.locked && err != nil:
+				t.Errorf("account %s: %v", a.name, err)
+			case !a.locked:
+				signed.Add(1)
+			}
+		})
 	}
-	if signed == 0 {
+	wg.Wait()
+	if signed.Load() == 0 {
 		t.Error("no account signed in")
 	}
 }

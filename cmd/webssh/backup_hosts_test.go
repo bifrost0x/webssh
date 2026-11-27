@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -238,42 +239,50 @@ func enrollTOTP(t *testing.T, sys *system, c *http.Client, base, password string
 		t.Fatal(err)
 	}
 	status, body = apiCall(t, c, base, http.MethodPost, "/api/totp/enroll/verify",
-		map[string]any{"token": enrollment.Token, "code": totpCode(t, key, -1), "confirm_enable_mfa": true}, "")
+		map[string]any{"token": enrollment.Token, "code": freshTOTP(t, key), "confirm_enable_mfa": true}, "")
 	if status != http.StatusOK {
 		t.Fatalf("activate: %d %s", status, body)
 	}
 	return key
 }
 
-// totpCode is the code of the current step plus offset.
-func totpCode(t *testing.T, key []byte, offset int) string {
-	t.Helper()
-	step := otp.Step(time.Now(), otp.DefaultPeriod)
-	c, err := otp.TOTP(key, uint64(int64(step)+int64(offset)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return c
-}
-
-// totpGrant is adminGrant confirmed with a fresh TOTP code: every code is
-// accepted once, so it waits for the next step.
+// totpGrant is adminGrant confirmed with a fresh TOTP code.
 func totpGrant(t *testing.T, c *http.Client, base, action, target string, key []byte) string {
 	t.Helper()
-	waitNextStep()
 	status, body := apiCall(t, c, base, http.MethodPost, "/api/step-up/totp",
-		map[string]string{"action": action, "target": target, "code": totpCode(t, key, 0)}, "")
+		map[string]string{"action": action, "target": target, "code": freshTOTP(t, key)}, "")
 	if status != http.StatusOK {
 		t.Fatalf("TOTP step-up %s: %d %s", action, status, body)
 	}
 	return decode(t, body)["grant"].(string)
 }
 
-func waitNextStep() {
-	start := otp.Step(time.Now(), otp.DefaultPeriod)
-	for otp.Step(time.Now(), otp.DefaultPeriod) == start {
+// usedSteps holds the last time step a test used per TOTP key.
+var usedSteps sync.Map
+
+// freshTOTP returns a code the server has not accepted yet: every step is
+// accepted once and only after the last accepted one, within one step of
+// the current time. It takes the next unused step out of the current and
+// the following one and waits only when both are used, instead of waiting
+// for a new step before every code.
+func freshTOTP(t *testing.T, key []byte) string {
+	t.Helper()
+	now := otp.Step(time.Now(), otp.DefaultPeriod)
+	// The first code of a key (the enrollment) takes the previous step,
+	// which the server still accepts, leaving two steps for the next codes.
+	next := now - 1
+	if last, ok := usedSteps.Load(string(key)); ok {
+		next = max(now, last.(uint64)+1)
+	}
+	for next > otp.Step(time.Now(), otp.DefaultPeriod)+1 {
 		time.Sleep(200 * time.Millisecond)
 	}
+	usedSteps.Store(string(key), next)
+	c, err := otp.TOTP(key, next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
 }
 
 // signInTOTP signs in with the password form and the TOTP factor.
@@ -304,8 +313,7 @@ func signInTOTP(t *testing.T, base, user, password string, key []byte) *http.Cli
 	if m == nil {
 		t.Fatal("no CSRF token on the factor page")
 	}
-	waitNextStep()
-	raw, _ := json.Marshal(map[string]string{"code": totpCode(t, key, 0)})
+	raw, _ := json.Marshal(map[string]string{"code": freshTOTP(t, key)})
 	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, base+"/api/totp/auth/verify", strings.NewReader(string(raw)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", base)
