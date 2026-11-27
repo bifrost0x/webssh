@@ -104,18 +104,20 @@ func (h *HTTP) upload(ctx context.Context, p principal.Principal, r *http.Reques
 	}
 	h.audit("BACKUP_UPLOADED", "user", p.Username, "size", size)
 	h.Ops.Update(op.ID, StatusVerifying, size, nil, "")
+	// The worker gets its own copies; the reply below uses op.
+	id, archive := op.ID, op.Archive()
+	op.Status, op.Size = StatusVerifying, size
 	h.work.Go(func() {
-		s, err := Inspect(h.Background, h.Inst, op.Archive())
+		s, err := Inspect(h.Background, h.Inst, archive)
 		if err != nil {
-			_ = os.Remove(op.Archive())
-			h.Ops.Update(op.ID, StatusFailed, 0, nil, msgVerifyFailed)
+			_ = os.Remove(archive)
+			h.Ops.Update(id, StatusFailed, 0, nil, msgVerifyFailed)
 			h.audit("BACKUP_VERIFICATION_FAILED", "user", p.Username)
 			return
 		}
-		h.Ops.Update(op.ID, StatusVerified, size, &s, "")
+		h.Ops.Update(id, StatusVerified, size, &s, "")
 		h.audit("BACKUP_VERIFICATION_SUCCEEDED", "user", p.Username, "size", size, "files", s.FileCount)
 	})
-	op.Status, op.Size = StatusVerifying, size
 	return reply{status: http.StatusAccepted, body: payload(op)}, nil
 }
 
