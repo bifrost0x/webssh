@@ -9,6 +9,11 @@ import (
 // automation runbooks).
 const MaxScript = 8 << 10
 
+// MaxProgram is the largest fixed program Program accepts. The embedded
+// collectors are a few KiB; the cap keeps a mistaken caller from sending
+// up to MaxStdin to a remote shell.
+const MaxProgram = 64 << 10
+
 // Script lines. The script itself travels on stdin, so no user text is
 // ever part of the command line; the remote sh reads all of it and runs
 // it with eval, which leaves the script with an exhausted stdin, as the
@@ -39,10 +44,10 @@ func Script(body string, sudo bool) (Command, error) {
 // Program builds the Command for a fixed shell program of WebSSH itself
 // (the collectors of session insights and the runtime inventory). It
 // travels on stdin like a Script, so it is read by sh whatever the
-// account's login shell is; it may be up to MaxStdin bytes. The body must
+// account's login shell is; it may be up to MaxProgram bytes. The body must
 // be text of the caller, never user input.
 func Program(body string) (Command, error) {
-	if body == "" || len(body) > MaxStdin || !utf8.ValidString(body) || strings.IndexByte(body, 0) >= 0 {
+	if body == "" || len(body) > MaxProgram || !utf8.ValidString(body) || strings.IndexByte(body, 0) >= 0 {
 		return Command{}, errInvalid
 	}
 	return Command{Line: scriptLine, Stdin: []byte(body)}, nil

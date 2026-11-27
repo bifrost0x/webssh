@@ -38,7 +38,10 @@ func TestProgram(t *testing.T) {
 	if err != nil || c.Line != `sh -c 'eval "$(cat)"'` || string(c.Stdin) != body {
 		t.Fatalf("Program = %v", err)
 	}
-	for _, bad := range []string{"", "a\x00b", "\xff", strings.Repeat("x", remotecmd.MaxStdin+1)} {
+	if _, err := remotecmd.Program(strings.Repeat("x", remotecmd.MaxProgram)); err != nil {
+		t.Errorf("Program at MaxProgram = %v", err)
+	}
+	for _, bad := range []string{"", "a\x00b", "\xff", strings.Repeat("x", remotecmd.MaxProgram+1), strings.Repeat("x", remotecmd.MaxStdin+1)} {
 		if _, err := remotecmd.Program(bad); !fault.Is(err, fault.InvalidValue) {
 			t.Errorf("Program(%q) = %v", bad[:min(len(bad), 8)], err)
 		}
