@@ -46,22 +46,25 @@ func (m *Manager) addRouteSecrets(ctx context.Context, owner int64, t *client.Ta
 	}
 	if t.Proxy != nil && t.Proxy.Username != "" {
 		proxy := *t.Proxy
-		pw := req.SOCKSPassword
+		auth := client.Auth{Password: req.SOCKSPassword}
 		switch {
-		case req.SOCKSSavedPassword && pw != "":
+		case req.SOCKSSavedPassword && auth.Password != "":
 			return errBothPasswords
 		case req.SOCKSSavedPassword:
 			var err error
-			if pw, err = m.savedPassword(ctx, owner, "socks:"+t.Display.SOCKSProxyID); err != nil {
+			resource := "socks:" + t.Display.SOCKSProxyID
+			if auth, err = m.savedAuth(ctx, func(ctx context.Context) (string, error) {
+				return m.savedPassword(ctx, owner, resource)
+			}); err != nil {
 				return err
 			}
-		case pw == "":
+		case auth.Password == "":
 			return errSOCKSPassword
 		}
-		if pw == "" || len(pw) > maxSOCKSPassword {
+		if auth.Password == "" || len(auth.Password) > maxSOCKSPassword {
 			return errSOCKSLength
 		}
-		proxy.Password = pw
+		proxy.Password, proxy.Guard = auth.Password, auth.Guard
 		t.Proxy = &proxy
 	}
 	return nil

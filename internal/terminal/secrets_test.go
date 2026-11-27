@@ -85,7 +85,7 @@ func TestRouteSecrets(t *testing.T) {
 		{name: "saved passwords not wired", req: typed(func(r *protocol.OpenTarget) { r.JumpHostID, r.JumpSavedPassword = "pw", true }), err: string(fault.NotAvailableInPreview)},
 		{name: "typed socks login", req: typed(func(r *protocol.OpenTarget) { r.SOCKSProxyID, r.SOCKSPassword = "login", "sp" }),
 			check: func(t client.Target) bool {
-				return *t.Proxy == client.SOCKS{Host: "proxy.test", Port: 1080, Username: "pu", Password: "sp"}
+				return *t.Proxy == client.SOCKS{Host: "proxy.test", Port: 1080, Username: "pu", Password: "sp"} && t.Proxy.Guard == nil
 			}},
 		{name: "socks password missing", req: typed(func(r *protocol.OpenTarget) { r.SOCKSProxyID = "login" }), err: "SOCKS5 proxy password required"},
 		{name: "socks password too long", req: typed(func(r *protocol.OpenTarget) { r.SOCKSProxyID, r.SOCKSPassword = "login", strings.Repeat("ä", 128) }),
@@ -94,7 +94,7 @@ func TestRouteSecrets(t *testing.T) {
 			r.SOCKSProxyID, r.SOCKSPassword, r.SOCKSSavedPassword = "login", "sp", true
 		}), err: string(fault.InvalidRequest)},
 		{name: "saved socks password", saved: true, req: typed(func(r *protocol.OpenTarget) { r.SOCKSProxyID, r.SOCKSSavedPassword = "login", true }),
-			check: func(t client.Target) bool { return t.Proxy.Password == "saved-socks" }},
+			check: func(t client.Target) bool { return t.Proxy.Password == "saved-socks" && t.Proxy.Guard != nil }},
 		{name: "open proxy ignores a password", req: typed(func(r *protocol.OpenTarget) { r.SOCKSProxyID, r.SOCKSPassword = "open", "sp" }),
 			check: func(t client.Target) bool { return t.Proxy.Password == "" && t.Proxy.Username == "" }},
 		{name: "profile with jump password", req: protocol.OpenTarget{ProfileID: "p-jump", AuthType: protocol.AuthPassword, Password: "tp", JumpPassword: "jp"},
@@ -162,5 +162,31 @@ func TestSavedPasswordGuard(t *testing.T) {
 	delete(saved, "p")
 	if err := got.Hop.Auth.Guard.Check(ctx); fault.CodeOf(err) != fault.Code("credential_missing") {
 		t.Fatalf("removed assignment: %v", err)
+	}
+}
+
+// A saved SOCKS5 password is guarded like the other saved passwords: a
+// changed or removed assignment refuses it before the login is sent.
+func TestSavedSOCKSPasswordGuard(t *testing.T) {
+	m := newManager(t, Config{}, &fakeShells{})
+	m.profiles = fakeProfiles{"p": {Owner: 1, Hop: client.Hop{Host: "t.test", Port: 22, User: "u"},
+		Proxy: &client.SOCKS{Host: "proxy.test", Port: 1080, Username: "pu"}, Display: client.Display{SOCKSProxyID: "login"}}}
+	saved := fakeSaved{"socks:login": "one"}
+	m.saved = saved
+	ctx := principal.With(t.Context(), principal.Principal{UserID: 1, SessionID: "s"})
+	got, err := m.resolve(ctx, 1, protocol.OpenTarget{ProfileID: "p", AuthType: protocol.AuthPassword, Password: "tp", SOCKSSavedPassword: true})
+	if err != nil || got.Proxy.Guard == nil {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if err := got.Proxy.Guard.Check(ctx); err != nil {
+		t.Fatalf("unchanged password refused: %v", err)
+	}
+	saved["socks:login"] = "two"
+	if err := got.Proxy.Guard.Check(ctx); fault.CodeOf(err) != fault.CredentialTargetChanged {
+		t.Fatalf("changed password: %v", err)
+	}
+	delete(saved, "socks:login")
+	if err := got.Proxy.Guard.Check(ctx); err == nil {
+		t.Fatal("removed assignment accepted")
 	}
 }

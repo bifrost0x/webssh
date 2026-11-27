@@ -89,6 +89,9 @@ type SOCKS struct {
 	Port     int
 	Username string
 	Password string
+	// Guard, when set, re-checks a saved Password right before the login
+	// is sent; an error ends the attempt without sending it.
+	Guard PasswordGuard
 	// RemoteDNS is the proxy's remote_dns setting: the proxy may resolve
 	// the target name itself where the network policy permits it.
 	RemoteDNS bool

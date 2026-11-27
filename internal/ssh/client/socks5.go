@@ -50,7 +50,11 @@ func socksFail(code string) error { return &SOCKSError{Code: code} }
 func socksConnect(ctx context.Context, conn net.Conn, proxy *SOCKS, dest string, port int) error {
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
-	err := socksHandshake(conn, proxy.Username, proxy.Password, dest, port)
+	var guard func() error
+	if proxy.Guard != nil {
+		guard = func() error { return proxy.Guard.Check(ctx) }
+	}
+	err := socksHandshake(conn, proxy.Username, proxy.Password, guard, dest, port)
 	if err != nil && ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -66,8 +70,9 @@ const (
 
 // socksHandshake follows open_socks5_tunnel of app/socks5_client.py: with
 // a login only the password method is offered, and the credentials are
-// checked before anything is sent.
-func socksHandshake(rw io.ReadWriter, username, password, dest string, port int) error {
+// checked before anything is sent. guard, when not nil, runs right before
+// the login is sent; its error ends the handshake.
+func socksHandshake(rw io.ReadWriter, username, password string, guard func() error, dest string, port int) error {
 	login, err := loginRequest(username, password)
 	if err != nil {
 		return err
@@ -99,6 +104,11 @@ func socksHandshake(rw io.ReadWriter, username, password, dest string, port int)
 		return socksFail("socks_protocol_error")
 	}
 	if login != nil {
+		if guard != nil {
+			if err := guard(); err != nil {
+				return err
+			}
+		}
 		if err := socksLogin(rw, login); err != nil {
 			return err
 		}

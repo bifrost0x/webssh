@@ -49,7 +49,7 @@ func TestSOCKSHandshake(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &scripted{in: bytes.NewReader(tc.server)}
-			err := socksHandshake(s, "", "", tc.host, 22)
+			err := socksHandshake(s, "", "", nil, tc.host, 22)
 			se, _ := errors.AsType[*SOCKSError](err)
 			switch {
 			case tc.code == "" && err != nil:
@@ -127,7 +127,7 @@ func FuzzSOCKSReply(f *testing.F) {
 	f.Add([]byte{5, 0, 5, 0, 0, 3, 1, 'a', 0, 22})
 	f.Fuzz(func(t *testing.T, server []byte) {
 		s := &scripted{in: bytes.NewReader(server)}
-		err := socksHandshake(s, "", "", "h.test", 22)
+		err := socksHandshake(s, "", "", nil, "h.test", 22)
 		// Shortest valid exchange: method 2, reply head 4, a name of one
 		// byte 2, port 2.
 		if err == nil && len(server) < 10 {
@@ -167,7 +167,7 @@ func TestSOCKSLogin(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &scripted{in: bytes.NewReader(tc.server)}
-			err := socksHandshake(s, tc.user, tc.pw, "h", 22)
+			err := socksHandshake(s, tc.user, tc.pw, nil, "h", 22)
 			se, _ := errors.AsType[*SOCKSError](err)
 			switch {
 			case tc.code == "" && err != nil:
@@ -190,7 +190,7 @@ func FuzzSOCKSLoginReply(f *testing.F) {
 	f.Add([]byte{5, 0xff})
 	f.Fuzz(func(t *testing.T, server []byte) {
 		s := &scripted{in: bytes.NewReader(server)}
-		err := socksHandshake(s, "user", "secret", "h.test", 22)
+		err := socksHandshake(s, "user", "secret", nil, "h.test", 22)
 		// Method 2, status 2, reply head 4, a name of one byte 2, port 2.
 		if err == nil && (len(server) < 12 || server[1] != 2 || server[3] != 0) {
 			t.Fatalf("accepted %v", server)
@@ -202,4 +202,79 @@ func FuzzSOCKSLoginReply(f *testing.F) {
 			t.Fatalf("password sent without the password method: %v", server)
 		}
 	})
+}
+
+// socksRecorder is a SOCKS5 proxy that offers the password method,
+// accepts any login and records what the client sent before the CONNECT
+// reply.
+func socksRecorder(t *testing.T) (int, <-chan []byte) {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	got := make(chan []byte, 1)
+	go func() {
+		c, err := l.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = c.Close() }()
+		var seen []byte
+		defer func() { got <- seen }()
+		buf := make([]byte, 3)
+		if _, err := io.ReadFull(c, buf); err != nil {
+			return
+		}
+		seen = append(seen, buf...)
+		_, _ = c.Write([]byte{5, 2})
+		buf = make([]byte, 512)
+		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		n, _ := c.Read(buf)
+		seen = append(seen, buf[:n]...)
+		if n > 0 {
+			_, _ = c.Write([]byte{1, 0})
+			_, _ = c.Write([]byte{5, 4, 0, 1, 0, 0, 0, 0, 0, 0})
+		}
+	}()
+	return l.Addr().(*net.TCPAddr).Port, got
+}
+
+// A saved SOCKS5 password whose guard refuses is never sent to the proxy;
+// the attempt ends with the guard's code at the proxy hop. A guard that
+// accepts is asked once, right before the login.
+func TestSOCKSGuardRefusalSendsNoPassword(t *testing.T) {
+	d, _ := newDialer(trusting(), nil)
+	dial := func(g PasswordGuard) ([]byte, error) {
+		port, got := socksRecorder(t)
+		tgt := Target{Owner: 1, Hop: Hop{Host: "h.test", Port: 22, User: "u", Auth: Auth{Password: "x"}},
+			Proxy: &SOCKS{Host: "127.0.0.1", Port: port, Username: "us", Password: "proxy-secret", Guard: g}}
+		_, err := d.Dial(t.Context(), tgt, nil)
+		return <-got, err
+	}
+	refused := &countGuard{err: fault.New(fault.CredentialTargetChanged, "")}
+	seen, err := dial(refused)
+	he, _ := errors.AsType[*HopError](err)
+	if he == nil || he.Role != RoleSOCKS || fault.CodeOf(err) != fault.CredentialTargetChanged {
+		t.Fatalf("refusing guard: %v", err)
+	}
+	if bytes.Contains(seen, []byte("proxy-secret")) || refused.calls != 1 {
+		t.Fatalf("proxy saw %q, guard calls %d", seen, refused.calls)
+	}
+	accepted := &countGuard{}
+	seen, err = dial(accepted)
+	if fault.CodeOf(err) != fault.SOCKSHostUnreachable || !bytes.Contains(seen, []byte("proxy-secret")) || accepted.calls != 1 {
+		t.Fatalf("accepting guard: %v, proxy saw %q, guard calls %d", err, seen, accepted.calls)
+	}
+}
+
+type countGuard struct {
+	calls int
+	err   error
+}
+
+func (g *countGuard) Check(context.Context) error {
+	g.calls++
+	return g.err
 }
