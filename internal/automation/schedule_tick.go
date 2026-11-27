@@ -105,7 +105,7 @@ func (s *Schedules) dispatch(ctx context.Context, r scheduleRow) {
 		if s.o.Passwords == nil {
 			return nil, fault.New(fault.CredentialsDisabled, "")
 		}
-		return s.o.Passwords.SchedulePassword(ctx, r.UserID, hop)
+		return s.o.Passwords.SchedulePassword(ctx, r.UserID, hop, r.Approval.Binding)
 	}
 	run.Finish = func(ctx context.Context, status string) { s.finish(ctx, r.UserID, r.ID, claim.String, status) }
 	err = s.o.Workflows.StartScheduled(ctx, run)

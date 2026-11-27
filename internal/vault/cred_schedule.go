@@ -3,6 +3,7 @@ package vault
 import (
 	"context"
 	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"maps"
 	"slices"
 
@@ -80,71 +81,99 @@ func ScheduleBinding(incarnation, policy string, records map[string][2]string) j
 // (credentials_disabled). Only assigned passwords count: the passphrase
 // vault of the browser was never usable without a signed-in session.
 func (s *Service) ScheduleBinding(ctx context.Context, userID int64, hops []jsontext.Value) (jsontext.Value, error) {
-	c, err := s.credentials()
+	st, err := s.scheduleState(ctx, userID, hops)
 	if err != nil {
 		return nil, err
+	}
+	return ScheduleBinding(st.incarnation, st.policy, st.records), nil
+}
+
+// scheduleState is the binding of hops as it is now, with the document
+// it was read from.
+type scheduleState struct {
+	incarnation, policy string
+	records             map[string][2]string
+	doc                 *credDoc
+}
+
+func (s *Service) scheduleState(ctx context.Context, userID int64, hops []jsontext.Value) (scheduleState, error) {
+	var st scheduleState
+	c, err := s.credentials()
+	if err != nil {
+		return st, err
 	}
 	_, revision, err := c.policy(ctx, false)
 	if err != nil {
-		return nil, err
+		return st, err
 	}
 	all, _, err := c.resources(ctx, userID)
 	if err != nil {
-		return nil, err
+		return st, err
 	}
 	d, err := s.readDoc(ctx, userID)
 	if err != nil {
-		return nil, err
+		return st, err
 	}
 	records := map[string][2]string{}
 	for _, hop := range hops {
 		id, _ := stringMember(hop, "id")
 		current, err := resolve(all, id)
 		if err != nil {
-			return nil, err
+			return st, err
 		}
 		want, ok := RecordFingerprint(hop)
 		if !ok || current.Fingerprint == "" || current.Fingerprint != want {
-			return nil, fault.New(fault.CredentialTargetChanged, "")
+			return st, fault.New(fault.CredentialTargetChanged, "")
 		}
 		a, ok := d.assignment(id)
 		if !ok {
-			return nil, fault.New(fault.CredentialMissing, "")
+			return st, fault.New(fault.CredentialMissing, "")
 		}
 		if a.Fingerprint != want {
-			return nil, fault.New(fault.CredentialTargetChanged, "")
+			return st, fault.New(fault.CredentialTargetChanged, "")
 		}
 		rec, ok := d.record(a.CredentialID)
 		if !ok {
-			return nil, fault.New(fault.CredentialMissing, "")
+			return st, fault.New(fault.CredentialMissing, "")
 		}
 		records[id] = [2]string{a.Generation, rec.Version}
 	}
 	incarnation, err := c.Accounts.Incarnation(ctx, userID)
 	if err != nil {
-		return nil, fault.Wrap(fault.StorageError, err, "")
+		return st, fault.Wrap(fault.StorageError, err, "")
 	}
-	return ScheduleBinding(incarnation, revision, records), nil
+	return scheduleState{incarnation: incarnation, policy: revision, records: records, doc: d}, nil
 }
 
 // SchedulePassword returns the saved password assigned to one frozen hop
-// of an approved schedule (schedule_password of the Python release): the
-// hop must pass ScheduleBinding first. The caller clears the secret and
-// never logs it.
-func (s *Service) SchedulePassword(ctx context.Context, userID int64, hop jsontext.Value) ([]byte, error) {
-	if _, err := s.ScheduleBinding(ctx, userID, []jsontext.Value{hop}); err != nil {
-		return nil, err
-	}
-	id, _ := stringMember(hop, "id")
-	d, err := s.readDoc(ctx, userID)
+// of an approved schedule (schedule_password of the Python release). The
+// hop must pass ScheduleBinding, and its part of the binding must still
+// be the one in approved, the binding of the approval: the password is
+// opened from the same read as that comparison, so a password changed
+// after the run's last check is never handed out (preview_changed). The
+// caller clears the secret and never logs it.
+func (s *Service) SchedulePassword(ctx context.Context, userID int64, hop, approved jsontext.Value) ([]byte, error) {
+	st, err := s.scheduleState(ctx, userID, []jsontext.Value{hop})
 	if err != nil {
 		return nil, err
 	}
-	a, ok := d.assignment(id)
+	id, _ := stringMember(hop, "id")
+	var want struct {
+		Incarnation string               `json:"incarnation"`
+		Policy      string               `json:"policy"`
+		Records     map[string][2]string `json:"records"`
+	}
+	if json.Unmarshal(approved, &want) != nil || want.Incarnation != st.incarnation || want.Policy != st.policy {
+		return nil, fault.New(fault.PreviewChanged, "")
+	}
+	if r, ok := want.Records[id]; !ok || r != st.records[id] {
+		return nil, fault.New(fault.PreviewChanged, "")
+	}
+	a, ok := st.doc.assignment(id)
 	if !ok {
 		return nil, fault.New(fault.CredentialMissing, "")
 	}
-	rec, ok := d.record(a.CredentialID)
+	rec, ok := st.doc.record(a.CredentialID)
 	if !ok {
 		return nil, fault.New(fault.CredentialMissing, "")
 	}

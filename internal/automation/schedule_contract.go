@@ -146,7 +146,9 @@ type SchedulePolicy interface {
 // Password).
 type SchedulePasswords interface {
 	ScheduleBinding(ctx context.Context, userID int64, hops []jsontext.Value) (jsontext.Value, error)
-	SchedulePassword(ctx context.Context, userID int64, hop jsontext.Value) ([]byte, error)
+	// SchedulePassword hands out the password of hop only while its part
+	// of the binding is still the one in approved.
+	SchedulePassword(ctx context.Context, userID int64, hop, approved jsontext.Value) ([]byte, error)
 }
 
 // ScheduleStepUp consumes a step-up grant (provided by
