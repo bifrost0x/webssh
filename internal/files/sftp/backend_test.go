@@ -179,6 +179,15 @@ func TestWriteNewReplaceAndExclusive(t *testing.T) {
 	}
 	_, err = b.Write(ctx(t), p, strings.NewReader("x"), files.WriteOptions{Exclusive: true, Size: -1})
 	wantCode(t, err, fault.FileConflict)
+	// Replacing a directory with a file (TR1-3): ATOMIC_REPLACE_UNAVAILABLE
+	// for a transfer, a conflict for the editor.
+	if err := os.Mkdir(root+"/d", 0o750); err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.Write(ctx(t), root+"/d", strings.NewReader("x"), files.WriteOptions{Size: 1})
+	wantCode(t, err, fault.AtomicReplaceUnavailable)
+	_, err = b.Write(ctx(t), root+"/d", strings.NewReader("x"), files.WriteOptions{Size: 1, ExpectedRevision: files.Revision(nil)})
+	wantCode(t, err, fault.FileConflict)
 
 	if err := os.Chmod(p, 0o640); err != nil {
 		t.Fatal(err)

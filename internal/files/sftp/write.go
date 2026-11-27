@@ -167,7 +167,9 @@ func (j *writeJob) inspect(ctx context.Context) error {
 	snap, ok := snapshotOf(a)
 	switch {
 	case ok && snap.dir:
-		return fault.New(fault.FileConflict, "")
+		// A directory cannot be replaced by a file: a conflict in the
+		// editor, ATOMIC_REPLACE_UNAVAILABLE for a transfer as in Python.
+		return j.fails(fault.FileConflict, fault.AtomicReplaceUnavailable, "")
 	case !ok:
 		return j.fails(fault.EditMetadataUnsupported, fault.AtomicReplaceUnavailable, msgSpecialBits)
 	case snap.special != 0:
