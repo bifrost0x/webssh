@@ -76,8 +76,7 @@ func (s *Service) Delete(ctx context.Context, actor principal.Principal, targetI
 	var kept Retained
 	revs = nil
 	err = s.DB.Write(ctx, func(tx *store.Tx) error {
-		current, err := getTx(ctx, tx, acc.ID)
-		if err != nil {
+		if _, err := getTx(ctx, tx, acc.ID); err != nil {
 			return err
 		}
 		// An unlock and sign-in between the steps must not survive: the
@@ -86,10 +85,12 @@ func (s *Service) Delete(ctx context.Context, actor principal.Principal, targetI
 		if _, err := tx.ExecContext(ctx, `UPDATE accounts_users SET is_locked = 1 WHERE id = ?`, acc.ID); err != nil {
 			return fmt.Errorf("accounts: lock before deletion: %w", err)
 		}
+		var err error
 		if revs, err = s.InvalidateTx(ctx, tx, acc.ID, principal.ReasonAccountLocked); err != nil {
 			return err
 		}
-		if current, err = getTx(ctx, tx, acc.ID); err != nil {
+		current, err := getTx(ctx, tx, acc.ID)
+		if err != nil {
 			return err
 		}
 		if s.Data == nil || s.Retain == nil {
