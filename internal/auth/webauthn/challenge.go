@@ -29,12 +29,16 @@ const (
 	ChallengeTTL   = 5 * time.Minute // webauthn_service.create_challenge
 	challengeBytes = 64              // py_webauthn generate_challenge
 	minBinding     = 16
-	// maxChallenges bounds the table against option requests from many
-	// sources; the oldest challenge gives way. The per-source rate limit
-	// keeps a single client far below it.
+	// maxChallenges bounds the anonymous sign-in challenges and, apart
+	// from them, the challenges of accounts against option requests from
+	// many sources; the oldest of the same kind gives way, so anonymous
+	// requests never push out the challenge of a signed-in ceremony. The
+	// per-source rate limit keeps a single client far below it.
 	maxChallenges = 10000
-	// maxRegistrations bounds the open registrations of one account.
+	// maxRegistrations bounds the open registrations of one account,
+	// maxPerAccount all its open challenges.
 	maxRegistrations = 5
+	maxPerAccount    = 16
 )
 
 var (
@@ -93,8 +97,17 @@ func (c challenges) issue(ctx context.Context, purpose string, userID int64, bin
 				return err
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM webauthn_challenges WHERE id <= (
-			SELECT id FROM webauthn_challenges ORDER BY id DESC LIMIT 1 OFFSET ?)`, maxChallenges-1); err != nil {
+		if userID != 0 {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM webauthn_challenges WHERE user_id = ? AND id <= (
+				SELECT id FROM webauthn_challenges WHERE user_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?)`,
+				userID, userID, maxPerAccount-1); err != nil {
+				return err
+			}
+		}
+		anonymous := userID == 0
+		if _, err := tx.ExecContext(ctx, `DELETE FROM webauthn_challenges WHERE (user_id IS NULL) = ? AND id <= (
+			SELECT id FROM webauthn_challenges WHERE (user_id IS NULL) = ? ORDER BY id DESC LIMIT 1 OFFSET ?)`,
+			anonymous, anonymous, maxChallenges-1); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO webauthn_challenges (purpose, binding_hash, user_id, sealed_challenge, created_at, expires_at)
