@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
@@ -65,6 +66,15 @@ func TestCopyProgressAndAudit(t *testing.T) {
 	e.ev.mu.Unlock()
 	if last.Transferred != 300<<10 || last.Total != 300<<10 || last.Filename != "big.bin" || last.Copy == nil {
 		t.Fatalf("last progress %+v", last)
+	}
+	// The audit follows the finished event.
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		e.audit.mu.Lock()
+		n := len(e.audit.events)
+		e.audit.mu.Unlock()
+		if n > 0 || time.Now().After(deadline) {
+			break
+		}
 	}
 	e.audit.mu.Lock()
 	defer e.audit.mu.Unlock()
