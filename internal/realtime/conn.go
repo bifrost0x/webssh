@@ -37,6 +37,10 @@ type Conn struct {
 	raw net.Conn // under ws, for bounded closes
 	p   principal.Principal
 	id  uint64
+	// sid is the opaque connection id the page learns in hello; the
+	// administration refers to it only as operations.ConnectionRef.
+	sid    string
+	opened time.Time
 
 	io     context.Context
 	ctx    context.Context
@@ -61,7 +65,7 @@ var connIDs atomic.Uint64
 
 func newConn(s *Server, ws *websocket.Conn, raw net.Conn, p principal.Principal) *Conn {
 	return &Conn{
-		srv: s, ws: ws, raw: raw, p: p, id: connIDs.Add(1),
+		srv: s, ws: ws, raw: raw, p: p, id: connIDs.Add(1), sid: newConnectionID(), opened: time.Now(),
 		out:      make(chan outbound, s.cfg.QueueLen),
 		closed:   make(chan struct{}),
 		inflight: make(chan struct{}, s.cfg.InflightPerConn),
@@ -108,10 +112,11 @@ func (c *Conn) run(parent context.Context) {
 
 func (c *Conn) hello() protocol.Hello {
 	h := protocol.Hello{
-		User:       protocol.HelloUser{Username: c.p.Username, IsAdmin: c.p.IsAdmin},
-		Schema:     protocol.Version,
-		Restorable: []protocol.SessionInfo{},
-		Persistent: []protocol.SessionInfo{},
+		User:         protocol.HelloUser{Username: c.p.Username, IsAdmin: c.p.IsAdmin},
+		ConnectionID: c.sid,
+		Schema:       protocol.Version,
+		Restorable:   []protocol.SessionInfo{},
+		Persistent:   []protocol.SessionInfo{},
 	}
 	if c.srv.restorer == nil {
 		return h

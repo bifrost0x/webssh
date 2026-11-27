@@ -331,7 +331,7 @@
             const attempts = this._attempts;
             this._attempts = 0;
             this._terminal = terminal.create(this._terminalHost());
-            this.id = randomId();
+            this.id = typeof payload.connection_id === 'string' && payload.connection_id ? payload.connection_id : randomId();
             this.io.engine.id = this.id;
             this.connected = true;
             this.disconnected = false;

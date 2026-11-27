@@ -17,6 +17,9 @@ type Hello struct {
 	// terminal is attached to; the page offers to reconnect them
 	// (persistent_session_available).
 	Persistent []SessionInfo `json:"persistent"`
+	// ConnectionID is the opaque id of this connection (the Socket.IO
+	// sid of the Python release); the shim exposes it as socket.id.
+	ConnectionID string `json:"connection_id"`
 }
 
 // HelloUser is the signed-in user as the page may show it.
