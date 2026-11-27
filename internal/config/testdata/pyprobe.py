@@ -2,7 +2,9 @@
 
 Reads one JSON request per line from stdin and writes one JSON answer per
 line. A request is either {"env": {...}} (import config.py with exactly
-that environment) or {"fn": name, "arg": str} (one Python primitive).
+that environment), {"fn": name, "arg": str} (one Python primitive) or
+{"dotenv": base64, "env": {...}} (load_dotenv on a file with that content,
+as config.py calls it).
 The repository root is the first argument.
 """
 
@@ -121,11 +123,55 @@ def primitive(fn, arg):
     raise SystemExit('unknown function ' + fn)
 
 
+def load_dotenv_file(data, env):
+    import base64  # noqa: PLC0415
+    import logging  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    import dotenv  # noqa: PLC0415
+
+    lines = []
+
+    class Collect(logging.Handler):
+        def emit(self, record):
+            m = re.search(r'line (\d+)', record.getMessage())
+            lines.append(int(m.group(1)) if m else -1)
+
+    log = logging.getLogger('dotenv.main')
+    handler = Collect()
+    log.addHandler(handler)
+    log.propagate = False
+    answer = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, '.env')
+        with open(path, 'wb') as f:
+            f.write(base64.b64decode(data))
+        os.environ.clear()
+        os.environ.update(env)
+        before = dict(os.environ)
+        try:
+            dotenv.load_dotenv(path)
+        except Exception as exc:  # the oracle reports every failure
+            answer['error'] = type(exc).__name__
+        else:
+            answer['set'] = [[k, v] for k, v in os.environ.items() if k not in before]
+            changed = [k for k, v in before.items() if os.environ.get(k) != v]
+            if changed:
+                answer['changed'] = changed
+    log.removeHandler(handler)
+    answer['bad_lines'] = lines
+    return answer
+
+
 def main():
     base_env = dict(os.environ)
     for line in sys.stdin:
         req = json.loads(line)
-        if 'env' in req:
+        if 'dotenv' in req:
+            answer = load_dotenv_file(req['dotenv'], req['env'])
+            os.environ.clear()
+            os.environ.update(base_env)
+        elif 'env' in req:
             answer = import_config(req['env'])
         else:
             os.environ.clear()

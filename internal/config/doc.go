@@ -18,7 +18,10 @@
 // REQUESTS_CA_BUNDLE and CURL_CA_BUNDLE trust anchors, HOST and PORT, and
 // reports a TZ the Go runtime cannot load. The production profile enforces
 // the rules of validate_security_config.
-
+//
+// ReadDotenv and LoadDotenv read the .env file of the installation with
+// the semantics of python-dotenv, as config.py does before it reads the
+// environment.
 //
 // The differential tests compare the package with config.py and
 // entrypoint.sh of the Python release; see oracle_test.go.

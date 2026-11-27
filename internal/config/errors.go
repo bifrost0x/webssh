@@ -44,6 +44,9 @@ const (
 	WarnTimeZone WarningKind = "timezone"
 	// WarnSecret reports how the application secret was found.
 	WarnSecret WarningKind = "secret"
+	// WarnDotenv reports what the .env file of the installation added and
+	// the statements python-dotenv would skip.
+	WarnDotenv WarningKind = "dotenv"
 )
 
 // Warning is one startup message for the log. It never contains secret
