@@ -1,3 +1,4 @@
+const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
@@ -8,9 +9,13 @@ const python = process.env.PYTHON
 const e2ePort = process.env.WEBSSH_E2E_PORT || '4173';
 // Specs and helpers build loopback URLs from the port, so the host is fixed.
 const e2eBaseUrl = `http://127.0.0.1:${e2ePort}`;
-const outputDir = process.env.WEBSSH_E2E_OUTPUT_DIR || (process.env.CI
-    ? 'test-results'
-    : path.join(os.tmpdir(), 'webssh-playwright-results'));
+// Every local run gets its own output directory, so that runs side by side
+// never clean up each other's artifacts. The workers inherit the choice of
+// the main process through the environment.
+if (!process.env.WEBSSH_E2E_OUTPUT_DIR && !process.env.CI) {
+    process.env.WEBSSH_E2E_OUTPUT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'webssh-playwright-results-'));
+}
+const outputDir = process.env.WEBSSH_E2E_OUTPUT_DIR || 'test-results';
 const timingOutput = process.env.WEBSSH_E2E_TIMING_FILE
     || path.join(outputDir, 'e2e-timing-full.json');
 
