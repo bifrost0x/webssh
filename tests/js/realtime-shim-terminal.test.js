@@ -552,3 +552,34 @@ test('e2e.output_stream binds a server channel to a session name', async () => {
     assert.deepEqual(ws.frames(KIND_ACK).map(f => [f.channel, f.seq]), [[ch, 1]]);
     socket.disconnect();
 });
+
+// credential_error of the Python release: a refused saved password of the
+// target or a route shows one text, the guard of the SOCKS5 login
+// included (credential_target_changed, RS35-F1).
+test('a refused saved password reads like the Python release', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const errors = [];
+    socket.on('ssh_error', data => errors.push(plain(data)));
+    const cases = [
+        ['r1', {credential_id: 'c1'}, 'credential_target_changed'],
+        ['r2', {socks_proxy: {socks_proxy_id: 's1', credential_id: 'c2'}}, 'credential_target_changed'],
+        ['r3', {credential_id: 'c1'}, 'vault_locked'],
+        ['r4', {}, 'credential_target_changed'],
+        ['r5', {credential_id: 'c1'}, 'unreachable'],
+    ];
+    for (const [id, extra, code] of cases) {
+        socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'password', client_request_id: id, ...extra});
+        ws.fail(ws.lastRequest('terminal.open').id, {code, message: `server text ${code}`});
+    }
+    await tick();
+    const unusable = 'Saved credentials no longer match this connection. Review it and try again.';
+    assert.deepEqual(errors.map(e => [e.client_request_id, e.code, e.error]), [
+        ['r1', 'credential_unavailable', unusable],
+        ['r2', 'credential_unavailable', unusable],
+        ['r3', 'vault_locked', 'Unlock your credential vault and try again.'],
+        ['r4', 'credential_target_changed', 'server text credential_target_changed'],
+        ['r5', 'unreachable', 'server text unreachable'],
+    ]);
+    socket.disconnect();
+});

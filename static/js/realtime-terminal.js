@@ -64,6 +64,26 @@
         return null;
     }
 
+    // credential_error of the Python release: a saved password that cannot
+    // be used keeps its code and text where Python named it; any other
+    // refusal (the target or route changed since the assignment, saved
+    // passwords turned off) is credential_unavailable with one text.
+    const CREDENTIAL_TEXTS = Object.freeze({
+        https_required: 'Saved passwords require HTTPS.',
+        vault_locked: 'Unlock your credential vault and try again.',
+        vault_missing: 'Set up your credential vault first.',
+        credential_missing: 'Save a password for this connection first.',
+    });
+    const CREDENTIAL_REFUSALS = new Set(['credential_target_changed', 'credential_unavailable', 'credentials_disabled']);
+
+    function credentialError(target, err) {
+        const saved = target.saved_password || target.jump_saved_password || target.socks_saved_password;
+        if (!saved) return null;
+        if (Object.hasOwn(CREDENTIAL_TEXTS, err.code)) return {error: CREDENTIAL_TEXTS[err.code], code: err.code};
+        if (!CREDENTIAL_REFUSALS.has(err.code)) return null;
+        return {error: 'Saved credentials no longer match this connection. Review it and try again.', code: 'credential_unavailable'};
+    }
+
     function openTarget(data) {
         if (targetError(data) !== null) return null;
         const authType = data.auth_type || (data.key_id ? 'key' : 'password');
@@ -261,8 +281,9 @@
             if (channels.get(channel.id) !== channel) return;
             if (!result.ok) {
                 release(channel, 'open failed');
+                const credential = credentialError(target, result.err);
                 host.dispatch('ssh_error', {
-                    error: result.err.message || result.err.code, code: result.err.code,
+                    ...(credential || {error: result.err.message || result.err.code, code: result.err.code}),
                     client_request_id: requestId,
                     ...(result.err.retry_after_ms ? {retry_after_ms: result.err.retry_after_ms} : {}),
                 });
