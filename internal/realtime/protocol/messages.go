@@ -161,6 +161,18 @@ var v1 = []MessageType{
 	{TypeSMBShareDelete, ClientRequest, "internal/files/smb"},
 	{TypeSMBConnect, ClientRequest, "internal/files/smb"},
 	{TypeSMBConnectCancel, ClientRequest, "internal/files/smb"},
+
+	// Area "commands" (CM1, payload_commands.go).
+	{TypeCommandsList, ClientRequest, "internal/commands"},
+	{TypeCommandsAdd, ClientRequest, "internal/commands"},
+	{TypeCommandsUpdate, ClientRequest, "internal/commands"},
+	{TypeCommandsDelete, ClientRequest, "internal/commands"},
+	{TypeCommandSetList, ClientRequest, "internal/commands"},
+	{TypeCommandSetResolve, ClientRequest, "internal/commands"},
+	{TypeCommandSetSave, ClientRequest, "internal/commands"},
+	{TypeCommandSetDuplicate, ClientRequest, "internal/commands"},
+	{TypeCommandSetDelete, ClientRequest, "internal/commands"},
+	{TypeCommandSetConvert, ClientRequest, "internal/commands"},
 }
 
 // V1 returns the catalog of schema v1.

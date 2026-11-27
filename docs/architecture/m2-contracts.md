@@ -536,6 +536,85 @@ func (l *Library) SetExists(ctx context.Context, userID int64, setID string) (bo
 - The terminal sends a startup set with Enter at connect (not on a tmux
   reattach); the launcher after connect inserts the text without Enter.
 
+Additions of CM1 (contract commit of the package, additive):
+
+```go
+func (l *Library) Command(ctx context.Context, userID int64, commandID string) (command, parameters string, err error)
+func (l *Library) SetInfo(ctx context.Context, userID int64, setID string) (SetInfo, error) // SetInfo{ID, Name, Parameters []string}
+func (l *Library) CheckCommandTx(ctx context.Context, tx *store.Tx, userID int64, commandID, override jsontext.Value) error
+func (l *Library) CheckSetTx(ctx context.Context, tx *store.Tx, userID int64, setID jsontext.Value) error
+type TxReferences interface {
+    SetUsagesTx(ctx context.Context, tx *store.Tx, userID int64, setID string) ([]Usage, error)
+    CommandUsagesTx(ctx context.Context, tx *store.Tx, userID int64, commandID string) ([]Usage, error)
+}
+type Profiles interface {
+    LegacyStartup(ctx context.Context, owner int64, profileID string) (text string, ok, usesSet bool, err error)
+    AssignSet(ctx context.Context, owner int64, profileID, setID string) (jsontext.Value, error)
+}
+```
+
+- `Command` is the single lookup of TM1-1 (`terminal.Commands.Command`):
+  a built-in template or an own command; another user's or a missing one
+  is `not_found` ("Command not found"). `terminal.Commands.ResolveSet`
+  is `Resolve(ctx, owner, setID, nil, false)`.
+- `SetInfo`, `Resolve` and `SetExists` are the stable interface for the
+  automation (AU1, set as a step): `SetInfo` names the declared
+  parameters, `Resolve` with values resolves a parameterised set, without
+  values a set without parameters; both refuse a set of another user as
+  `not_found` and every rule failure as `validation_error` with the
+  Python text.
+- A `References` that also implements `TxReferences` is asked inside the
+  library's write transaction (the coordinator lock of the Python
+  release); the provider in `cmd/webssh` reads the saved hosts through
+  the same transaction. `internal/hosts` declares the consumer interface
+  `CommandRefs` (`CheckCommandTx`, `CheckSetTx`), fulfilled by
+  `*commands.Library`, and checks the reference of a saved host's startup
+  mode inside the transaction that saves the host; without it a host
+  keeps the reference it already has (M1 behaviour).
+- `Profiles` (consumer interface, provided over `hosts.Service`
+  `LegacyStartup` and `AssignCommandSet`) converts the free startup text
+  of a saved host into a set (`convert_legacy_command_set`).
+- Store owner `commands`: tables `commands_user` and `commands_sets`, one
+  row per record in the order of the Python store with the record as
+  Python stored it (`user_id`, `position`, `id`, `record`), like
+  `smb_shares` (E22). Steps and parameters stay in the record instead of
+  the tables `commands_set_steps` and `commands_set_parameters` the
+  migration specification names; nothing reads them separately and the
+  record keeps unknown members.
+
+### Message types (commands)
+
+Defined by CM1 (`internal/realtime/protocol/payload_commands.go`), mapped
+in `static/js/realtime-shim-commands.js`. Every request member is a raw
+JSON value, so the rules of the Python release decide presence and type
+(their messages unchanged). Results are the success payloads of today;
+the shim pushes the events of today from them, refreshes the list where
+Python sent it after a change, and repeats a failure as `error` except
+for the preview of a parameterised set, which Python answered without an
+event.
+
+| Type | Direction | Owner | Payload | Socket.IO today |
+|---|---|---|---|---|
+| `commands.list` | client | `internal/commands` | `CommandsList` → `Commands` | `list_commands` (`commands_list`) |
+| `commands.add` | client | `internal/commands` | `CommandSave` → `CommandSaved` | `add_command` (`command_added`, `commands_list`) |
+| `commands.update` | client | `internal/commands` | `CommandSave` → `CommandSaved` | `update_command` (`command_updated`, `commands_list`) |
+| `commands.delete` | client | `internal/commands` | `CommandDelete` → `CommandDeleted` | `delete_command` (`command_deleted`, `commands_list`) |
+| `commands.set.list` | client | `internal/commands` | `Empty` → `CommandSets` | `list_command_sets` (`command_sets_list`) |
+| `commands.set.resolve` | client | `internal/commands` | `CommandSetResolve` → `CommandSetResolved` | `resolve_command_set_parameters` |
+| `commands.set.save` | client | `internal/commands` | `CommandSetSave` → `CommandSetSaved` | `save_command_set` (`command_set_saved`, `command_sets_list`) |
+| `commands.set.duplicate` | client | `internal/commands` | `CommandSetRef` → `CommandSetSaved` | `duplicate_command_set` (`command_set_saved`, `command_sets_list`) |
+| `commands.set.delete` | client | `internal/commands` | `CommandSetRef` → `CommandSetDeleted` | `delete_command_set` (`command_set_deleted`, `command_sets_list`) |
+| `commands.set.convert` | client | `internal/commands` | `CommandSetConvert` → `CommandSetConverted` | `convert_legacy_command_set` (`command_set_converted`, `command_sets_list`) |
+
+- Specs: the lists inline; the preview inline with 64 KiB; every change
+  `Mutates`, `RateKey command_mutation` (`COMMAND_MUTATION_RATELIMIT`,
+  cmd/webssh `realtimeLimiter`), 2 MiB (`CommandMaxPayload`).
+- Codes as `_command_set_error`: `not_found` ("Command not found",
+  "Command set not found", "Profile not found"), `in_use` with
+  `details.usages` (a command: objects `{id, name, type}`; a set: names),
+  `quota_exceeded` ("Command storage quota exceeded: …"), `storage_error`,
+  otherwise `validation_error`.
+
 ### Remote commands
 
 `internal/ssh/remotecmd` stays the only way to run a non-interactive

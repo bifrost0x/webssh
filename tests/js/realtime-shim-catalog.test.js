@@ -18,6 +18,9 @@ test('every mapped event targets a type of the v1 catalog', () => {
         'files.edit.save', 'files.mkdir', 'files.create', 'files.rename', 'files.delete', 'files.source.close',
         'files.quick.open', 'files.quick.cancel', 'files.quick.close', 'files.session.probe', 'files.session.directory',
         'smb.share.list', 'smb.share.save', 'smb.share.delete', 'smb.connect', 'smb.connect.cancel',
+        'commands.list', 'commands.add', 'commands.update', 'commands.delete', 'commands.set.list',
+        'commands.set.resolve', 'commands.set.save', 'commands.set.duplicate', 'commands.set.delete',
+        'commands.set.convert',
     ]);
     const mapped = new Set(Object.values(catalog.REQUESTS).map(entry => entry.type));
     assert.deepEqual([...mapped].sort(), [...v1].sort());
@@ -185,23 +188,50 @@ test('events without a v1 type are answered locally and reported to the notice',
     const reported = [];
     window.addEventListener('webssh:preview-unavailable', event => reported.push(event.detail.feature));
     const seen = [];
-    socket.on('commands_list', data => seen.push(['commands', data]));
-    socket.on('session_sftp_capability', data => seen.push(['sftp', data]));
     socket.on('error', data => seen.push(['error', data]));
     const sent = ws.sent.length;
-    socket.emit('list_commands', {os_filter: 'all'});
-    socket.emit('list_command_sets', {}, ack => seen.push(['ack', ack]));
-    socket.timeout(10000).emit('resolve_command_set_parameters', {}, (error, ack) => seen.push(['timed', error, ack.code]));
+    socket.timeout(10000).emit('prepare_transfer', {}, (error, ack) => seen.push(['timed', error, ack.code]));
     socket.emit('get_file_permissions', {source_id: 'src', request_id: 'r2', path: '/'});
     await tick();
     assert.equal(ws.sent.length, sent, 'nothing reaches the server');
     assert.deepEqual(plain(seen), [
-        ['commands', {commands: [], available: false}],
-        ['ack', {success: false, code: 'not_available_in_preview', error: 'Not available in this preview yet.'}],
         ['timed', null, 'not_available_in_preview'],
         ['error', {success: false, code: 'not_available_in_preview', error: 'Not available in this preview yet.', source_id: 'src', request_id: 'r2', path: '/'}],
     ]);
-    assert.deepEqual(reported, ['commands', 'commandSets', 'commandSets', 'files']);
+    assert.deepEqual(reported, [catalog.featureOf('prepare_transfer'), 'files']);
+    socket.disconnect();
+});
+
+test('command changes push the Python events, refresh the list and repeat failures as error', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const seen = [];
+    for (const event of ['command_added', 'commands_list', 'command_sets_list', 'command_set_deleted', 'error']) {
+        socket.on(event, data => seen.push([event, plain(data)]));
+    }
+    socket.emit('add_command', {name: 'n', command: 'c', description: 'd', extra: 1}, ack => seen.push(['ack', plain(ack)]));
+    const add = ws.lastRequest('commands.add');
+    assert.deepEqual(add.p, {name: 'n', command: 'c', description: 'd'});
+    ws.reply(add.id, {command: {id: 'c1'}});
+    await tick();
+    ws.reply(ws.lastRequest('commands.list').id, {commands: [{id: 'c1'}]});
+    socket.emit('delete_command_set', {command_set_id: 's1'}, ack => seen.push(['ack', plain(ack)]));
+    ws.fail(ws.lastRequest('commands.set.delete').id, {
+        code: 'in_use', message: 'Command set is used by 1 profile', details: {usages: ['web']},
+    });
+    socket.timeout(10000).emit('resolve_command_set_parameters', {command_set_id: 's2', values: {path: '/'}},
+        (error, ack) => seen.push(['resolve', error, plain(ack)]));
+    ws.fail(ws.lastRequest('commands.set.resolve').id, {code: 'validation_error', message: 'Provide exactly the declared command parameter values'});
+    await tick();
+    const failed = {usages: ['web'], success: false, code: 'in_use', error: 'Command set is used by 1 profile'};
+    assert.deepEqual(seen, [
+        ['command_added', {command: {id: 'c1'}}],
+        ['ack', {success: true, command: {id: 'c1'}}],
+        ['commands_list', {commands: [{id: 'c1'}]}],
+        ['error', failed],
+        ['ack', failed],
+        ['resolve', null, {success: false, code: 'validation_error', error: 'Provide exactly the declared command parameter values'}],
+    ]);
     socket.disconnect();
 });
 
