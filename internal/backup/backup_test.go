@@ -143,9 +143,96 @@ func TestWriteRequiresContents(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	c := f.contents()
-	c.SecretKey = nil
+	c.Material = nil
 	if _, err := Write(t.TempDir(), c); err == nil {
-		t.Error("an archive without SECRET_KEY was written")
+		t.Error("an archive with SECRET_KEY but without the material was written")
+	}
+	c = f.contents()
+	c.KeyID = ""
+	if _, err := Write(t.TempDir(), c); err == nil {
+		t.Error("an archive without key id was written")
+	}
+}
+
+// D-08: an archive without SECRET_KEY opens only with the active secret;
+// one without material only with the installation's material. The purge
+// verification requires both in the archive.
+func TestOptionalSecretAndMaterial(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	c := f.contents()
+	c.SecretKey, c.Reason = nil, ReasonExport
+	path, err := Write(t.TempDir(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(t.Context(), path, probe); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("purge verification accepted an archive without SECRET_KEY: %v", err)
+	}
+	if _, err := VerifyWith(t.Context(), path, VerifyOptions{Probes: []Probe{probe}}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("no secret at all: %v", err)
+	}
+	if _, err := VerifyWith(t.Context(), path, VerifyOptions{Secret: []byte("another-secret-0123456789abcdef")}); !errors.Is(err, ErrKeyMismatch) {
+		t.Fatalf("wrong secret: %v", err)
+	}
+	v, err := VerifyWith(t.Context(), path, VerifyOptions{Secret: f.secret, Probes: []Probe{probe}})
+	if err != nil || !v.SealedChecked || v.Manifest.IncludesSecretKey || !bytes.Equal(v.Material, f.material) {
+		t.Fatalf("%+v, %v", v, err)
+	}
+
+	c.Material, c.Reason = nil, ReasonReplaced
+	path, err = Write(t.TempDir(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyWith(t.Context(), path, VerifyOptions{Secret: f.secret}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("no material: %v", err)
+	}
+	other := bytes.Repeat([]byte{9}, keyring.MaterialSize)
+	if _, err := VerifyWith(t.Context(), path, VerifyOptions{Secret: f.secret, Material: other}); !errors.Is(err, ErrKeyMismatch) {
+		t.Fatalf("foreign material: %v", err)
+	}
+	keep := filepath.Join(t.TempDir(), "kept.db")
+	if _, err := VerifyWith(t.Context(), path, VerifyOptions{Secret: f.secret, Material: f.material, Probes: []Probe{probe}, Database: keep}); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(keep); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("kept database: %v, %v", info, err)
+	}
+}
+
+// An archive with another SECRET_KEY than the active one is refused.
+func TestSecretMismatch(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	path, err := Write(t.TempDir(), f.contents())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyWith(t.Context(), path, VerifyOptions{Secret: []byte("active-secret-0123456789abcdef")}); !errors.Is(err, ErrSecretMismatch) {
+		t.Fatalf("got %v", err)
+	}
+	if _, err := VerifyWith(t.Context(), path, VerifyOptions{Secret: f.secret}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifyLimits(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	path, err := Write(t.TempDir(), f.contents())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, l := range map[string]Limits{
+		"members":   {MaxMembers: 3, MaxFileSize: 1 << 30, MaxTotalSize: 1 << 30, MaxManifestSize: 1 << 20},
+		"file size": {MaxMembers: 10, MaxFileSize: 1000, MaxTotalSize: 1 << 30, MaxManifestSize: 1 << 20},
+		"total":     {MaxMembers: 10, MaxFileSize: 1 << 30, MaxTotalSize: 2000, MaxManifestSize: 1 << 20},
+		"manifest":  {MaxMembers: 10, MaxFileSize: 1 << 30, MaxTotalSize: 1 << 30, MaxManifestSize: 10},
+	} {
+		if _, err := VerifyWith(t.Context(), path, VerifyOptions{Limits: l}); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 
