@@ -3,7 +3,9 @@
 // permission, runtime inventory, host context, session insights and notes
 // (one model: a note belongs to a saved host or to none, D-11).
 //
-// In M1 it serves the note without a host (notes.get, notes.save) and the
-// minimal overview status. Two packages of the M1 plan work here in
-// parallel: notes live in notes*.go, the overview in overview*.go.
+// It serves the note without a host (notes.get, notes.save), the host
+// context of a saved host (notes, favourite directories and command-set
+// references under one revision, context*.go) and the minimal overview
+// status. Packages built in parallel keep their own files: notes in
+// notes*.go, the host context in context*.go, the overview in overview*.go.
 package hostops
