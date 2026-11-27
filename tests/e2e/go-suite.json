@@ -195,6 +195,18 @@
       {"title": "single-session workspace keeps terminal primary with on-demand Files, Diagnostics, and Notes", "reason": "uses the command library (C-CMD)", "package": "CM1"},
       {"title": "workspace tools resume after repeated transport interruptions", "reason": "uses the command library (C-CMD)", "package": "CM1"},
       {"title": "narrow desktop tools contain German diagnostics and commands inside every surface", "reason": "uses the command library (C-CMD)", "package": "CM1"}
+    ]},
+    {"file": "product-captures.spec.js", "exclude": [
+      {"title": "captures the focused session workspace and operational context", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
+      {"title": "captures seeded command and connection option surfaces at Full HD scale", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
+      {"title": "captures the seeded key management surface at Full HD scale", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
+      {"title": "captures a populated dual-pane File Manager without remote file actions", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
+      {"title": "captures six current file preview and editing frames without remote actions", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
+      {"title": "captures six current Command Sets animation frames without remote actions", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
+      {"title": "captures a contained multi-session workspace and the current theme menu", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
+      {"title": "captures the current Hosts start surface without overflow", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
+      {"title": "captures WebSSH 3 dashboard and every supported theme", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
+      {"title": "captures dashboard arrangement and host discovery", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"}
     ]}
   ]
 }
