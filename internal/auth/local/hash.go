@@ -184,6 +184,17 @@ func (h *Hasher) Verify(ctx context.Context, algorithm, stored, password string)
 // remain: most accounts then still answer at bcrypt speed.
 func (h *Hasher) VerifyDummy(ctx context.Context, password string, legacy bool) {
 	if legacy {
+		h.SpendDummy(ctx, password, AlgorithmBcrypt)
+		return
+	}
+	h.SpendDummy(ctx, password, AlgorithmArgon2id)
+}
+
+// SpendDummy verifies password against a hash of a random secret with
+// algorithm (AlgorithmBcrypt at the cost of the Python release, else
+// Argon2id with the current parameters).
+func (h *Hasher) SpendDummy(ctx context.Context, password, algorithm string) {
+	if algorithm == AlgorithmBcrypt {
 		h.legacyOnce.Do(func() {
 			secret := make([]byte, 32)
 			_, _ = rand.Read(secret)

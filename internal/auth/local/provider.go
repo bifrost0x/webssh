@@ -87,7 +87,7 @@ func (p *Provider) read(ctx context.Context, userID int64) (stored, bool, error)
 
 // Authenticate checks a name and password. Every wrong combination,
 // including unknown, locked and directory-managed accounts, fails with the
-// same fault.AuthFailed; unknown names spend a dummy verification.
+// same fault.AuthFailed and costs the same time (failed).
 // After a successful sign-in with a bcrypt hash or weaker Argon2id
 // parameters the hash is replaced (D-12); a failed rehash is logged and
 // does not fail the sign-in.
@@ -100,32 +100,45 @@ func (p *Provider) Authenticate(ctx context.Context, username, secret string) (i
 		return 0, err
 	}
 	if id == 0 {
-		p.Hasher.VerifyDummy(ctx, secret, p.legacyHashes(ctx))
-		return 0, errFailed
+		return 0, p.failed(ctx, secret, "")
 	}
 	row, found, err := p.read(ctx, id)
 	if err != nil {
 		return 0, err
 	}
 	if !found {
-		p.Hasher.VerifyDummy(ctx, secret, p.legacyHashes(ctx))
-		return 0, errFailed
+		return 0, p.failed(ctx, secret, "")
 	}
 	ok, rehash, err := p.Hasher.Verify(ctx, row.algorithm, row.hash, secret)
 	if err != nil {
 		if errors.Is(err, ErrFormat) {
 			p.logger().WarnContext(ctx, "stored password hash is unusable", "user_id", id)
-			return 0, errFailed
+			return 0, p.failed(ctx, secret, "")
 		}
 		return 0, fault.Wrap(fault.Unavailable, err, "")
 	}
 	if !ok || !usable {
-		return 0, errFailed
+		return 0, p.failed(ctx, secret, row.algorithm)
 	}
 	if rehash {
 		p.rehash(ctx, id, row, secret)
 	}
 	return id, nil
+}
+
+// failed spends what the failed sign-in of any other name costs, after
+// spent (the algorithm already verified, "" for none): an Argon2id
+// verification and, while bcrypt hashes remain, a bcrypt verification.
+// So the answer time shows neither whether a name exists nor whether its
+// hash was already migrated to Argon2id.
+func (p *Provider) failed(ctx context.Context, secret, spent string) error {
+	if spent != AlgorithmArgon2id {
+		p.Hasher.SpendDummy(ctx, secret, AlgorithmArgon2id)
+	}
+	if spent != AlgorithmBcrypt && p.legacyHashes(ctx) {
+		p.Hasher.SpendDummy(ctx, secret, AlgorithmBcrypt)
+	}
+	return errFailed
 }
 
 // legacyHashes reports whether any bcrypt hash is left; a failed read
