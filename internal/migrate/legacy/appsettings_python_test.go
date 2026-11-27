@@ -57,6 +57,10 @@ func appSettingsCases(dir string) []appSettingsCase {
 		`{"schema_version": 2, "tmux_enabled": true, "runtime_feature_migration": ["tmux_enabled"], "automation_enabled": false, "automation_enabled_revision": "a0", "automation_effective_observed": false}`,
 		`{"schema_version": 2, "sftp_chmod_enabled": true, "runtime_feature_migration": [], "automation_enabled": true, "automation_enabled_revision": "a0", "automation_enabled_from_environment": true, "automation_effective_observed": true}`,
 		`{"schema_version": 2, "server_operations_enabled": false, "runtime_feature_migration": ["server_operations_enabled", "tmux_default"], "tmux_default": true, "automation_enabled": true, "automation_enabled_revision": "a0", "automation_enabled_from_environment": false, "credentials_enabled": false, "credentials_enabled_revision": "c0"}`,
+		`{"schema_version": 2, "automation_enabled": true, "automation_enabled_revision": "a0"}`,
+		`{"schema_version": 2, "runtime_feature_migration": ["tmux_enabled", "tmux_enabled", "tmux_default"], "tmux_default": false}`,
+		`{"schema_version": 2, "automation_enabled": false, "automation_enabled_revision": "a0", "automation_enabled_from_environment": true, "automation_effective_observed": true, "credentials_enabled": true}`,
+		`{"schema_version": 2, "support_links_enabled": false, "registration_enabled": true, "tmux_enabled": false, "tmux_default": true, "sftp_chmod_enabled": false, "server_operations_enabled": true, "runtime_feature_migration": ["sftp_chmod_enabled", "server_operations_enabled"], "automation_enabled": false, "automation_enabled_revision": "a0", "automation_effective_observed": false, "automation_enabled_from_environment": false}`,
 	} {
 		docs = append(docs, &d)
 	}
