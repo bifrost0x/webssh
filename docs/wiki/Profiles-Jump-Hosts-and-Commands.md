@@ -350,16 +350,14 @@ UDP, BIND and GSSAPI are not supported. WebSSH does not use `ALL_PROXY` or execu
 Saved profiles, jump hosts and SOCKS5 proxies have per-field, record-count, and
 serialized-byte budgets. Defaults permit 500 profiles, 100 jump hosts and
 100 SOCKS5 proxies, 2 MiB per store, and 4 MiB combined across all three stores.
-Mutations share a per-user rate limit. The normal UI
-quarantines a legacy store above those limits so a large payload cannot be
-expanded through Socket.IO. Stop every WebSSH process, then use the bounded
+Mutations share a per-user rate limit. A collection above those limits stays listable but cannot grow. Stop every WebSSH process, then use the bounded
 recovery CLI to discover non-secret record summaries and opaque selectors, then
 delete exact records:
 
 ```bash
-python -m flask --app start connection-store list \
+webssh connection-store list \
   --username USER --kind profiles --confirm-offline
-python -m flask --app start connection-store delete \
+webssh connection-store delete \
   --username USER --kind profiles --selector SELECTOR --confirm-offline
 ```
 

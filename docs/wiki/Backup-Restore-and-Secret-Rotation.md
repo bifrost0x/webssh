@@ -1,138 +1,214 @@
 # Backup, Restore, and Secret Rotation
 
-WebSSH provides native administrator and CLI workflows for backing up persistent state, validating archives, restoring an installation, and rotating a container-managed `SECRET_KEY`.
+WebSSH provides administrator and command-line workflows for backing up
+persistent state, checking archives, restoring an installation and rotating
+the generated `SECRET_KEY`.
 
-Backups remain highly sensitive even though native exports exclude saved remote passwords and SSH keys. An archive can contain user configuration, host information, the authentication database (including password hashes and MFA data), provider secrets such as the admin-managed encrypted GitHub client secret, and the persisted application secret. Store downloaded archives encrypted and off-host with restricted access.
+Backups are sensitive. An archive contains the database with user
+configuration, host information, password hashes, second factors and
+provider secrets such as the encrypted GitHub client secret, and by default
+the application secret and key material that decrypt them. Store downloaded
+archives encrypted and off the host with restricted access.
 
-## What a native backup contains
+Upgrading from 3.3? Backups made with 3.3 restore on 3.4; 3.4 backups do
+not restore on 3.3. See [Upgrading to 3.4](Upgrading-to-3.4).
 
-The archive covers persistent `DATA_DIR` configuration and account state. Native exports exclude named password stores (`credentials.json`), legacy `automation-vault.json`, SSH key directories (both metadata and private keys), and quarantined `deleted_users` data. Transient logs, temporary uploads, incomplete transfers, and runtime-only SSH channels are also excluded.
+## What a backup contains
 
-SOCKS5 proxy metadata (`users/user_<id>/socks_proxies.json`) and profile route
-references are included. Proxy passwords are excluded with the named password
-store; the proxy file contains only connection metadata. Older backups without
-this file restore with an empty proxy store.
+A backup is a tar archive in the format `webssh-go-backup` with a
+`manifest.json` that records the format version, the reason, whether the
+secret is included and a SHA-256 for every member. Members are stored below
+`data/`:
 
-These are specific file exclusions, not general secret detection: commands, notes, profiles and retained run history can still contain manually embedded secrets. Historical archives are not rewritten and may still contain remote credentials. Protect their retention and rotate remote credentials when old copies must stop working.
+| Member | Content |
+|---|---|
+| `data/go/webssh.db` | the database, taken as a consistent snapshot |
+| `data/secret_key` | `SECRET_KEY`, unless `--without-secret-key` is given |
+| `data/go/keyring-material` | the key material that, together with `SECRET_KEY`, protects stored secrets |
+| `data/<path>` | only in the backup `legacy purge` writes: left-over files of the 3.3 data |
 
-Current archives use format version 2. The verifier also understands legacy format version 1/schema 0 for compatibility. Validation checks the manifest, file checksums, declared sizes, member paths, member count, compression behavior, and archive-wide limits before restore.
+What an archive restores depends on its reason:
+
+- **Exports** (online backup, `backup create`) leave out saved SSH keys,
+  saved passwords, their assignments and the legacy automation vault. After
+  restoring an export, upload SSH keys again, recreate saved passwords and
+  reassign them to hosts, jump hosts, SOCKS5 proxies and SMB shares.
+- **Recovery archives** (written by `legacy purge`, `migrate --replace` and
+  `rotate-secret-key`) keep them, so a failed operation can return to the
+  original state. The CLI restores their credentials; the web restore never
+  does.
+
+Copies of deleted accounts (`go/deleted_users/`), logs, temporary uploads,
+transfers and live SSH sessions are never part of a backup.
+
+These are fixed exclusions, not secret detection: commands, notes,
+profiles and run history can still contain secrets typed into them.
 
 ## Online backup in the web interface
 
 ![WebSSH backup and restore safety flow with administrator step-up, maintenance mode, private staging, validation, and atomic activation](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/backup-restore-safety.png?raw=true)
 
-Backup and restore share the same authorization boundary but use different safe
-paths. A backup coordinates writers before collecting consistent state. A
-restore stays in an instance-specific, quota-bounded staging area until archive
-validation and exact operator confirmation succeed.
+An administrator creates a backup in **Settings Center → Backup & Restore**
+while WebSSH runs. The archive can be downloaded once, from the same browser
+session, within `BACKUP_DOWNLOAD_TTL` seconds (600 by default). It is built
+in a private directory below `BACKUP_TEMP_DIR`, outside `DATA_DIR`.
 
-An administrator can create a consistent backup while the service is online. SQLite uses its backup API and file writers are coordinated so that the archive represents a coherent point in time.
+The browser saves the download as `webssh-backup.zip`; the content is a tar
+archive. Rename it to `.tar` if you open it with other tools.
 
-The completed download is one-time, session-bound, and expires after `BACKUP_DOWNLOAD_TTL` seconds, which defaults to 600. Temporary archive construction occurs outside `DATA_DIR` in an instance-specific namespace.
-
-Do not rely on the short-lived browser download as retention. Move the archive immediately to encrypted, access-controlled backup storage.
+Do not rely on the short-lived download as retention. Move the archive
+immediately to encrypted, access-controlled backup storage.
 
 ## Restore in the web interface
 
-Restore is deliberately disruptive and strongly confirmed. Normal web and CLI restore ignore excluded credential files even in older archives and clear existing copies to prevent accidental reuse by a different restored account. After restore, reimport SSH keys, recreate saved remote passwords and reassign credentials to hosts, jump hosts, SOCKS5 proxies and SMB sources. Review and explicitly re-enable schedules before unattended execution. The recovery checklist marks missing SOCKS proxies for review; it never reconnects a routed host directly or restores an excluded proxy password.
+Restore is disruptive and confirmed twice:
 
-Online restore is enabled only when `BACKUP_TEMP_DIR` is an absolute, private,
-durable directory outside `DATA_DIR` and `BACKUP_RECOVERY_DURABLE=true` records
-the operator's explicit acknowledgement. The rollback journal and emergency
-archive live there, so the storage must survive both process termination and
-container recreation. The repository Compose file provides the separate
-`webssh_recovery` volume. A default system `/tmp` directory is suitable for
-backup construction, but intentionally does not enable online restore.
+1. Upload the archive. WebSSH checks format, manifest, hashes and limits.
+2. Review the summary and the warnings.
+3. Confirm with a step-up and acknowledge the sensitive operation.
+4. Enter the exact `RESTORE` phrase and confirm with a second step-up.
+5. WebSSH enters maintenance: `/ready` answers 503 and every live
+   connection is closed.
+6. The archive is staged and checked once more, then the database, key
+   material and, where it applies, `secret_key` are installed under a
+   journal that keeps the previous state for rollback.
+7. WebSSH restarts inside the running process. The container keeps
+   running.
 
-1. Upload the archive.
-2. Let WebSSH validate format and safety limits.
-3. Review the restore target and warnings.
-4. Complete the action-bound restore-prepare Step-up and acknowledge the sensitive operation.
-5. Submit the issued session-bound confirmation token, the exact `RESTORE` phrase, and destructive-restore confirmation with a second action-bound Step-up.
-6. WebSSH enters maintenance mode and stops accepting new work.
-7. Active sessions and transfers are closed.
-8. An emergency rollback archive is created.
-9. Persistent state is replaced and sessions are invalidated.
-10. The process terminates intentionally so the service manager can start a clean runtime.
+After a restore every user signs in again; step-up confirmations,
+bootstrap codes and known-device cookies end, and schedules need a new
+approval. The restore state is kept in `DATA_DIR/go/restore-status.json`,
+so an interrupted restore is completed or rolled back at the next start.
+While a failed rollback is unresolved, `/ready` and the sign-in page answer
+503 until `webssh backup restore` succeeds.
 
-Emergency rollback archives and secret-rotation recovery snapshots are private internal recovery material, separate from downloadable exports. They retain encrypted credentials so a failed operation can recover the original state; normal restore does not import those credentials. Restrict recovery storage access and manage its retention and cleanup separately from exported backups.
+### SECRET_KEY on restore
 
-If an interruption occurs during replacement, the restore workflow attempts rollback from the emergency archive. On restart, the durable recovery directory remains available for diagnosis or recovery. Still take an independent backup before every restore and keep it outside the instance.
+- When WebSSH manages the key in `DATA_DIR/secret_key`, restoring a 3.4
+  archive installs the archive's key together with its database, so an
+  archive from another host works. The previous key is kept for rollback.
+- When `SECRET_KEY` is set in the environment and differs from the key in
+  the archive, the restore is refused before anything changes. Restore with
+  the `SECRET_KEY` the archive was made with.
+- An archive made with `--without-secret-key` needs the same `SECRET_KEY`
+  on the target.
+- A 3.3 archive is restored through the migration: the environment value
+  wins, otherwise the archive's `data/secret_key`, and the restored secrets
+  are sealed again with the installation's key material.
+
+3.4 archives are checked strictly. Links, devices, absolute or
+non-canonical paths, `..`, backslashes, members below `go/` or `logs/`
+other than the database and the material, and members missing from the
+manifest are refused. 3.3 archives (format v1 and v2) are read as
+tolerantly as 3.3 read them.
 
 ## CLI backup and restore
 
-CLI operations require every WebSSH process that uses the same `DATA_DIR` to be stopped. This avoids concurrent writers outside the coordinated web workflow.
-
-Discover exact options in the installed version:
+The CLI commands need every WebSSH server that uses the same `DATA_DIR` to
+be stopped; they take the same lock as the server. Run them in a one-off
+container with the same volumes and configuration:
 
 ```bash
-flask --app start:app backup create --help
-flask --app start:app backup verify --help
-flask --app start:app backup restore --help
+docker compose stop webssh
+docker compose run --rm webssh backup create --confirm-offline
+docker compose run --rm webssh backup verify /app/recovery/<archive>.tar
+docker compose run --rm webssh backup restore /app/recovery/<archive>.tar --confirm-offline
+docker compose up -d
 ```
 
-For a container deployment, execute the command in a one-off container with the same data volume and configuration, while the normal application container is stopped.
+| Command | Notes |
+|---|---|
+| `backup create [--destination ARCHIVE] [--without-secret-key] --confirm-offline` | Without `--destination` the archive goes next to `DATA_DIR` when that directory is writable, otherwise below `BACKUP_TEMP_DIR`; the command prints the path. In the official image `/app` is read-only, so the archive lands in the recovery volume. |
+| `backup verify ARCHIVE` | Checks manifest, hashes, limits and the database without restoring. |
+| `backup restore ARCHIVE --confirm-offline [--recovery-snapshot]` | Restores 3.4 archives by their reason and 3.3 archives as exports. `--recovery-snapshot` restores a 3.3 recovery snapshot with its SSH keys and saved passwords. |
 
-`backup restore` treats every archive as an export and discards SSH keys and
-saved passwords, even when an older archive contains them. To recover this
-instance from its own emergency rollback archive (`rollback.zip` in the durable
-recovery directory) or a secret-rotation recovery snapshot, add
-`--recovery-snapshot`. That restores the encrypted keys and passwords as well;
-they are only usable with the same `SECRET_KEY`.
+An archive written inside a one-off container's own file system disappears
+with the container. Write to a mounted volume and copy the result to
+encrypted off-host storage.
 
-Without `--destination`, `backup create --confirm-offline` retains the parent of
-`DATA_DIR` as its default when writable. On a read-only or permission-restricted
-parent, such as `/app` in the official image, it writes to the private instance
-directory under `BACKUP_TEMP_DIR` and prints the exact archive path. Explicit destinations are never redirected.
-The supplied Compose recovery volume persists fallback archives; custom paths
-must provide their own durability. Copy the result to encrypted off-host storage.
-An archive in a one-off container's writable layer disappears with that container.
+The 3.3 forms (`/app/entrypoint.sh flask --app start:app backup …`) keep
+working until the next major release.
 
 ## Safety limits
 
-Default operational limits include:
-
 | Setting | Default |
 |---|---:|
-| Upload size | 1 GiB |
-| Operation timeout | 30 minutes |
-| One-time download lifetime | 10 minutes |
-| Archive members | 10,000 |
-| Individual uncompressed file | 1 GiB |
-| Total uncompressed content | 10 GiB |
-| Compression ratio | 200:1 |
-| Manifest size | 10 MiB |
+| `BACKUP_UPLOAD_MAX_SIZE` | 1 GiB |
+| `BACKUP_OPERATION_TIMEOUT` | 30 minutes |
+| `BACKUP_DOWNLOAD_TTL` | 10 minutes |
+| `BACKUP_MAX_MEMBERS` | 10,000 |
+| `BACKUP_MAX_FILE_SIZE` | 1 GiB |
+| `BACKUP_MAX_TOTAL_SIZE` | 10 GiB |
+| `BACKUP_MAX_COMPRESSION_RATIO` | 200:1 |
+| `BACKUP_MAX_MANIFEST_SIZE` | 10 MiB |
 
-Reverse-proxy body-size and timeout settings must allow the same operation. Do not raise limits without assessing disk exhaustion and decompression-bomb risk.
+`RATELIMIT_BACKUP_CREATE`, `RATELIMIT_BACKUP_DOWNLOAD`,
+`RATELIMIT_BACKUP_UPLOAD` and `RATELIMIT_BACKUP_RESTORE` limit the online
+actions per administrator. Reverse-proxy body-size and timeout settings
+must allow the same operation. Do not raise limits without assessing disk
+exhaustion.
+
+`BACKUP_RECOVERY_DURABLE` is still accepted but no longer required: the
+rollback state of a restore lives in `DATA_DIR`, on the same volume as the
+data it protects.
 
 ## Secret-key rotation
 
-The supported rotation command re-encrypts persisted secrets when WebSSH manages `DATA_DIR/secret_key`:
+`rotate-secret-key` replaces the generated `DATA_DIR/secret_key` and seals
+every stored secret again: SSH keys, saved passwords, TOTP secrets, the
+GitHub client secret and the other sealed records.
 
 ```bash
-flask --app start:app rotate-secret-key --help
+docker compose stop webssh
+docker compose run --rm webssh rotate-secret-key --confirm-offline
+docker compose up -d
 ```
 
-All WebSSH processes must be stopped. Take and verify a backup first. The command re-encrypts per-user SSH keys, named connection passwords, TOTP values and the GitHub client secret, and invalidates signed session state. It verifies staged credential data before publishing the new secret and restores original bytes if publication fails. Its private recovery snapshot retains the original encrypted credentials; the ordinary backup export does not. A partial or interrupted manual replacement of the application secret can make persisted credentials unreadable.
+- It refuses while a WebSSH server uses the data directory, while
+  `SECRET_KEY` comes from the environment (the next start would load that
+  value instead) and while the 3.3 data still exists. Run
+  [`legacy purge`](Upgrading-to-3.4#removing-the-33-data) first after an
+  upgrade from 3.3.
+- Before it changes anything it writes a recovery archive
+  (`webssh-backup-<UTC>.tar`) next to `DATA_DIR` or below
+  `BACKUP_TEMP_DIR` and prints the path. Keep `BACKUP_TEMP_DIR` on a
+  persistent volume, as the supplied Compose files do with `/app/recovery`.
+- The database commit is the switch point. A rotation interrupted by a
+  crash completes at the next start.
+- All browser sessions end, and so do enrollments, two-factor sign-ins,
+  passkey ceremonies, step-up confirmations and open bootstrap codes.
+  Browser-local data tied to the key is lost.
+- WebSSH does not restart by itself; start the service afterwards.
 
-If `SECRET_KEY` comes from an external environment variable or secret manager, rotating only the external value is not sufficient. Plan a controlled migration that keeps the old key available while persisted SSH keys, named connection passwords, TOTP values, and the GitHub App client secret are re-encrypted. The built-in command is scoped to the container-managed persisted secret. In the container it refuses to run while `SECRET_KEY` is set in the environment, because the next start would load that value instead of the rotated file. The private recovery snapshot is written next to `DATA_DIR` where that directory is writable, otherwise to `BACKUP_TEMP_DIR`; the command prints the path. Keep `BACKUP_TEMP_DIR` on a persistent volume, as the supplied Compose files do with `/app/recovery`, so the snapshot survives a container recreation.
+If `SECRET_KEY` comes from an environment variable or a secret manager,
+changing only the external value makes every stored secret unreadable.
+Plan a migration that keeps the old key available while the secrets are
+sealed again, or switch to the generated key file first.
 
 ## Restore drill
 
 Test the full sequence on an isolated instance:
 
 1. Create and download a backup.
-2. Verify it with the CLI.
+2. Check it with `backup verify`.
 3. Start a disposable instance with an empty data volume.
 4. Restore the archive.
-5. Confirm local, LDAP/OIDC where applicable, Passkey and host-key data.
-6. Reimport SSH keys, recreate saved passwords and reassign credentials; test SSH, SFTP and SMB as applicable.
-7. Review schedules and explicitly re-enable only the intended ones.
+5. Confirm local, LDAP or OIDC sign-in where applicable, passkeys and host
+   keys.
+6. Upload SSH keys, recreate saved passwords and reassign them; test SSH,
+   SFTP and SMB as applicable.
+7. Review schedules and approve only the intended ones.
 8. Confirm that old browser sessions are invalid.
-9. Record the observed recovery time and required secret material.
+9. Record the recovery time and the secret material it needed.
 
 An untested archive is not a verified recovery capability.
 
 ## Recovery checklist in the application
 
-In **Settings Center → Backup & Restore**, expand **Backup coverage** to see included configuration/account data and excluded remote credentials/live sessions. The adjacent **Recovery check** opens the checklist for the signed-in account. Normal export restores write a small informational `recovery-check.json` timestamp; private rollback restore does not create a new successful-restore marker. The checklist uses the account’s current host/key/password and schedule metadata to guide re-provisioning. It does not import excluded credentials, approve host keys, test connectivity or enable schedules. The timestamp is not a restore-drill result.
+In **Settings Center → Backup & Restore**, expand **Backup coverage** to
+see what an export includes and excludes. The **Recovery check** opens a
+checklist for the signed-in account: for each host whether its key or
+password is ready, whether its jump host or SOCKS5 proxy exists and whether
+its host key is trusted, and which schedules need review. Acknowledging the
+notice applies to the current restore only. The checklist does not import
+credentials, approve host keys, test connectivity or enable schedules.

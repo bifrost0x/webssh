@@ -43,10 +43,9 @@ locations are:
 | `/app/data` | Database, generated secret, user files and application temporary files | Persistent data volume |
 | `/app/recovery` | Backup operations, restore staging and rollback copies in a private per-instance directory | Persistent recovery volume |
 | `/tmp` | General temporary files | tmpfs, cleared on container recreation |
-| `/run/webssh` | Private Gunicorn runtime/control socket directory | 1 MiB tmpfs, mode 0700 |
+| `/run/webssh` | Private runtime directory; the Go server writes nothing there | 1 MiB tmpfs, mode 0700 |
 
 Both tmpfs mounts disable execution, device nodes and set-user-ID behavior.
-`XDG_RUNTIME_DIR=/run/webssh` keeps Gunicorn runtime files off the read-only root.
 Keep the data and recovery volumes writable by the effective container user.
 For a custom `user:` setting, set `WEBSSH_RUNTIME_UID` and `WEBSSH_RUNTIME_GID`
 to the same numeric IDs and provision matching permissions on the persistent
@@ -59,8 +58,6 @@ recursively before the first start. Current images ship a placeholder in
 recreation. Docker never copies into a volume that already has content. A
 recovery volume provisioned with an older image that has never been started
 is still empty: change its ownership once more after updating the image.
-Without the hardened overlay, a numeric user without a writable home gets a
-private Gunicorn runtime directory under `/tmp` when `XDG_RUNTIME_DIR` is unset.
 
 | Compose variable | Hardened default | Purpose |
 | --- | --- | --- |
@@ -72,17 +69,13 @@ private Gunicorn runtime directory under `/tmp` when `XDG_RUNTIME_DIR` is unset.
 Set these in the Compose environment or `.env`, inspect `docker compose config`
 with the complete file list, then recreate the service. For example,
 `WEBSSH_TMPFS_SIZE=1g` expands `/tmp`; provision a suitable memory limit too.
-A custom `TRANSFER_TEMP_DIR` under `/tmp` shares that capacity. Concurrent
-archive/export operations can exhaust it even when each is below the application
-quota. For larger workloads, put transfer scratch files on a sufficiently sized
-writable mount or retain the default `DATA_DIR/tmp`. Normal HTTP uploads stream
-to their destination and do not require their full size in `/tmp`.
+Folder downloads and normal HTTP uploads stream to their destination and do
+not need space in `/tmp`; backup construction uses `BACKUP_TEMP_DIR`.
 Custom write paths outside the documented volumes need their own writable
 mount when root is read-only. Do not put durable recovery on tmpfs.
 
-Keep exactly one Gunicorn worker; the defaults of 64 Gunicorn threads and 48
-socket connections leave HTTP capacity available. SSH transport threads,
-background work, transfers and tmpfs contents also consume resources. Monitor
+Run one WebSSH process per data directory. SSH connections, background work,
+transfers and tmpfs contents consume resources. Monitor
 memory/OOM events and task counts before raising application concurrency.
 Resource ceilings are not a load-tested concurrency guarantee. The 40-second
 stop grace period allows bounded application shutdown to finish.
@@ -94,7 +87,7 @@ a restore also rejects recovery storage overlapping its actual destination.
 Provision space for the archive, extracted files and rollback copies. Restore
 writes use atomic file copies, so recovery can reside on a separate filesystem.
 
-`flask --app start:app backup create --confirm-offline` uses the parent of
+`webssh backup create --confirm-offline` uses the parent of
 `DATA_DIR` when writable. In the official image that parent is the read-only
 `/app`, so the command uses the private per-instance directory under
 `BACKUP_TEMP_DIR` and prints the archive's actual path. An explicit `--destination` is never

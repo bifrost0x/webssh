@@ -172,8 +172,9 @@ docker compose \
 ```
 
 The helper validates input, caps file sizes, writes atomically, and applies
-private permissions. It remains usable when incomplete LDAP configuration stops
-the Flask app from starting.
+private permissions. An unusable secret file, CA file or filter does not stop
+WebSSH from starting: LDAP is shown as not ready in the log and in
+Administration until the files are fixed.
 
 ## Activate LDAP
 
@@ -270,7 +271,7 @@ second factor, but only after LDAP primary verification succeeds.
 ## Session revalidation
 
 Every linked account is revalidated at the configured interval. WebSSH revokes
-browser, Socket.IO, SSH, transfer, and pooled-connection access when:
+browser, realtime, SSH, transfer, and pooled-connection access when:
 
 - LDAP is disabled;
 - the directory is unavailable;

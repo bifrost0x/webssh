@@ -9,9 +9,9 @@ Protect all of the following as sensitive systems:
 - the WebSSH host and container runtime;
 - `DATA_DIR`, its backups, and the persisted `SECRET_KEY`;
 - the reverse proxy and TLS private keys;
-- LDAP bind, OIDC client, Redis, and other infrastructure credentials;
+- LDAP bind, OIDC client and other infrastructure credentials;
 - administrator browsers and accounts;
-- networks from WebSSH to SSH, LDAP, OIDC, Redis, and DNS endpoints.
+- networks from WebSSH to SSH, SMB, LDAP, OIDC, and DNS endpoints.
 
 A compromise of the WebSSH process or its host can expose active terminal/file data and credentials supplied to it.
 
@@ -19,7 +19,7 @@ A compromise of the WebSSH process or its host can expose active terminal/file d
 
 WebSSH includes:
 
-- CSRF protection for HTTP forms and authenticated Socket.IO event contracts;
+- CSRF protection and an origin check for every state-changing HTTP request, and an `Origin` check on the realtime WebSocket;
 - `HttpOnly`, `SameSite=Lax` session cookies and `Secure` cookies in production;
 - Content Security Policy, HSTS in production, frame denial, MIME sniffing prevention, referrer policy, and permissions policy;
 - per-user ownership checks for sessions, transfers, files, profiles, keys, and host-key data;
@@ -56,7 +56,7 @@ For Internet exposure:
 6. Keep `SESSION_COOKIE_SECURE=true`.
 7. Disable public registration and browser admin bootstrap.
 8. Confirm that production's mandatory internal-target blocking matches the intended SSH target network.
-9. Use Redis-backed rate limiting when counters must survive restarts.
+9. Set `TRUSTED_PROXY_CIDRS` together with `TRUSTED_PROXIES` so that only your proxies can set forwarded headers.
 10. Protect and test backups, recovery codes, and the local administrator path.
 
 ## SSH credentials and private keys

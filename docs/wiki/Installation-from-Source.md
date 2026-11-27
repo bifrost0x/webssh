@@ -1,117 +1,123 @@
 # Installation from Source
 
-Source installation is useful for development, debugging, and operators who do
-not use containers. Docker remains the simplest supported deployment because
-the image supplies a non-root runtime, persistent-secret bootstrap, Gunicorn,
-and a healthcheck.
+WebSSH is a single Go program. Building it from source gives the same
+binary the container runs, for operators who do not use containers and for
+development. The supported source platform is Linux on `amd64` or `arm64`.
+The container image remains the simplest deployment: it supplies a
+non-root runtime, the persisted secret and a health check.
 
 ## Requirements
 
-- Python 3.11 or newer.
+- Linux on `amd64` or `arm64`.
+- Go at the version named by the `go` line in `go.mod`. With an older Go
+  installed, `go` downloads the required toolchain itself unless
+  `GOTOOLCHAIN=local` is set.
 - Git.
-- An operating-system build environment capable of installing the locked
-  binary dependencies for the selected Python version.
-- Node.js only when updating or testing frontend assets. Node is not required
-  to serve WebSSH at runtime.
+- No C compiler: the build uses `CGO_ENABLED=0`.
+- Node.js only when updating or testing frontend assets. It is not needed
+  to build or run WebSSH.
 
-## Clone and create a virtual environment
-
-Linux or macOS:
+## Build
 
 ```bash
 git clone https://github.com/bifrost0x/webssh.git
 cd webssh
-python3 -m venv venv
-source venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install --require-hashes -r requirements.txt
+scripts/stage-webassets.sh
+CGO_ENABLED=0 go build -trimpath \
+  -ldflags "-s -w -X github.com/bifrost0x/webssh/internal/buildinfo.version=$(git describe --tags --always | sed 's/^v//') -X github.com/bifrost0x/webssh/internal/buildinfo.revision=$(git rev-parse HEAD)" \
+  -o webssh ./cmd/webssh
+./webssh version
 ```
 
-PowerShell:
+`scripts/stage-webassets.sh` copies `static/` into
+`internal/httpapi/webassets/`, which the binary embeds. Run it again after
+every change below `static/`. Without the `-ldflags` values the binary
+reports the version `dev`.
 
-```powershell
-git clone https://github.com/bifrost0x/webssh.git
-Set-Location webssh
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install --require-hashes -r requirements.txt
-```
-
-The committed `requirements.txt` is a complete cross-platform lock with hashes.
-Do not replace the hashed installation with an unconstrained `pip install`
-workflow for production.
+To build for the other architecture, set `GOARCH=arm64` or
+`GOARCH=amd64`; the result runs on any Linux of that architecture.
 
 ## Development start
 
-Generate a strong development secret and run the app:
-
 ```bash
-export SECRET_KEY=$(openssl rand -hex 32)
 export DEBUG=True
-python start.py
+export DATA_DIR="$PWD/data"
+./webssh serve
 ```
 
-PowerShell:
+Open `http://127.0.0.1:5000`. With `DEBUG=True` WebSSH uses a temporary
+`SECRET_KEY` when none is configured, so sign-ins and sealed data do not
+survive a restart; never use it outside development.
 
-```powershell
-$env:SECRET_KEY = python -c "import secrets; print(secrets.token_hex(32))"
-$env:DEBUG = 'True'
-python start.py
-```
+`go run -tags devfs ./cmd/webssh serve` reads `static/` directly instead of
+the embedded copy, so frontend changes show after a page reload.
 
-Open `http://127.0.0.1:5000`.
+## Production start without a container
 
-## Non-container production start
+Outside the container the defaults are the same as inside it, apart from
+the listen address:
 
-Outside the container, production must receive an explicit `SECRET_KEY`.
-Configure the production profile and run exactly one Gunicorn `gthread` worker:
+- `serve` listens on `HOST` and `PORT`, by default `127.0.0.1:5000`.
+  `--bind host:port` overrides both. The image passes `--bind 0.0.0.0:5000`.
+- `DATA_DIR` defaults to `/app/data`. Set an absolute directory owned by the
+  service account.
 
 ```bash
-export SECRET_KEY=$(openssl rand -hex 32)
+export DATA_DIR=/var/lib/webssh
 export DEPLOYMENT_PROFILE=production
+export WEBSSH_ORIGIN=https://ssh.example.com
 export CORS_ORIGINS=https://ssh.example.com
 export SESSION_COOKIE_SECURE=true
 export REGISTRATION_ENABLED=False
 export BOOTSTRAP_REGISTRATION_ENABLED=false
 export BLOCK_INTERNAL_SSH=true
 export TRUSTED_PROXIES=1
+export TRUSTED_PROXY_CIDRS=127.0.0.1/32
 
-gunicorn \
-  --worker-class gthread \
-  --workers 1 \
-  --threads 64 \
-  --bind 127.0.0.1:5000 \
-  start:app
+./webssh serve --bind 127.0.0.1:5000
 ```
 
-Place a service manager around Gunicorn and terminate TLS at a trusted reverse
-proxy. The bind address and `TRUSTED_PROXIES` value must match the real network
-boundary.
+Run exactly one server per `DATA_DIR`; a second one refuses to start
+because of the lock in `DATA_DIR/go/webssh.lock`. Terminate TLS at a
+trusted reverse proxy; the bind address, `TRUSTED_PROXIES` and
+`TRUSTED_PROXY_CIDRS` must match the real network boundary. Keep the
+process under a supervisor that restarts it, and stop it with SIGTERM: the
+server stops accepting work, reports not ready and finishes within
+`RUNTIME_SHUTDOWN_GRACE_SECONDS` (5 by default, at most 30); a second signal
+ends it at once.
+
+The first administrator comes from the command line:
+
+```bash
+./webssh create-admin --username admin
+```
+
+All other commands are listed by `./webssh help` and in the
+[operations guide](https://github.com/bifrost0x/webssh/blob/main/docs/operations-guide.md).
 
 ## Persistent data
 
-`DATA_DIR` defaults to `./data` for a source checkout. It contains the database,
-per-user JSON stores, encrypted keys, host trust, logs, and temporary working
-directories. Set an absolute service-owned directory for a managed deployment:
+`DATA_DIR` holds the database (`go/webssh.db`), the key material, the
+generated `secret_key`, host trust, logs and temporary working
+directories. WebSSH creates `DATA_DIR`, `logs/` and `keys/` with mode
+`0700` and the database and key files with `0600`; it refuses to start when
+key files are readable by others. Back it up with `webssh backup create` or
+as a whole directory while the server is stopped. See
+[Data Storage and Persistence](Data-Storage-and-Persistence).
 
-```bash
-export DATA_DIR=/var/lib/webssh
-```
+## Upgrading a 3.3 source installation
 
-When WebSSH creates `DATA_DIR`, it makes it accessible to the service account
-only (`0700`). An existing directory is left as it is; WebSSH logs a warning at
-startup if other local users can read it. Restrict it with
-`chmod 700 /var/lib/webssh`.
-
-Back up this directory with WebSSH's native backup tooling rather than copying
-live files independently. See [Data Storage and Persistence](Data-Storage-and-Persistence).
+A 3.3 source installation ran `start.py` or Gunicorn on a Python
+environment. Point the Go binary at the same `DATA_DIR` and the same
+`SECRET_KEY`; the first start migrates the data as described in
+[Upgrading to 3.4](Upgrading-to-3.4). The Python virtual environment is
+not needed afterwards.
 
 ## Frontend assets
 
-WebSSH has no frontend build pipeline for normal runtime. Browser dependencies
-are pinned in `package.json`, copied to `static/vendor/`, committed, and served
-locally. To intentionally refresh them:
+WebSSH has no frontend build pipeline. Browser dependencies are pinned in
+`package.json`, copied to `static/vendor/`, committed and served locally. To
+refresh them intentionally:
 
 ```bash
 npm install
@@ -119,23 +125,8 @@ npm run vendor
 npm run vendor:check
 ```
 
-Do not add runtime CDN dependencies; the offline-capable CSP and vendor
-integrity checks assume local assets.
-
-## Updating dependencies
-
-Direct Python constraints live in `requirements.in` and
-`requirements-test.in`. Regenerate the hashed locks with:
-
-```powershell
-pwsh -File scripts/lock_requirements.ps1
-```
-
-Verify reproducibility without changing them:
-
-```powershell
-pwsh -File scripts/lock_requirements.ps1 -Check
-```
+Do not add runtime CDN dependencies; the CSP and the vendor integrity
+checks assume local assets.
 
 ## Continue
 

@@ -1,7 +1,10 @@
 # Reverse Proxy and Subfolder Deployment
 
-WebSSH uses regular HTTP routes plus Socket.IO/WebSocket traffic. A reverse
-proxy must preserve the public origin and support connection upgrades.
+WebSSH uses regular HTTP routes plus one WebSocket per browser tab at
+`<APPLICATION_ROOT>/ws` (subprotocol `webssh.v1`). A reverse proxy must preserve
+the public origin, pass the `Origin` header through and support connection
+upgrades. Socket.IO and its `/socket.io/` path are gone since 3.4; rules
+written for that path must cover `/ws` instead.
 
 ## Required application settings
 
@@ -11,7 +14,14 @@ For one trusted proxy layer:
 CORS_ORIGINS=https://ssh.example.com
 SESSION_COOKIE_SECURE=true
 TRUSTED_PROXIES=1
+TRUSTED_PROXY_CIDRS=127.0.0.1/32
 ```
+
+`TRUSTED_PROXY_CIDRS` lists the networks or addresses of the proxies whose
+forwarding headers WebSSH accepts. Set it whenever `TRUSTED_PROXIES` is above
+0: without it WebSSH trusts the forwarded headers of every direct client and
+warns at every start. In a chain (CDN, then nginx), list every proxy; the first
+address outside the list counts as the client.
 
 `TRUSTED_PROXIES` is the number of trusted forwarding layers, not a Boolean.
 Keep the WebSSH backend reachable only through those layers. With the homelab
@@ -100,6 +110,7 @@ For a public URL such as `https://server.example.com/webssh`, configure:
 ```bash
 APPLICATION_ROOT=/webssh
 TRUSTED_PROXIES=1
+TRUSTED_PROXY_CIDRS=127.0.0.1/32
 CORS_ORIGINS=https://server.example.com
 SESSION_COOKIE_SECURE=true
 ```
@@ -185,8 +196,8 @@ another catch-all `ProxyPass "/"` from the root example to this virtual host.
 
 This example terminates TLS at HAProxy and forwards to one WebSSH instance.
 Use the application settings above and a PEM containing the certificate chain
-and private key at the configured path. HTTP/1.1 supports both Socket.IO polling
-and its WebSocket upgrade through the same backend:
+and private key at the configured path. HTTP/1.1 carries the WebSocket upgrade
+through the same backend:
 
 ```haproxy
 global
@@ -218,18 +229,18 @@ backend webssh
     server webssh 127.0.0.1:5000
 ```
 
-`set-path` changes only the path; Socket.IO query parameters such as `EIO`,
-`transport`, and `sid` remain intact. Do not replace the complete URI or route
-WebSocket upgrades through a different prefix mapping. Forwarding headers are
+`set-path` changes only the path; query strings remain intact. Do not replace
+the complete URI or route WebSocket upgrades through a different prefix
+mapping. Forwarding headers are
 overwritten because this example has exactly one trusted proxy layer.
 
 For `/tools/webssh`, replace every `/webssh` prefix in the selected example
 and set `APPLICATION_ROOT=/tools/webssh`. `CORS_ORIGINS` remains the public
 origin without a path. `/webssh-other` is not part of `/webssh/`.
 
-Start validation with exactly one Gunicorn `gthread` worker, as in the
-Dockerfile. Keep the existing cookie and authentication settings. A working
-health check alone does not establish that authenticated Socket.IO works.
+Start validation with one WebSSH instance and keep the existing cookie and
+authentication settings. A working health check alone does not establish that
+the authenticated WebSocket works.
 
 These configurations must be syntax-checked against the installed proxy version
 and verified with the authenticated checks below before deployment. References:
@@ -254,15 +265,21 @@ If login works but terminal activity disconnects or never starts:
 
 - confirm HTTP/1.1 on the upstream connection;
 - confirm `Upgrade` and `Connection` forwarding;
-- inspect browser network requests to `/socket.io/`;
+- inspect the browser network request to `<prefix>/ws`;
+- confirm that the proxy passes the `Origin` header; an upgrade without it is
+  refused with 403;
 - check that the proxy timeout accommodates long-lived connections;
-- verify that the prefix is applied consistently for both HTTP and Socket.IO;
+- verify that the prefix is applied consistently for HTTP and the WebSocket;
 - verify `CORS_ORIGINS` exactly matches the browser-visible origin, including
   the scheme and non-default port.
 
 ## Trusted client addresses
 
-WebSSH uses forwarded addresses only within the configured proxy trust depth.
+WebSSH uses forwarded addresses only within the configured proxy trust depth
+and only when the direct peer is inside `TRUSTED_PROXY_CIDRS`. Forwarding values
+it cannot use (an unparsable address, a scheme other than http or https, a host
+or prefix with path characters) are ignored and logged once. The `Forwarded`
+header is not used.
 An incorrect value can either record the proxy address instead of the client or
 trust attacker-supplied forwarding headers. Prefer a simple topology and keep
 the backend network private.
@@ -294,19 +311,20 @@ and transferring a small file.
 ### Authenticated transport diagnostics
 
 Log in normally, then inspect the browser Network panel for the public path
-`/webssh/socket.io/?EIO=4&transport=polling` (or your configured prefix). A
-successful initial polling response starts with an Engine.IO open packet (`0`).
-When upgrading, the WebSocket request should receive `101 Switching Protocols`.
-An anonymous `curl` request can legitimately be rejected: WebSSH requires an
-authenticated session before admitting an Engine.IO transport.
+`/webssh/ws` (or your configured prefix). The request should receive
+`101 Switching Protocols` with the subprotocol `webssh.v1`. In the same browser,
+`/webssh/api/realtime/status` answers `{"success":true,"authenticated":true,…}`.
+An anonymous request is rejected with 401: WebSSH requires an authenticated
+session before it accepts the upgrade. `/webssh/socket.io/` answers 410; a page
+that still asks for it comes from 3.3 and needs a reload.
 
 For a failed request, record the status, sanitized response text, transport,
 timestamp, and matching server/proxy log event. A 404 can indicate a prefix
-mapping error; a 400 can indicate an origin or protocol error; a 401 can indicate
-an admission rejection. None of these codes alone proves the cause. Do not share
+mapping error; a 403 a missing or foreign `Origin`; a 401 a missing session; a
+503 maintenance or too many rejected connections. None of these codes alone proves the cause. Do not share
 cookies, authorization headers, credentials, session IDs, or unredacted HAR files.
 
 Check password, configured second factors and identity providers, session expiry
 and return to the original page, terminal input/resize, upload/download, idle
-connections and reconnect. Compare HTTP and Socket.IO scheme, host, prefix, and
+connections and reconnect. Compare HTTP and WebSocket scheme, host, prefix, and
 client address. Record the WebSSH revision and proxy configuration with results.

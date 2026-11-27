@@ -1,7 +1,7 @@
 # Terminal and Persistent tmux Sessions
 
-WebSSH uses xterm.js in the browser and Paramiko channels on the server. Socket.IO
-carries terminal control and output events.
+WebSSH uses xterm.js in the browser and SSH channels opened by the server. One
+authenticated WebSocket per browser tab carries terminal control and output.
 
 ## Session workspace
 
@@ -17,7 +17,8 @@ The terminal supports:
 - transcript download;
 - recent connections;
 - persistent session names;
-- per-session notes;
+- a global notepad and notes for each saved host (in the session's context
+  area);
 - manual reconnect.
 
 On macOS, use the platform's Command equivalents for copy and paste.
@@ -192,13 +193,13 @@ monitoring or privilege-escalation agent.
 
 ![WebSSH realtime SSH session and bulk transfer paths with ownership and transport boundaries](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/session-and-transfer-lifecycle.png?raw=true)
 
-Terminal control and output use authenticated Socket.IO events around an owned,
-process-local SSH session. Bulk transfer bodies take the separate bounded HTTP
+Terminal control and output use authenticated WebSocket messages around an
+owned, process-local SSH session. Bulk transfer bodies take the separate bounded HTTP
 path shown below; they are not encoded into terminal events.
 
 Each live output event is charged to per-browser, per-user, and process-wide
 budgets until the browser acknowledges accepting it. At capacity, WebSSH stops
-reading the Paramiko channel so SSH/TCP backpressure applies. A browser that
+reading the SSH channel so SSH/TCP backpressure applies. A browser that
 keeps an acknowledgement budget blocked for the configured timeout is
 disconnected, while its underlying SSH or persistent tmux session stays
 available for reconnect.
@@ -213,6 +214,16 @@ Manual reconnect behavior depends on authentication:
 - password sessions reopen a pre-filled connection form at the password field.
 
 Passwords are not retained in the session object for reconnect.
+
+## Startup commands
+
+A saved host or a Quick Connect can run something once the connection is
+made: free text, a command from the library with its parameters, or a command
+set. The server checks it (at most 4096 characters, no NUL; line breaks become
+Enter) and sends it as the first input of the session. A command or set is
+read from the user's own library at that moment. A startup command never runs
+when a persistent tmux session is reattached. A parameterized command set
+asks for its values after connecting.
 
 ## Persistent tmux sessions
 
@@ -252,8 +263,10 @@ If tmux is unavailable, WebSSH falls back to a regular shell.
 ### Session identity
 
 WebSSH creates or reattaches a remote tmux session using its configured prefix
-and connection identity. Persistent display names can be retained across
-browsers.
+and connection identity. New names consist of `[A-Za-z0-9_]` and are at most 190
+characters, so every name WebSSH creates can be reattached. A reattach without
+a display name keeps the stored one. Gateway sessions keep the gateway digest in
+the name; Tailscale SSH starts tmux with UTF-8.
 
 Disconnecting the WebSSH transport is different from killing the remote tmux
 session. Use the deliberate kill action only when the remote workload should
@@ -281,17 +294,21 @@ session can survive and be reattached later.
 
 ## Capacity
 
-Default SSH quota is 10 sessions globally and 5 per user. Each live terminal
-reader occupies bounded runtime capacity. The defaults calculate enough
-background workers for cleanup loops, every admitted SSH reader, and permitted
-background jobs.
+Default SSH quota is 10 sessions globally and 5 per user
+(`QUOTA_SSH_SESSION_GLOBAL`, `QUOTA_SSH_SESSION_PER_USER`). Two accounts with
+five sessions each lock everyone else out; raise the limits for more users.
+A full quota answers "Maximum number of sessions reached.".
+
+A detached terminal whose remote program keeps printing counts as active and
+stays open until its owner signs out or closes it; `SESSION_TIMEOUT` only ends
+sessions without input and output.
 
 ## Troubleshooting
 
 ### Terminal opens but stays blank
 
-Check remote shell startup, banner or MFA interaction, channel logs, and browser
-Socket.IO connectivity.
+Check remote shell startup, banner or MFA interaction, channel logs, and the
+browser's WebSocket connection to `<APPLICATION_ROOT>/ws`.
 
 ### Terminal disconnects behind a proxy
 

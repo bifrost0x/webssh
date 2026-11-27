@@ -82,7 +82,7 @@ remove it and run it again with the added `-e`), and run:
 
 ```bash
 docker compose exec webssh \
-  /app/entrypoint.sh flask --app start:app create-admin --username admin
+  /app/webssh create-admin --username admin
 ```
 
 The command prompts for the password without echoing it. Running it for an
@@ -126,7 +126,7 @@ The base Compose file intentionally configures:
 - wildcard CORS for trusted-network convenience;
 - non-secure browser cookies for HTTP;
 - tmux support enabled, with persistent sessions selected explicitly per connection;
-- one Gunicorn worker with a bounded thread pool;
+- one WebSSH process with bounded connection and session limits;
 - persistent state in the `webssh_data` volume.
 
 These defaults are convenient on a trusted LAN but are not a production

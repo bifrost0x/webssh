@@ -53,13 +53,13 @@ New credentials have no separate passphrase or 15-minute unlock. The server decr
 
 Replacing a used password, changing its assignment, disabling storage or revoking account access invalidates pending authorization. An unrelated credential change does not interrupt another credential. Already authenticated manual terminals and file sources remain open when storage is disabled. Disabling preserves encrypted records.
 
-Named passwords use AES-256-GCM with fresh 96-bit nonces. HKDF derives domain-separated keys from the application's SECRET_KEY, bound to record ID and owning account incarnation. Encryption at rest cannot protect against control of the running server or possession of both data and the application secret. Python cannot guarantee erasure of every temporary memory copy.
+Named passwords use AES-256-GCM with fresh 96-bit nonces. HKDF derives domain-separated keys from the application's SECRET_KEY and the installation's key material, bound to record ID and owning account. Encryption at rest cannot protect against control of the running server or possession of both data and the application secret. The server cannot guarantee erasure of every temporary memory copy.
 
-Preserve the exact original **SECRET_KEY** securely with deployment recovery material. Do not assume a data-only archive contains an externally supplied environment secret. Credential files cannot be decrypted with a different key.
+Preserve the exact original **SECRET_KEY** securely with deployment recovery material. Do not assume a data-only archive contains an externally supplied environment secret. Saved passwords cannot be decrypted with a different key or without the key material in the data volume.
 
-Native backup exports exclude named password records (`credentials.json`), legacy `automation-vault.json`, SSH key directories including metadata, and quarantined `deleted_users` data. Normal restore ignores these files even in older archives and removes existing copies to prevent credential reuse by a different restored account. Recreate passwords, reimport SSH keys and reassign credentials after restore; review and re-enable schedules.
+Native backup exports exclude saved passwords, their assignments, the legacy automation vault and SSH keys. Normal restore ignores these files even in older archives and removes existing copies to prevent credential reuse by a different restored account. Recreate passwords, reimport SSH keys and reassign credentials after restore; review and re-enable schedules.
 
-Proxy metadata in `socks_proxies.json` is included in the native backup, but its
+SOCKS5 proxy metadata is included in the native backup, but its
 assigned passwords are excluded with the other named credentials. Recreate and
 reassign proxy passwords after restore. A backup predating proxy metadata
 restores with an empty proxy store.
@@ -70,9 +70,9 @@ Never put secrets in commands, exported profiles, URLs, browser storage or logs.
 
 ## Existing passphrase vaults
 
-Existing automation-vault.json files remain intact. **Import existing vault** asks for the old passphrase once and imports named entries and valid assignments. The old ciphertext is not deleted. Failed import leaves it recoverable; repeating the same source revision does not duplicate records. Changed old destination bindings require explicit correction.
+Existing `automation-vault.json` files remain intact. **Import existing vault** asks for the old passphrase once (16 to 1024 characters) and imports named entries and valid assignments; the button disappears after a successful import. Entries for hosts behind a jump host or SOCKS5 proxy show as changed and need a confirmation. The old ciphertext is not deleted. Failed import leaves it recoverable; repeating the same source revision does not duplicate records. Changed old destination bindings require explicit correction.
 
-New installations need no vault passphrase. A lost old passphrase cannot be repaired by the new store: import the existing vault using the original passphrase or enter remote passwords again. Native backup restore does not restore the legacy vault. Older versions do not understand the named store; downgrade requires a compatible backup, not overwriting new data.
+New installations need no vault passphrase. A lost old passphrase cannot be repaired by the new store: import the existing vault using the original passphrase or enter remote passwords again. Native backup restore does not restore the legacy vault. Saved passwords created in 3.4 do not exist in 3.3 after a way back; see [Upgrading to 3.4](wiki/Upgrading-to-3.4.md).
 
 ## Recovery check
 

@@ -1,99 +1,143 @@
 # Architecture and Runtime Lifecycle
 
-WebSSH is a Flask application with authenticated HTTP and Socket.IO interfaces, Paramiko SSH/SFTP channels, SQLite persistence, and a bounded threaded runtime.
+WebSSH is one Go program. It serves the web interface and a JSON API over
+HTTP, carries terminal and control traffic over one WebSocket per browser
+tab, opens SSH, SFTP and SMB connections on the server side and keeps its
+state in one SQLite database in `DATA_DIR/go/`. The 3.3 Python server
+(Flask, Socket.IO, Paramiko, Gunicorn) was replaced in 3.4; its data is
+migrated once at the first start ([Upgrading to 3.4](Upgrading-to-3.4)).
 
 ## Request and connection flow
 
 ![WebSSH trust boundaries showing optional reverse proxy ingress, one process, persisted state, audit, the outbound network policy and managed targets](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/system-trust-boundaries.png?raw=true)
 
-Browsers do not connect directly to SSH targets through a hidden peer-to-peer
-path. WebSSH terminates the authenticated application session, checks ownership
-and policy, and then opens the server-side SSH or SFTP connection.
+Browsers do not connect directly to SSH targets. WebSSH terminates the
+authenticated application session, checks ownership and policy, and then
+opens the server-side SSH, SFTP or SMB connection.
 
 ```text
 Browser
-  |-- HTTPS/forms/API --------> Flask routes and blueprints
-  |-- Socket.IO controls -----> authenticated socket events
-  |-- streamed transfers -----> HTTP transfer routes
-                                  |
-                                  v
-                         ownership and quota checks
-                                  |
-                     +------------+-------------+
-                     |                          |
-                 SSH manager              persistent storage
-                     |                   SQLite + per-user files
-              Paramiko channels
-                     |
-               SSH/SFTP servers
+  |-- HTTPS pages, forms, JSON API --> HTTP edge (sessions, CSRF, origin, limits)
+  |-- WebSocket <root>/ws ----------> realtime endpoint (subprotocol webssh.v1)
+  |-- streamed transfers -----------> token-bound transfer routes
+                                        |
+                                        v
+                              ownership, permission and quota checks
+                                        |
+                  +---------------------+---------------------+
+                  |                     |                     |
+          SSH client and dialer   file sources (SFTP, SMB)   SQLite database
+                  |                     |                    + key material
+          outbound network policy  outbound network policy
+                  |                     |
+            SSH servers            SFTP and SMB servers
 ```
 
-Bulk file content is streamed over HTTP. Socket.IO carries terminal traffic, control events, and bounded editor content rather than whole bulk-transfer payloads.
+Bulk file content is streamed over HTTP. The WebSocket carries terminal
+traffic, control messages and bounded editor content; larger previews are
+handed over through a one-use HTTP route.
 
-## Application entry points
+## Code structure
 
-- `start.py` creates the application through `create_app()` in `app/__init__.py`.
-- Focused blueprints implement transfers, host keys, audit export, backup/restore, recovery codes, WebAuthn, OIDC, LDAP, and health/readiness.
-- `app/socket_events.py` defines authenticated real-time contracts for terminal, SFTP, profiles, keys, commands, diagnostics, and transfers.
-- `app/socket_file_control.py` owns bounded file-control envelopes, per-user byte budgets, and single-use editor retry proofs. Socket handlers retain authentication and source ownership checks.
-- `app/ssh_manager.py` owns process-local SSH state.
-- `app/paramiko_channels.py` centralizes bounded Paramiko channel creation.
+The packages are organised by capability: sign-in and identity, sessions,
+hosts, terminal, files, transfers, secrets, commands, automation,
+operations, backup and the migration. The
+[package map](https://github.com/bifrost0x/webssh/blob/main/docs/architecture/go-package-map.md)
+lists them with their allowed imports; architecture tests enforce the map.
+The decisions behind the design are recorded in the
+[ADRs](https://github.com/bifrost0x/webssh/tree/main/docs/adr).
 
-## One-worker contract
+- `cmd/webssh` is the program and its commands.
+- `internal/httpapi` is the HTTP edge: routing, sessions, CSRF and origin
+  checks, request limits, forwarded headers, static files and pages.
+- `internal/realtime` is the WebSocket endpoint with connection limits,
+  revocation and flow control.
+- `internal/ssh/client` is the one SSH dialer for terminals, Quick SFTP,
+  automation, gateway and Tailscale SSH; `internal/netpolicy` decides which
+  targets it may reach.
+- `internal/store` owns the SQLite database; `internal/keyring` derives the
+  keys for sealed secrets from `SECRET_KEY` and the key material.
 
-Production uses:
+## One process per data directory
 
-```bash
-gunicorn --worker-class gthread --workers 1 --threads 64 \
-  --bind 0.0.0.0:5000 start:app
-```
+Exactly one WebSSH server runs per `DATA_DIR`. Live SSH connections,
+terminal streams, rate-limit counters and quotas are held in the process;
+a lock file (`go/webssh.lock`) refuses a second server on the same data.
+Several replicas behind a load balancer are not supported.
 
-Exactly one worker is supported. Live Paramiko objects, session coordination, and parts of resource admission are process-local. Multiple workers would create isolated views of live state and can violate ownership, quota, cleanup, and routing assumptions.
+Rate limits live in memory and start empty after a restart. Redis is not
+used.
 
-Redis-backed rate limiting externalizes counters only. It does not externalize SSH channels or turn the application into a multi-worker architecture.
+## Live connections and capacity
 
-## Socket admission and HTTP reserve
+The realtime endpoint admits at most `MAX_SOCKET_CONNECTIONS` connections
+(48 by default) and `MAX_SOCKET_CONNECTIONS_PER_USER` per account (8).
+A refused connection is closed with code 1013 and a message that names the
+limit. Each connection has a bounded output queue; a terminal that falls
+behind is detached and resumes with a replay instead of blocking others.
 
-`app/socket_capacity.py` limits admitted sockets globally and per user. Capacity must leave at least four Gunicorn threads for ordinary HTTP work:
+HTTP requests are served concurrently by the Go runtime; there is no
+thread pool to divide between HTTP and WebSocket traffic. The 3.3 variables
+`GUNICORN_THREADS` and `BACKGROUND_WORKERS` have no effect of their own; they
+are still checked as in 3.3 (`GUNICORN_THREADS` must exceed
+`MAX_SOCKET_CONNECTIONS` by at least 4), so a way back to 3.3 still starts.
 
-```text
-GUNICORN_THREADS - MAX_SOCKET_CONNECTIONS >= 4
-```
-
-The default is 64 threads and 48 sockets, with at most eight sockets per user. Socket.IO uses native threading and simple-websocket; Eventlet, greenlets, and monkey patching are not part of the supported runtime.
+SSH sessions are limited by `QUOTA_SSH_SESSION_GLOBAL` (10) and
+`QUOTA_SSH_SESSION_PER_USER` (5); see the
+[Configuration Reference](Configuration-Reference) for the other quotas.
 
 ## Background work
 
-`app/runtime_lifecycle.py` owns a bounded `ThreadPoolExecutor`. Jobs have cancellation state, ownership, and explicit terminalization. LDAP cache cleanup, transfers, SSH/SFTP helper work, and other background tasks must share this bounded lifecycle instead of creating unlimited thread loops.
+Periodic and on-demand work (LDAP revalidation, platform detection,
+reachability, schedules, transfer cleanup) runs as
+registered background jobs. Each job has one owner, a timeout and a bounded
+queue. Job state is stored in the database: a periodic job continues from
+its last run after a restart, a run missed during downtime runs once, and
+an interrupted run is reported instead of repeated. The operations view in
+Administration lists the jobs.
 
 ## SSH and SFTP lifecycle
 
-SSH connections belong to an authenticated user and consume quotas. Paramiko channels are created through existing helpers with timeouts and cancellation. Quick SFTP connections used by the file workspace remain alive while queued or active transfers still reference them, then disconnect when ownership can safely end.
+SSH connections belong to an authenticated user and consume quotas.
+Connection setup, channel setup and remote commands have time and output
+limits. Quick SFTP connections stay open while queued or active transfers
+still use them.
 
-Persistent tmux metadata survives a browser disconnect, but the underlying remote tmux session lives on the SSH server. WebSSH's local connection objects do not survive a process restart.
+Persistent tmux metadata survives a browser disconnect and a server
+restart; the tmux session itself lives on the SSH server. WebSSH's own
+connections do not survive a restart.
 
 ## Graceful shutdown
 
-On shutdown WebSSH:
+On SIGTERM or SIGINT WebSSH:
 
-1. closes admission for new runtime work;
-2. signals cancellable jobs;
-3. stops or terminalizes owned operations within the configured window;
-4. closes SSH/SFTP and Socket.IO resources;
-5. exits so the process supervisor can complete replacement or restart.
+1. reports not ready on `/ready`;
+2. stops accepting new work and closes live connections;
+3. waits for running work up to `RUNTIME_SHUTDOWN_GRACE_SECONDS`;
+4. closes the database cleanly, so no `-wal` or `-shm` file remains;
+5. exits. A second signal ends it at once.
 
-Readiness reports failure once the runtime is no longer accepting work. Keep the proxy/load-balancer drain period aligned with `RUNTIME_SHUTDOWN_GRACE_SECONDS`.
+Keep the drain period of a proxy or load balancer aligned with
+`RUNTIME_SHUTDOWN_GRACE_SECONDS`.
 
 ## Maintenance mode
 
-Restore operations enter maintenance mode before replacing persistent state. `/health` stays a liveness check, while `/ready` fails so traffic can be drained. Restore then terminates the process intentionally to guarantee a clean application state after replacement.
+Restore, secret rotation and a changed 3.3 data source put WebSSH into
+maintenance. `/health` stays a liveness check, `/ready` answers 503, live
+connections are closed with code 4503 and new sign-ins and changes are
+refused. After a web restore WebSSH restarts inside the running process.
 
 ## Frontend architecture
 
-The frontend uses vanilla JavaScript and CSS without a build-time application framework. Browser libraries are pinned in `package.json`, vendored locally, and checked for integrity. Runtime CDN dependencies are intentionally absent so the frontend remains offline-capable and compatible with the Content Security Policy.
+The frontend uses vanilla JavaScript and CSS without a build-time
+application framework. Browser libraries are pinned in `package.json`,
+vendored locally and checked for integrity; the binary embeds them. There
+are no runtime CDN dependencies, so the frontend works offline and fits
+the Content Security Policy.
 
-`file-directory-requests.js` owns the file panes' request, cursor, cancellation,
-and timeout lifecycle. `SFTPFileManager` supplies pane state, source capabilities,
-the socket, and presentation callbacks. Syntax highlighting is loaded from the
-vendored assets only when a text preview needs it. Plain text remains available
-if loading fails, and delayed highlighting cannot replace a newer preview.
+`file-directory-requests.js` owns the file panes' request, cursor,
+cancellation and timeout lifecycle. `SFTPFileManager` supplies pane state,
+source capabilities, the connection and presentation callbacks. Syntax
+highlighting is loaded from the vendored assets only when a text preview
+needs it. Plain text remains available if loading fails, and delayed
+highlighting cannot replace a newer preview.

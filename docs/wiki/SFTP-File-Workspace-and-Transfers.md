@@ -208,7 +208,6 @@ Supported operations include:
 - single and batch download;
 - folder download as ZIP;
 - server-to-server copy;
-- existence and stat checks;
 - image and syntax-highlighted text preview;
 - log tail preview;
 - inline text editing and save;
@@ -224,10 +223,10 @@ touching SFTP or SMB.
 
 The control record retains user and connection ownership while the body path
 uses a short-lived token. This separation keeps large payloads away from the
-Socket.IO terminal channel without weakening cancellation, quota, or lifecycle
+realtime channel without weakening cancellation, quota, or lifecycle
 tracking.
 
-Large file bodies do not travel as base64 Socket.IO messages. Socket.IO creates
+Large file bodies do not travel as base64 realtime messages. The realtime channel creates
 bounded control state and single-use user-bound transfer tokens. HTTP routes
 stream upload, download, and folder archives.
 
@@ -248,13 +247,12 @@ Server-to-server work runs as a bounded cancellable background job. The
 transfer queue tracks progress, errors, cancellation, and conflict choices such
 as skip or overwrite.
 
-An SMB source maintains separate control and transfer sessions. Directory
-navigation and metadata operations therefore remain available while a bulk
-upload, download, or remote copy is using the transfer lane. Cancellation is
+An SMB source uses one authenticated SMB session for navigation and transfers;
+3.3 opened two. Cancellation is
 one idempotent request: the queue changes to **Cancelling** once and waits for
 the authoritative terminal event instead of requiring repeated clicks.
 
-HTTP responses, Socket.IO terminal events, notifications, and queue rows use
+HTTP responses, realtime events, notifications, and queue rows use
 the same allowlisted transfer failure contract. The visible reason distinguishes
 permission denial, an existing destination, a missing path, an unavailable
 share or source, a timeout, a configured limit, cancellation, and unavailable
@@ -296,7 +294,6 @@ dependent transfer reaches a terminal state.
 | `MAX_SUPPORTED_FILE_SIZE` | 1 GiB | Maximum remote file size accepted by preview service |
 | `MAX_EDITOR_FILE_SIZE` | 5 MiB | Maximum inline-edited file size |
 | `SFTP_OPERATION_TIMEOUT` | 30 seconds | Timeout per SFTP channel operation |
-| `TRANSFER_TEMP_DIR` | `DATA_DIR/tmp` | Private fallback archive directory |
 
 Uploads stream to the remote host, so raising `MAX_UPLOAD_SIZE` does not
 increase WebSSH memory use. Each file is one HTTP request; a reverse proxy in
@@ -304,25 +301,21 @@ front of WebSSH must allow the same request body size (for nginx,
 `client_max_body_size`).
 
 Default transfer quotas are 8 records globally and 2 per user. Background jobs
-default to 4 globally and 1 per user. Temporary-byte reservations default to
-1 GiB globally and 512 MiB per user.
+default to 4 globally and 1 per user. Uploads must send a `Content-Length` of at
+most `MAX_UPLOAD_SIZE`. `TRANSFER_TEMP_DIR` is no longer used; WebSSH accepts it
+and logs that it has no effect.
 
 ## Folder downloads
 
-WebSSH prefers bounded streaming and uses private temporary storage only where
-the archive path requires it. Size, member, timeout, ownership, and temporary
-byte quotas apply. Symlinks and unsafe traversal are not followed as arbitrary
-host filesystem paths.
-
-An archive that WebSSH builds itself (SMB folders, and SFTP folders when the
-remote `zip` command is unavailable) is held in `TRANSFER_TEMP_DIR` and backed
-by a temporary-byte reservation. Its size is therefore limited by the smaller
-of `MAX_ZIP_DOWNLOAD_SIZE` and `QUOTA_TEMP_BYTES_PER_USER`; startup logs a
-warning when the archive limit is larger than the quota or not positive.
-These archives are named `webssh-folder-*.zip`, and files with that name left
-behind by an interrupted process are removed when the service starts, once
-they have not been modified for six hours. The age limit keeps archives that
-another instance sharing the directory is still building or streaming.
+WebSSH builds every folder archive itself, for SFTP and SMB alike, and writes
+it to the response while it reads the files; no temporary file is created and
+no remote `zip` command is run. Before the first byte is sent it walks the
+folder: links are not followed, and the member limit (`MAX_TRANSFER_MEMBERS`,
+10,000), a depth of 50 and the declared total size refuse the download up
+front. The bytes read stay within the smaller of `MAX_ZIP_DOWNLOAD_SIZE` and
+`QUOTA_TEMP_BYTES_PER_USER`. A limit that is only exceeded while streaming, for
+example because a file grows, ends the download. Entries carry each file's
+modification time; a backslash in a name becomes `_`.
 
 ## Preview and editor safety
 

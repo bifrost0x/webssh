@@ -1,11 +1,43 @@
 # Docker and Docker Compose
 
-The official image is published at `ghcr.io/bifrost0x/webssh`. The container
-runs as a non-root user and starts Gunicorn with one `gthread` worker.
-Application code under `/app` belongs to root and is read-only for that user;
+The official image is published at `ghcr.io/bifrost0x/webssh` for
+`linux/amd64` and `linux/arm64`. It contains one program, `/app/webssh`, CA
+certificates and time zone data; there is no shell and no Python. The container
+runs as the non-root user 1000:1000 and starts `/app/webssh serve --bind
+0.0.0.0:5000`. The program belongs to root and is read-only for that user;
 WebSSH writes only to `/app/data`, `/app/recovery` and temporary directories.
-Keep custom write paths such as `DATA_DIR` or `TRANSFER_TEMP_DIR` on a mounted
+Keep custom write paths such as `DATA_DIR` or `BACKUP_TEMP_DIR` on a mounted
 volume.
+
+Upgrading from 3.3 (the Python image)? Read [Upgrading to 3.4](Upgrading-to-3.4)
+first and use the 3.4 Compose file: the 3.3 file calls Python in its health
+check.
+
+## Commands in the container
+
+Administrative tasks are commands of the program:
+
+```bash
+docker compose exec webssh /app/webssh help
+docker compose exec -it webssh /app/webssh create-admin --username admin
+docker compose exec webssh /app/webssh version
+```
+
+Commands that need the server stopped (`backup create|restore`,
+`rotate-secret-key`, `migrate`, `legacy purge`) run in a one-off container with
+the same volumes:
+
+```bash
+docker compose stop webssh
+docker compose run --rm webssh backup create --confirm-offline
+docker compose up -d
+```
+
+`docker compose exec webssh sh` does not work, and a Compose `command:` or
+`entrypoint:` that starts a shell, `gunicorn` or `python` exits with an error.
+The 3.3 forms `/app/entrypoint.sh flask --app start:app <command>` and
+`python /app/deployment/ldap_secret_cli.py <command>` still work and print the
+new form; they are removed in the next major release.
 
 On Unraid, use the template described in [Install on Unraid](Install-on-Unraid).
 
@@ -75,8 +107,8 @@ for usage, troubleshooting and the remaining path, hardlink and ACL boundaries.
 
 ## Application secret
 
-When `SECRET_KEY` is not supplied, the container entrypoint creates a strong
-secret and persists it at `DATA_DIR/secret_key`. This makes ordinary container
+When `SECRET_KEY` is not supplied, WebSSH creates a strong secret and persists
+it at `DATA_DIR/secret_key`. This makes ordinary container
 recreation safe as long as the data volume is preserved.
 
 If the container `DATA_DIR` is overridden, it must be absolute and that exact
@@ -88,7 +120,9 @@ takes precedence and is not copied into the data directory.
 
 Provide an external secret only when the deployment has a deliberate secret
 management policy. A changed or lost `SECRET_KEY` invalidates browser sessions
-and prevents decryption of stored SSH keys.
+and prevents decryption of stored SSH keys. Stored secrets also depend on the
+key material in `DATA_DIR/go/keyring-material` (or
+`logs/.webssh-go/keyring-material` while 3.3 data exists); keep the whole volume.
 
 ## Lifecycle and stop grace
 
@@ -101,8 +135,11 @@ application can cancel readers and transfers before Docker sends a forced kill.
 
 ## Healthcheck
 
-The image and Compose file probe `/ready` from inside the container. The default
-healthcheck waits for:
+The image runs `/app/webssh healthcheck` every 30 seconds. It asks `/ready` on
+`127.0.0.1:$PORT` and then on port 5000, follows no redirects and ignores
+`HTTP_PROXY`. The Compose file needs no `healthcheck:` block of its own; a block
+copied from 3.3 that calls `python` keeps the container `unhealthy`. `/ready`
+waits for:
 
 - the application runtime to accept work;
 - maintenance mode to be inactive;
@@ -146,22 +183,12 @@ the volume root to the image's `appuser` UID/GID with mode `0700` instead.
 
 Use an immutable version tag or digest for controlled production rollouts.
 
-## Optional Redis rate-limit storage
+## Rate-limit storage
 
-The default `memory://` backend resets rate counters when the process restarts.
-To keep counters while Redis remains available, enable the private Redis service
-from the supplied Compose comments and set:
-
-```yaml
-environment:
-  - RATELIMIT_STORAGE_URL=redis://redis:6379/0
-```
-
-Do not publish the Redis port. If Redis becomes unavailable, WebSSH uses an
-in-memory fallback and periodically retries the external backend.
-
-Redis does not make multiple WebSSH workers safe. Live SSH transports and other
-coordination remain process-local.
+Rate-limit counters live in the WebSSH process and start empty after a restart.
+Redis is no longer supported: `RATELIMIT_STORAGE_URL` is accepted, ignored and
+named in a startup warning (`memory://` is accepted silently). Remove the Redis
+service once the way back to 3.3 is no longer needed.
 
 ## Optional overlays
 
@@ -212,7 +239,8 @@ Review published ports, environment values, mounts, and the selected image.
 
 ## Backup boundary
 
-The `webssh_data` volume is covered by the native backup format. The separate
+The `webssh_data` volume is covered by the native backup format, including the
+key material. The separate
 LDAP bind-password and CA volume is intentionally not included. Treat both as
 secrets and document how each is restored.
 

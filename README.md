@@ -147,7 +147,6 @@ for authentication, access checks, limits and the trust boundary.
 - User administration, registration controls, and structured audit export and
   retention.
 - Online backup and restore with maintenance mode and explicit confirmation.
-- Optional Redis-backed rate-limit counters.
 - Vendored browser dependencies, a same-origin Content Security Policy, and no
   built-in telemetry.
 
@@ -271,6 +270,10 @@ controlled upgrades, pin a published version or verified image digest, keep
 Compose files from the same release, and back up the data with matching
 secrets. See
 [upgrade and rollback guidance](https://github.com/bifrost0x/webssh/wiki/Upgrading-Rollback-and-FAQ).
+Upgrading from 3.3: 3.4 replaces the Python server with a Go server and
+migrates the data once; read
+[Upgrading to 3.4](https://github.com/bifrost0x/webssh/wiki/Upgrading-to-3.4)
+first.
 
 Do not expose this homelab configuration to the Internet unchanged. Read the
 [Quick Start](https://github.com/bifrost0x/webssh/wiki/Quick-Start), the
@@ -292,11 +295,10 @@ Keep these deployment contracts intact:
   volume, logs, backups, and administrator accounts.
 - Review SSH host-key fingerprints before trusting them and investigate
   unexpected changes.
-- Production uses exactly **one Gunicorn `gthread` worker**. Live SSH state and
-  part of the resource coordination are process-local; multiple workers or
-  replicas are not supported without an external session-state architecture.
-- Thread count, socket admission, per-user socket limits, background workers,
-  and quotas form one capacity model. Keep HTTP capacity reserved.
+- Exactly **one WebSSH process** serves a data directory. Live SSH state and
+  the resource coordination are process-local; replicas are not supported.
+- Realtime connection limits and SSH, transfer and job quotas form one
+  capacity model; raise them together for more users.
 - External OIDC or LDAP identity never bypasses the local account, ownership,
   or authorization model. Retain a tested local break-glass administrator.
 - Native backups exclude saved remote passwords and SSH keys. They still contain
@@ -317,6 +319,7 @@ its [versioned source](docs/wiki/Home.md) is reviewed with the code.
 |---|---|
 | Install with Docker | [Docker and Docker Compose](https://github.com/bifrost0x/webssh/wiki/Docker-and-Docker-Compose) |
 | Install on Unraid | [Install on Unraid](https://github.com/bifrost0x/webssh/wiki/Install-on-Unraid) |
+| Upgrade from 3.3 | [Upgrading to 3.4](https://github.com/bifrost0x/webssh/wiki/Upgrading-to-3.4) |
 | Deploy behind HTTPS | [Production Deployment](https://github.com/bifrost0x/webssh/wiki/Production-Deployment) |
 | Configure every setting | [Configuration Reference](https://github.com/bifrost0x/webssh/wiki/Configuration-Reference) |
 | Connect and verify hosts | [SSH Connections and Host Keys](https://github.com/bifrost0x/webssh/wiki/SSH-Connections-and-Host-Keys) |

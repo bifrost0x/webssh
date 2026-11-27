@@ -1,6 +1,40 @@
 # Development and Testing
 
-WebSSH supports Python 3.11 and newer. The production container currently uses Python 3.15. The frontend is vanilla JavaScript and CSS with locally vendored dependencies.
+The WebSSH server is a Go program (since 3.4). The frontend is vanilla JavaScript and CSS with locally vendored dependencies. The Python 3.3 server stays in the repository until the switch to Go is complete; it serves as the reference for difference tests and for the migration. It supports Python 3.11 and newer, and its container uses Python 3.15. The sections after **Go server** describe that Python tree.
+
+## Go server
+
+The Go version is the `go` line in `go.mod`. Build and run as described in
+[Installation from Source](Installation-from-Source); the program lives in
+`cmd/webssh`, the packages in `internal/`. Every build and test needs the web
+assets staged first, or the `devfs` build tag:
+
+```bash
+scripts/stage-webassets.sh
+GO_PACKAGES='./cmd/... ./internal/...'
+gofmt -l cmd internal
+go vet $GO_PACKAGES
+go fix -diff $GO_PACKAGES
+staticcheck $GO_PACKAGES
+gosec -quiet $GO_PACKAGES
+govulncheck ./...
+go mod tidy -diff && go mod verify
+go test -race -count=1 -timeout 30m $GO_PACKAGES
+```
+
+Gates run on `./cmd/... ./internal/...` rather than `./...`, because
+`node_modules` can contain Go files. `go test ./internal/architecture` checks
+the [package map](https://github.com/bifrost0x/webssh/blob/main/docs/architecture/go-package-map.md),
+the import rules and the size limit of production files.
+
+- Difference tests compare pure functions with the Python implementation:
+  `PYTHON=.venv/bin/python scripts/check-python-oracles.sh` with the
+  environment from **Development setup** below.
+- Lab tests (`-tags lab`) run against the containers of the test lab; the
+  browser suite runs against the Go server with `tests/e2e/go-suite.json`.
+- `go run -tags devfs ./cmd/webssh serve` serves `static/` directly while
+  working on the frontend.
+
 
 ## Development setup
 

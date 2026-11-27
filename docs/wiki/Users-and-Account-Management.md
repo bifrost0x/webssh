@@ -67,14 +67,14 @@ claims the first account, they control the deployment.
 Production disables browser bootstrap. Create or promote an administrator:
 
 ```bash
-flask --app start:app create-admin --username admin
+webssh create-admin --username admin
 ```
 
 Docker Compose:
 
 ```bash
 docker compose exec webssh \
-  /app/entrypoint.sh flask --app start:app create-admin --username admin
+  /app/webssh create-admin --username admin
 ```
 
 For automation, `--password-file` accepts a private regular non-symlink file.
@@ -85,7 +85,7 @@ startup. Prefer the explicit CLI for normal administration. Locked, LDAP and
 GitHub-managed accounts are not promoted. A listed name without an account is
 reported as a warning; self-registration cannot take such a name (compared
 case-insensitively, logged on the server), so create it with
-`flask create-admin` or in the admin panel. LDAP and GitHub users whose name is
+`webssh create-admin` or in the admin panel. LDAP and GitHub users whose name is
 listed sign in and are provisioned under that name, but are never promoted
 while the account is LDAP- or GitHub-managed. Converting a listed LDAP or
 GitHub-managed account to a local one (unlinking its LDAP identity, or
@@ -102,7 +102,7 @@ browser. On the host, run:
 
 ```bash
 docker compose exec webssh \
-  /app/entrypoint.sh flask --app start:app reset-password --username admin
+  /app/webssh reset-password --username admin
 ```
 
 The command prompts for the new password twice; `--password-file` reads it
@@ -153,12 +153,12 @@ authentication method.
 
 ## Locking an account
 
-Locking prevents new HTTP and Socket.IO authorization. Sign-in to a locked
+Locking prevents new HTTP and realtime authorization. Sign-in to a locked
 account fails with the same message as a wrong password, so the lock does not
 confirm a guessed password. WebSSH also revokes the account's tracked resources:
 
 - active transfers;
-- Socket.IO sessions;
+- realtime connections;
 - live SSH sessions, including the remote tmux sessions of connected
   terminals; detached tmux sessions, and those whose end the host did not
   confirm, are listed in the security audit log as `TMUX_SESSION_NOT_ENDED`
@@ -218,7 +218,7 @@ identity.
 ## Password changes and logout
 
 Local users can change their password through `/change-password`. Explicit
-logout is a POST action and revokes tracked Socket.IO, SSH, and temporary SFTP
+logout is a POST action and revokes tracked realtime, SSH, and temporary SFTP
 connections instead of only deleting the browser cookie. Logout only
 disconnects: remote tmux sessions keep running and are offered for reconnect
 after the next sign-in, on every device. A password change ends them like a

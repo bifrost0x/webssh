@@ -39,12 +39,16 @@ password/key authentication path.
 
 ## Stored SSH keys
 
-WebSSH accepts RSA, Ed25519, and ECDSA private keys supported by the installed
-Paramiko runtime. Each user's keys are isolated below their own data directory.
+WebSSH accepts RSA (1024 bits or more), Ed25519 and ECDSA private keys in
+OpenSSH, PEM and unencrypted PKCS#8 form. Passphrase-protected OpenSSH and PEM
+keys are decrypted once with the passphrase, which is never stored. DSA keys and
+encrypted PKCS#8 are refused. Uploading, replacing and deleting a key needs a
+step-up confirmation. Each user's keys belong to their account only.
 
-Private-key content is encrypted with Fernet. A per-user key is derived from
-`SECRET_KEY:user_id` through PBKDF2-HMAC-SHA256 with 600,000 iterations. Key
-directories use mode `0700` and files use `0600` on POSIX systems.
+Private keys are stored sealed in the database with AES-256-GCM, under a key
+derived from `SECRET_KEY` and the installation's key material. Keys migrated
+from 3.3 that WebSSH cannot use (DSA, RSA below 1024 bits) are kept, marked as
+unusable and named in the migration report.
 
 `SECRET_KEY` is the root of this protection. Anyone with both the application
 secret and encrypted files can decrypt the keys. Preserve the secret during
@@ -129,8 +133,8 @@ for the same effective host identity.
 ## SSH authentication banners
 
 An SSH server can send `SSH_MSG_USERAUTH_BANNER` during authentication. The SSH
-protocol does not make this a true pre-authentication message; Paramiko exposes
-it after authentication completes. WebSSH therefore pauses immediately after
+protocol does not make this a true pre-authentication message; WebSSH shows it
+after authentication completes. WebSSH therefore pauses immediately after
 authentication and before it opens a target shell, jump-host forwarding
 channel, tmux probe, or post-connect command.
 
@@ -174,7 +178,7 @@ trusted bastion must resolve remotely; wildcards and IP literals are rejected.
 Save a jump host once and reference it from profiles. A jump host can have its
 own hostname, port, remote username, and authentication method.
 
-WebSSH opens the target through Paramiko's existing bounded channel helpers.
+WebSSH opens the target through a bounded forwarding channel of the jump host.
 The UI marks a connection as routed through the selected bastion. Editing a
 saved Jump Host preserves its ID and changes the configuration used by dependent
 profiles on subsequent connections; existing SSH sessions are not restarted.
@@ -243,7 +247,7 @@ proxy variables, SOCKS4 and HTTP CONNECT are not connection mechanisms here.
 
 ## Connection ownership
 
-Every live SSH session is owned by one WebSSH user. Socket.IO input, resize,
+Every live SSH session is owned by one WebSSH user. Realtime input, resize,
 disconnect, SFTP, diagnostics, and transfer operations authenticate the browser
 session and verify resource ownership.
 

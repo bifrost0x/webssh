@@ -29,9 +29,9 @@ separate contracts. Recovery never substitutes for the primary credential, and
 an authenticated Admin session still needs a fresh one-use grant for each
 sensitive action and target.
 
-- Flask-Login manages browser authentication.
-- Forms use Flask-WTF CSRF protection.
-- Unknown-user password checks perform dummy bcrypt work.
+- Browser sessions are server-side records; the cookie holds only a random token, stored as a MAC.
+- Forms and state-changing API requests carry a CSRF token bound to the browser (`<SESSION_COOKIE_NAME>_binding`) and pass an origin check.
+- New passwords are hashed with Argon2id; bcrypt hashes from earlier releases are verified and converted at the next sign-in. Unknown-user password checks perform the same hashing work.
 - Login and reauthentication paths are rate-limited. Source-address limits
   count each address on its own by default; IPv6 clients can be grouped per
   network (for example /64) in the sign-in protection settings. Failed
@@ -79,8 +79,8 @@ sensitive action and target.
   `Secure` flag.
 - Lock, deletion, logout, and failed LDAP revalidation revoke tracked live
   resources.
-- Authenticated Socket.IO events use `socket_login_required` and resource
-  operations add ownership checks.
+- The realtime WebSocket requires an authenticated session at the upgrade,
+  and resource operations add ownership checks.
 
 ## Browser sign-in duration
 
@@ -91,9 +91,8 @@ hours under **Settings → Preferences → Sign-in session**. The selected durat
 applies to the next sign-in and remains an absolute limit from that successful
 authentication.
 
-Flask's signed session-cookie validation window covers the longest selectable
-duration, while the server-side authentication-session record remains the
-authoritative per-user expiry. A shorter selection therefore cannot be extended
+The server-side authentication-session record is the authoritative per-user
+expiry. A shorter selection therefore cannot be extended
 by retaining or replaying the signed browser cookie.
 
 Selecting **Remember me** at sign-in continues to use the separate seven-day
@@ -227,7 +226,7 @@ required assurance. A token for locking user 7 cannot promote user 7, lock user
 ## Session revocation
 
 Account revocation is broader than clearing a cookie. WebSSH attempts to cancel
-transfers, disconnect Socket.IO sessions, close SSH sessions, close pooled
+transfers, close realtime connections, close SSH sessions, close pooled
 connections, and remove persisted session metadata.
 
 LDAP adds periodic directory revalidation. A missing or changed identity,

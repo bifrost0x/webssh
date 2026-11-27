@@ -10,7 +10,8 @@ the provided `docker-compose.ldap.yml` overlay with the same WebSSH image; no
 - `LDAP_ENABLED=false` registers no LDAP routes, starts no LDAP job, reads no
   LDAP file, and makes no directory connection.
 - `ldap://` always performs StartTLS before any bind. `ldaps://` starts with
-  TLS. Plain LDAP authentication and disabled certificate verification are not
+  TLS. TLS 1.2 is the minimum version. Referrals are never followed, and a
+  search that matches more than one entry is refused. Plain LDAP authentication and disabled certificate verification are not
   supported.
 - A least-privilege service account performs read-only user searches. The
   submitted user password is used only for the final bind and is never stored.
@@ -139,8 +140,10 @@ docker compose -f docker-compose.yml -f docker-compose.ldap.yml --profile ldap-t
 The helper validates input, caps file sizes, writes atomically, and applies
 private permissions. It is standalone, has no network access, and is the only
 Compose service with write access to the LDAP volume. WebSSH mounts that volume
-read-only whenever the LDAP overlay is selected. The helper still works if an
-incomplete LDAP configuration prevents the Flask application from starting.
+read-only whenever the LDAP overlay is selected. An unusable bind-password file, CA
+file or filter does not stop WebSSH from starting; LDAP is reported as not
+ready in the log and in Administration, and LDAP sign-in answers 404 until it
+is fixed.
 
 ## Activate and link users
 
@@ -214,8 +217,8 @@ remain in the separate secret volume and are intentionally not included.
 
 ## Troubleshooting
 
-- **Application refuses to start:** run the standalone `status` helper and
-  check the exact configuration error in container logs.
+- **LDAP is not ready:** run the standalone `status` helper and check the
+  exact configuration error in the container log.
 - **Certificate failure:** verify DNS, certificate SAN, system time, the full CA
   chain, and that the CA is PEM rather than DER or PKCS#12.
 - **Zero or multiple matches:** test the search base/filter with the directory

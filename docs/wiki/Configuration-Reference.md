@@ -8,13 +8,14 @@ Start from the repository's `.env.example`. The tables below describe the operat
 
 | Variable | Purpose | Default or requirement |
 |---|---|---|
-| `SECRET_KEY` | Encrypts and signs security-sensitive state | Required for direct production starts. The container entrypoint can generate and persist it in the data volume. |
+| `SECRET_KEY` | Encrypts and signs security-sensitive state | When not set, WebSSH generates it and persists it as `DATA_DIR/secret_key`. Stored secrets also depend on the key material in the data volume. |
 | `DATA_DIR` | Canonical SQLite, key, log, and generated-secret root | `/app/data` in the container; container overrides must be absolute and on a mounted volume, because the rest of `/app` is read-only |
 | `DEPLOYMENT_PROFILE` | Selects deployment safeguards | `homelab`; use `production` for Internet-facing deployments |
-| `DEBUG` | Flask debug mode | `False`; never enable in production |
-| `HOST` | Application bind address | `127.0.0.1` outside the container |
+| `DEBUG` | Development mode: a missing `SECRET_KEY` is replaced by a temporary one | `False`; never enable in production |
+| `HOST` | Application bind address of `webssh serve`; `--bind` overrides `HOST` and `PORT` | `127.0.0.1` outside the container |
 | `PORT` | Application listen port of source installations. The default container command always listens on `5000`; publish a different host port instead, for example `-p 8080:5000`. The container health checks accept a server on `PORT` or on `5000`, so a custom command that binds `PORT` stays healthy | `5000` |
 | `APPLICATION_ROOT` | URL prefix for subfolder deployments | Empty/root |
+| `TZ` | Time zone for schedules and log times; an IANA name such as `Europe/Berlin`. POSIX rules such as `CET-1CEST,M3.5.0,M10.5.0/3` are not supported; an unknown value logs a warning and uses UTC | UTC |
 
 Treat `SECRET_KEY` as long-lived installation state. Replacing it without the supported rotation workflow invalidates encrypted SSH keys and signed state. See [Backup, Restore, and Secret Rotation](Backup-Restore-and-Secret-Rotation).
 
@@ -22,14 +23,15 @@ Treat `SECRET_KEY` as long-lived installation state. Replacing it without the su
 
 | Variable | Purpose |
 |---|---|
-| `CORS_ORIGINS` | Comma-separated Socket.IO/browser origin allowlist |
+| `CORS_ORIGINS` | Comma-separated browser origin allowlist for the realtime connection; WebSSH's own origin is always included and the scheme counts. Entries with a path are ignored with a warning |
 | `ALLOW_CORS_WILDCARD` | Allows `*`; homelab-only and rejected as a production origin policy |
 | `HOST_DISCOVERY_ENABLED` | Offers manual SSH host discovery in a network range under Hosts → Find hosts | `true`; `false` in production |
 | `SOCKETIO_ALLOW_ANY_ORIGIN` | With `CORS_ORIGINS=*`, realtime connections accept only pages served from the address used for WebSSH. `true` accepts any origin again; rejected in production | `false` |
-| `TRUSTED_PROXIES` | Number of trusted reverse-proxy layers; `0` means none. Saved passwords and automation still work behind a TLS proxy at `0`: a page the browser loaded over `https://` from the same host counts as HTTPS. Set it to trust forwarded client addresses |
+| `TRUSTED_PROXIES` | Number of trusted reverse-proxy layers; `0` means none. Saved passwords and automation still work behind a TLS proxy at `0`: a page the browser loaded over `https://` from the same host counts as HTTPS. Set it to trust forwarded client addresses, together with `TRUSTED_PROXY_CIDRS` |
+| `TRUSTED_PROXY_CIDRS` | Comma-separated networks or addresses (`10.0.0.0/8`, `172.18.0.5`) of the proxies whose forwarding headers count. Every proxy in a chain must be listed. Without it, `TRUSTED_PROXIES` above 0 trusts every direct client and logs a warning at every start; host bits or invalid entries stop the start |
 | `SESSION_COOKIE_SECURE` | Sends the session cookie only over HTTPS. Default `true` (`false` only with `DEBUG=true`); the homelab Compose file sets `false`. With `true`, browsers drop the cookie on plain `http://` addresses other than localhost and sign-in fails; the homelab profile warns at start while the value is not set explicitly |
 | `SESSION_TIMEOUT` | Idle SSH session timeout in seconds; positive integer, default `1800` |
-| `SESSION_COOKIE_NAME` / `REMEMBER_COOKIE_NAME` | Cookie names, default `session` and `remember_token`. Give each instance its own names when several run on one host name, so they do not overwrite each other's sign-ins; the two names must differ. The known-device cookie follows the session name as `<SESSION_COOKIE_NAME>_device` |
+| `SESSION_COOKIE_NAME` / `REMEMBER_COOKIE_NAME` | Cookie names, default `session` and `remember_token`. Give each instance its own names when several run on one host name, so they do not overwrite each other's sign-ins; the two names must differ. The known-device cookie follows the session name as `<SESSION_COOKIE_NAME>_device`, the CSRF binding cookie as `<SESSION_COOKIE_NAME>_binding`; `REMEMBER_COOKIE_NAME` must not use either |
 
 The production profile requires explicit HTTPS origins, secure cookies, and explicit trusted proxies. Wildcard origins are not a production configuration. See [Reverse Proxy and Subfolder Deployment](Reverse-Proxy-and-Subfolder-Deployment).
 
@@ -42,7 +44,7 @@ The production profile requires explicit HTTPS origins, secure cookies, and expl
 | `ADMIN_PANEL_ENABLED` | Can disable the administrator panel | Enabled |
 | `ADMIN_USERS` | Comma-separated existing usernames promoted at startup; listed names cannot be self-registered and these administrators cannot be demoted in the admin panel | Empty |
 
-Prefer `flask create-admin` for controlled deployments. Public registration is independent of LDAP and OIDC sign-in.
+Prefer `webssh create-admin` for controlled deployments. Public registration is independent of LDAP and OIDC sign-in.
 
 ## SSH network policy
 
@@ -88,21 +90,21 @@ global proxy environment setting selects a route; hosts reference saved proxies.
 
 | Variable | Default | Contract |
 |---|---:|---|
-| `GUNICORN_THREADS` | `64` | Supported range `8` to `256` |
-| `MAX_SOCKET_CONNECTIONS` | `48` | Global admitted Socket.IO connections |
-| `MAX_SOCKET_CONNECTIONS_PER_USER` | `8` | Per-user Socket.IO connections |
-| `BACKGROUND_WORKERS` | Calculated baseline | Bounded executor; minimum is cleanup jobs plus global SSH-session and background-job quotas. A lower explicit value is raised to the minimum with a startup warning |
+| `MAX_SOCKET_CONNECTIONS` | `48` | Global realtime connections (one per browser tab), `1` to `252` |
+| `MAX_SOCKET_CONNECTIONS_PER_USER` | `8` | Per-user realtime connections, `1` to `64`, at most `MAX_SOCKET_CONNECTIONS` |
 | `RUNTIME_SHUTDOWN_GRACE_SECONDS` | `5` | Graceful shutdown window; supported range `1` to `30` seconds |
 
-Production requires exactly one Gunicorn worker with `gthread`. Live SSH channels and part of the coordination state are process-local. Increasing worker count does not scale WebSSH safely.
+Exactly one WebSSH process serves a data directory. Live SSH channels and part
+of the coordination state are process-local; a second server on the same
+`DATA_DIR` refuses to start.
 
-Keep at least four HTTP threads free:
+A refused realtime connection is closed with code 1013 and a message that
+names the limit.
 
-```text
-GUNICORN_THREADS - MAX_SOCKET_CONNECTIONS >= 4
-```
-
-LDAP adds a bounded cleanup task to the same runtime lifecycle; size background capacity as one combined budget.
+`GUNICORN_THREADS` and `BACKGROUND_WORKERS` belong to the 3.3 Python server and
+have no effect in 3.4. They are still checked as before (`GUNICORN_THREADS` from
+`8` to `256` and at least 4 above `MAX_SOCKET_CONNECTIONS`), so a way back to
+3.3 still starts, and a startup warning names them.
 
 ## User quotas
 
@@ -126,7 +128,6 @@ Connection, transfer, background-work, and thread limits form one capacity model
 | Variable | Default |
 |---|---|
 | `RATELIMIT_ENABLED` | `true` |
-| `RATELIMIT_STORAGE_URL` | `memory://` |
 | `RATELIMIT_DEFAULT` | `200 per hour` |
 | `RATELIMIT_LOGIN_LIMIT` | `5 per minute` |
 | `RATELIMIT_REAUTH` | `10 per minute` |
@@ -208,15 +209,14 @@ keeps an acknowledgement budget blocked for the configured timeout, WebSSH
 applies SSH backpressure and then disconnects only that browser; the underlying
 SSH or persistent tmux session remains available for reconnect.
 
-All terminals in one browser connection share a delivery window of at most eight
-unacknowledged output events, further constrained by the budgets above. This
-paces SSH readers and keeps bursts of output ACKs below Engine.IO's polling
-packet limit, with room for control traffic. Waiting for a delivery slot does
-not itself mean that an ACK is overdue. The configured timeout still applies
-to each outstanding output event. Opening more terminal tabs does not create
-additional Socket.IO connections.
+All terminals in one browser connection share the
+`SSH_OUTPUT_MAX_UNACKED_EVENTS_PER_SOCKET` window, further constrained by the
+budgets above; each terminal stream has its own window of 64 frames. Waiting
+for a delivery slot does not itself mean that an ACK is overdue. The configured
+timeout still applies to each outstanding output event. Each browser tab uses
+one realtime connection for all its terminals.
 
-`memory://` is process-local and counters reset when the process restarts. Use a `redis://` URL for durable, shared counters. Redis does not change the one-worker architecture.
+Rate-limit counters live in the process and reset when it restarts. `RATELIMIT_STORAGE_URL` (Redis) is no longer supported: it is accepted, ignored and named in a startup warning.
 
 ## File transfers and editor limits
 
@@ -235,7 +235,6 @@ additional Socket.IO connections.
 | `SFTP_MAX_HANDLE_BYTES` | `16384` (16 KiB) |
 | `MAX_EDITOR_FILE_SIZE` | `5242880` (5 MiB) |
 | `EDITOR_SAVE_BYTES_PER_MINUTE` | `20971520` (20 MiB per user) |
-| `TRANSFER_TEMP_DIR` | `DATA_DIR/tmp` |
 | `FILE_CONTROL_MAX_PATH_BYTES` | `4096` bytes |
 | `FILE_CONTROL_BYTES_PER_MINUTE` | `2097152` (2 MiB per user) |
 | `REMOTE_FILENAME_MAX_BYTES` | `4096` bytes |
@@ -247,7 +246,7 @@ additional Socket.IO connections.
 | `CONNECTION_STORE_RECOVERY_MAX_BYTES` | `16777216` (16 MiB) |
 | `CONNECTION_STORE_RECOVERY_MAX_RECORDS` | `10000` |
 
-Bulk uploads and downloads are streamed over HTTP; Socket.IO carries control events and bounded editor content rather than entire files. Align proxy request-body and timeout limits with WebSSH when increasing an application limit.
+Bulk uploads and downloads are streamed over HTTP; the realtime connection carries control events and bounded editor content rather than entire files. Align proxy request-body and timeout limits with WebSSH when increasing an application limit.
 
 Enable file permission changes under **Settings → Administration → Integrations**.
 `SFTP_CHMOD_ENABLED` is an optional authoritative environment override, not a
@@ -279,7 +278,7 @@ it is not a separate allowance for each route type. The SOCKS record limit also
 contributes to the minimum permitted `CONNECTION_STORE_RECOVERY_MAX_RECORDS`.
 
 Legacy stores above a normal limit are quarantined from the browser UI. After
-stopping every WebSSH process, `flask --app start connection-store list` and
+stopping every WebSSH process, `webssh connection-store list` and
 `connection-store delete` provide a non-secret, bounded recovery path up to
 the separate recovery ceilings shown above. Growth is rejected, and profile
 and route/key references remain ownership checked. Recovery accepts
@@ -323,13 +322,31 @@ blocked while profiles reference the record.
 | `BACKUP_MAX_COMPRESSION_RATIO` | `200` |
 | `BACKUP_MAX_MANIFEST_SIZE` | `10485760` |
 | `BACKUP_TEMP_DIR` | System temporary directory under `webssh-backup-operations` |
-| `BACKUP_RECOVERY_DURABLE` | `false`; must be `true` with durable external storage for online restore |
+| `BACKUP_RECOVERY_DURABLE` | Accepted for compatibility; online restore no longer requires it |
 
 Audit export scans at most 50,000 records and declares truncation in response metadata. Backup safety limits also cap archive member count, individual size, total size, compression ratio, and manifest size.
 
-`BACKUP_TEMP_DIR` may remain ephemeral for backup creation. Online restore
-additionally requires it to be absolute, private, outside `DATA_DIR`, and
-durable across process/container replacement.
+`BACKUP_TEMP_DIR` must be outside `DATA_DIR`. It holds the archives of online
+backups until they are downloaded and is the fallback location of CLI backups,
+of the `legacy purge` backup and of the recovery archive of `rotate-secret-key`;
+keep it on a persistent volume, as the supplied Compose files do with
+`/app/recovery`. The rollback state of a restore lives in `DATA_DIR`.
+
+## Variables without effect in 3.4
+
+These belong to the 3.3 Python server. WebSSH accepts them, checks their values
+as 3.3 did, so a way back still starts, and names them in a startup warning:
+
+| Variable | Note |
+|---|---|
+| `GUNICORN_THREADS`, `BACKGROUND_WORKERS` | no thread pools in the Go server |
+| `RATELIMIT_STORAGE_URL` | Redis is not supported; `memory://` is accepted without a warning |
+| `TRANSFER_TEMP_DIR` | folder archives are streamed without a temporary file |
+| `PYTHONUNBUFFERED`, `PYTHONDONTWRITEBYTECODE`, `PYTHON_DOTENV_DISABLED` | Python runtime settings |
+
+Values that 3.3 parsed in a surprising way keep their 3.3 meaning and also log
+a warning, for example `yes` or `1` for a boolean (read as false) or `" *"` in
+`CORS_ORIGINS` (not a wildcard). Read the startup log after an upgrade.
 
 ## OIDC, GitHub, LDAP, Passkeys, and Tailscale
 
@@ -367,7 +384,7 @@ For `SFTP_CHMOD_ENABLED`, `SERVER_OPERATIONS_ENABLED`, `TMUX_ENABLED` and
 `TMUX_DEFAULT`, priority is: explicitly supplied environment value, saved Admin
 setting, product default. Both explicit `true` and explicit `false` lock the UI;
 an empty value counts as not supplied.
-Compose/environment includes variables passed by Docker, systemd, a shell or the
+Compose/environment includes variables passed by Docker, a shell or the
 application's `.env`; the application cannot identify which file supplied them.
 Settings shows the key, effective value, stored value and source. Edit or remove
 the variable and recreate the container to release the lock. Existing sessions
