@@ -10,6 +10,7 @@ package protocol
 const (
 	TypeFilesQuickOpen        = "files.quick.open"
 	TypeFilesQuickClose       = "files.quick.close"
+	TypeFilesQuickCancel      = "files.quick.cancel"
 	TypeFilesSessionProbe     = "files.session.probe"
 	TypeFilesSessionDirectory = "files.session.directory"
 )
@@ -31,6 +32,12 @@ type FilesQuickOpened struct {
 	Port            int        `json:"port"`
 	Username        string     `json:"username"`
 	FileSource      FileSource `json:"file_source"`
+}
+
+// FilesQuickCancel cancels a Quick SFTP attempt through an SSH gateway
+// that is still asking (ssh_gateway_quick_cancel).
+type FilesQuickCancel struct {
+	ClientRequestID string `json:"client_request_id"`
 }
 
 // FilesQuickClose closes a Quick SFTP connection (quick_disconnect).

@@ -158,6 +158,8 @@
         const out = pick(data, QUICK_FIELDS);
         for (const [name, value] of Object.entries(out)) if (typeof value !== 'string' || value === '') delete out[name];
         out.auth_type = data.key_id ? 'key' : 'password';
+        // The page answers the prompts of a gateway selector.
+        if (data.gateway_interaction === 1) out.interactive = true;
         const port = typeof data.port === 'string' && /^\d{1,5}$/.test(data.port) ? Number(data.port) : data.port;
         if (Number.isInteger(port) && port > 0) out.port = port;
         if (data.credential_id !== undefined && data.credential_id !== null) {
@@ -184,6 +186,14 @@
             payload: quickTarget,
             push: [['quick_connect_success', reply => withoutSuccess(reply)]],
             failurePush: [['quick_connect_error', quickError]],
+        },
+        // Cancels a Quick SFTP attempt through an SSH gateway that is still
+        // asking; the acknowledgement is that of the Python handler.
+        ssh_gateway_quick_cancel: {
+            type: 'files.quick.cancel',
+            payload: data => ({client_request_id: typeof data.client_request_id === 'string' ? data.client_request_id : ''}),
+            ack: () => ({success: true}),
+            failure: failed => ({success: false, reason: failed.code === 'conflict' ? 'already_committed' : 'not_found'}),
         },
         quick_disconnect: {
             type: 'files.quick.close',

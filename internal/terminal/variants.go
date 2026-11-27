@@ -39,7 +39,10 @@ type VariantAttempt struct {
 	// Interactive is terminal.open's interactive flag: the page answers
 	// prompt.interactive and shows the gateway's temporary terminal.
 	Interactive bool
-	Target      client.Target
+	// Files marks a file connection (Quick SFTP): no temporary terminal
+	// and no Tailscale SSH, as in the Python release.
+	Files  bool
+	Target client.Target
 }
 
 // needsVariant reports a target only a Variants provider can connect.
@@ -70,6 +73,22 @@ func (m *Manager) prepareVariant(ctx context.Context, peer protocol.Peer, p prin
 	}
 	t, vctx, end, err := m.variants.Prepare(ctx, a)
 	return t, vctx, end, nil, err
+}
+
+// NeedsVariant reports a target that only connects through the SSH
+// gateway or Tailscale SSH.
+func NeedsVariant(t client.Target) bool { return needsVariant(t) }
+
+// PrepareFiles prepares the gateway form of a file connection of p on
+// peer (Quick SFTP through a gateway selector), with the same provider as
+// terminal.open: the prompts go to peer under requestID. The returned
+// context and end are those of Variants.Prepare.
+func (m *Manager) PrepareFiles(ctx context.Context, peer protocol.Peer, requestID string, t client.Target) (client.Target, context.Context, func(), error) {
+	if m.variants == nil {
+		return client.Target{}, nil, nil, fault.New(fault.NotAvailableInPreview, "")
+	}
+	return m.variants.Prepare(ctx, VariantAttempt{Peer: peer, User: peer.Principal(), RequestID: requestID,
+		Interactive: true, Files: true, Target: t})
 }
 
 // challengingInteraction is the attempt's interaction with the rounds of

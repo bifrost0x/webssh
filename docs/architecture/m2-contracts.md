@@ -342,6 +342,7 @@ The SFTP sources (FS2, `payload_sftp.go`):
 | Type | Direction | Owner | Payload | Socket.IO today | Spec |
 |---|---|---|---|---|---|
 | `files.quick.open` | client | `internal/files/sftp` | `FilesQuickOpen` → `FilesQuickOpened` | `quick_connect` → `quick_connect_success` / `quick_connect_error` | mutates, `ssh_connect` bucket, 5 min |
+| `files.quick.cancel` | client | `internal/files/sftp` | `FilesQuickCancel` → `Empty` | `ssh_gateway_quick_cancel` (acknowledgement) | – |
 | `files.quick.close` | client | `internal/files/sftp` | `FilesQuickClose` → `FilesQuickClosed` | `quick_disconnect` → `quick_disconnect_success` / `error` | mutates |
 | `files.session.probe` | client | `internal/files/sftp` | `FilesSessionProbe` → `FilesSessionCapability` | `probe_session_sftp` → `session_sftp_capability` | 10 per minute |
 | `files.session.directory` | client | `internal/files/sftp` | `FilesSessionDirectoryRequest` → `FilesSessionDirectory` | `request_session_directory` (ack) | max(90, 60 × connections per user) per minute |
@@ -351,8 +352,14 @@ them with the terminal (`terminal.Manager.Target`: saved host, typed
 target, jump host, SOCKS5 proxy, saved passwords with their guard); host
 keys and banners are asked with the terminal's prompts (D-22). The
 registry reserves `quick_connection` before the dial ("Maximum number of
-quick connections reached"). A target of the SSH gateway or Tailscale SSH
-answers `not_available_in_preview` (C-GW-02, open). The terminal session's
+quick connections reached"). A gateway selector (C-GW-02) connects
+when the page answers its prompts (`interactive`, from
+`gateway_interaction`) and sends a request id: the attempt runs through
+`terminal.Manager.PrepareFiles` (the gateway variant without the temporary
+terminal), asks under that id and can be cancelled with
+`files.quick.cancel` until its source exists (`not_found`, `conflict`).
+Tailscale SSH, jump hosts and SOCKS5 proxies are refused with
+"Unsupported gateway client or route", as in the Python release. The terminal session's
 own source (`sftp-session:<session id>`) opens on first use over the
 session's connection (`terminal.Manager.SessionConn`).
 

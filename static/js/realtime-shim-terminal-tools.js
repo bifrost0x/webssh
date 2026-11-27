@@ -57,7 +57,7 @@
             }],
         }),
         features: Object.freeze([
-            ['terminalTools', /^(request_herdr_snapshot|request_session_directory|ssh_gateway_quick_cancel)/],
+            ['terminalTools', /^(request_herdr_snapshot|request_session_directory)/],
         ]),
     });
 });

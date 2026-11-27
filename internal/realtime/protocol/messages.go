@@ -151,6 +151,7 @@ var v1 = []MessageType{
 	// The SFTP sources (FS2, payload_sftp.go).
 	{TypeFilesQuickOpen, ClientRequest, "internal/files/sftp"},
 	{TypeFilesQuickClose, ClientRequest, "internal/files/sftp"},
+	{TypeFilesQuickCancel, ClientRequest, "internal/files/sftp"},
 	{TypeFilesSessionProbe, ClientRequest, "internal/files/sftp"},
 	{TypeFilesSessionDirectory, ClientRequest, "internal/files/sftp"},
 

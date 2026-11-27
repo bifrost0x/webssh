@@ -132,3 +132,28 @@ func TestTailscaleVariantFollowsThePolicy(t *testing.T) {
 		t.Fatal("tailscale_ssh_allowed of the pages")
 	}
 }
+
+// Quick SFTP through a gateway selector gets the gateway's prompts but no
+// temporary terminal; Tailscale SSH is no route for it.
+func TestGatewayVariantForFiles(t *testing.T) {
+	sys, v := gatewaySystem(t)
+	setGateway(t, sys, true)
+	alice := principaltest.User(5)
+	peer := protocoltest.NewPeer(t, alice)
+	files := terminal.VariantAttempt{Peer: peer, User: alice, RequestID: "q-1", Interactive: true, Files: true,
+		Target: client.Target{Owner: 5, Hop: client.Hop{Host: "gw.example", Port: 2222, User: "alice:prod"}}}
+	got, _, end, err := v.Prepare(t.Context(), files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Variant == nil || got.Variant.Auth == nil || got.Variant.Ready != nil {
+		t.Fatalf("file variant %+v", got.Variant)
+	}
+	end()
+	ts := files
+	ts.Target = client.Target{Owner: 5, Hop: client.Hop{Host: "node.ts.example", Port: 22, User: "tsuser"},
+		Display: client.Display{Tailscale: true}}
+	if _, _, _, err := v.Prepare(t.Context(), ts); fault.CodeOf(err) != fault.InvalidRequest {
+		t.Fatalf("tailscale file connection: %v", err)
+	}
+}

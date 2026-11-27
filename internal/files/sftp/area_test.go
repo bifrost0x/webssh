@@ -29,6 +29,14 @@ func (c connector) Target(context.Context, int64, protocol.OpenTarget) (client.T
 
 func (connector) Interaction(protocol.Peer, string) client.Interaction { return nil }
 
+func (connector) NeedsVariant(t client.Target) bool {
+	return t.Display.Tailscale || strings.Contains(t.Hop.User, ":")
+}
+
+func (connector) PrepareFiles(context.Context, protocol.Peer, string, client.Target) (client.Target, context.Context, func(), error) {
+	return client.Target{}, nil, nil, fault.New(fault.NotAvailableInPreview, "")
+}
+
 type noSessions struct{}
 
 func (noSessions) Session(context.Context, principal.Principal, string) (sftp.Session, error) {
@@ -66,10 +74,23 @@ func TestAreaRefusalsAndReasons(t *testing.T) {
 	if _, perr := call(a, protocol.TypeFilesQuickOpen, map[string]any{"auth_type": "password"}); perr == nil || perr.Code != fault.InvalidValue {
 		t.Fatalf("target refusal: %+v", perr)
 	}
-	// Quick SFTP over the gateway or Tailscale SSH is not built (C-GW-02).
-	a.Connector = connector{target: client.Target{Hop: plain.Hop, Variant: &client.Variant{}}}
-	if _, perr := call(a, protocol.TypeFilesQuickOpen, map[string]any{"host": "h"}); perr == nil || perr.Code != fault.NotAvailableInPreview {
-		t.Fatalf("variant: %+v", perr)
+	// Tailscale SSH and a gateway selector without a page that answers its
+	// prompts are refused before anything is prepared (C-GW-02).
+	selector := client.Hop{Host: "gw.example", Port: 22, User: "admin:db.internal"}
+	for name, c := range map[string]struct {
+		target  client.Target
+		payload map[string]any
+	}{
+		"tailscale":       {client.Target{Hop: plain.Hop, Display: client.Display{Tailscale: true}}, map[string]any{"host": "h", "interactive": true, "client_request_id": "q"}},
+		"not interactive": {client.Target{Hop: selector}, map[string]any{"host": "h", "client_request_id": "q"}},
+		"no request id":   {client.Target{Hop: selector}, map[string]any{"host": "h", "interactive": true}},
+		"jump host":       {client.Target{Hop: selector, Jumps: []client.Hop{plain.Hop}}, map[string]any{"host": "h", "interactive": true, "client_request_id": "q"}},
+	} {
+		a.Connector = connector{target: c.target}
+		if _, perr := call(a, protocol.TypeFilesQuickOpen, c.payload); perr == nil || perr.Code != fault.InvalidRequest ||
+			perr.Message != "Unsupported gateway client or route" {
+			t.Fatalf("%s: %+v", name, perr)
+		}
 	}
 	// The quota is taken before dialling, with the text of the Python pool.
 	a.Connector = connector{target: plain}
@@ -128,5 +149,57 @@ func TestDirectoryReportsTheTerminalPromptState(t *testing.T) {
 			!strings.Contains(string(raw), `"input_idle":`+strconv.FormatBool(want)) {
 			t.Fatalf("idle %v: %s %+v", want, raw, perr)
 		}
+	}
+}
+
+// gatewayConnector holds PrepareFiles until its context ends.
+type gatewayConnector struct {
+	connector
+	entered chan struct{}
+}
+
+func (g gatewayConnector) PrepareFiles(ctx context.Context, _ protocol.Peer, requestID string, _ client.Target) (client.Target, context.Context, func(), error) {
+	if requestID != "q1" {
+		return client.Target{}, nil, nil, fault.New(fault.InvalidRequest, "wrong request id")
+	}
+	close(g.entered)
+	<-ctx.Done()
+	return client.Target{}, nil, nil, fault.New(fault.Cancelled, "")
+}
+
+// A gateway Quick SFTP attempt asks under its request id and can be
+// cancelled by its own connection only, once.
+func TestQuickGatewayAttemptIsCancellable(t *testing.T) {
+	alice := principal.Principal{UserID: 1, SessionID: "s1", Username: "alice"}
+	peer := protocoltest.NewPeer(t, alice)
+	other := protocoltest.NewPeer(t, alice)
+	ctx := principal.With(t.Context(), alice)
+	g := gatewayConnector{connector{target: client.Target{Hop: client.Hop{Host: "gw", Port: 22, User: "u:db"}}}, make(chan struct{})}
+	a := &sftp.Area{Quick: &sftp.Quick{}, Registry: files.NewRegistry(files.RegistryOptions{}), Connector: g, Sessions: noSessions{}}
+	cancel := func(p protocol.Peer, id string) *protocol.Error {
+		_, perr := protocoltest.Call(ctx, routes(a)[protocol.TypeFilesQuickCancel], p, map[string]any{"client_request_id": id})
+		return perr
+	}
+	if perr := cancel(peer, "q1"); perr == nil || perr.Code != fault.NotFound {
+		t.Fatalf("cancel without an attempt: %+v", perr)
+	}
+	done := make(chan *protocol.Error, 1)
+	go func() {
+		_, perr := protocoltest.Call(ctx, routes(a)[protocol.TypeFilesQuickOpen], peer,
+			map[string]any{"host": "gw", "interactive": true, "client_request_id": "q1"})
+		done <- perr
+	}()
+	<-g.entered
+	if perr := cancel(other, "q1"); perr == nil || perr.Code != fault.NotFound {
+		t.Fatalf("another connection cancelled: %+v", perr)
+	}
+	if perr := cancel(peer, "q1"); perr != nil {
+		t.Fatalf("cancel: %+v", perr)
+	}
+	if perr := <-done; perr == nil || perr.Code != fault.Cancelled {
+		t.Fatalf("open after cancel: %+v", perr)
+	}
+	if perr := cancel(peer, "q1"); perr == nil || perr.Code != fault.NotFound {
+		t.Fatalf("second cancel: %+v", perr)
 	}
 }

@@ -88,11 +88,18 @@ func (v *variantProvider) gatewayOn(ctx context.Context) bool {
 	return app.SSHGatewayEnabled
 }
 
-var errGatewayClient = fault.New(fault.InvalidRequest, "Gateway connections require an updated interactive client")
+var (
+	errGatewayClient = fault.New(fault.InvalidRequest, "Gateway connections require an updated interactive client")
+	errGatewayRoute  = fault.New(fault.InvalidRequest, "Unsupported gateway client or route")
+)
 
 // Prepare implements terminal.Variants.
 func (v *variantProvider) Prepare(ctx context.Context, a terminal.VariantAttempt) (client.Target, context.Context, func(), error) {
 	t := a.Target
+	if a.Files && t.Display.Tailscale {
+		// Quick SFTP never ran over Tailscale SSH.
+		return client.Target{}, nil, nil, errGatewayRoute
+	}
 	if t.Display.Tailscale {
 		auth, err := v.policy.Authorize(ctx, tsUser(a.User), t.Hop.Host, t.Hop.Port, t.Hop.User)
 		v.auditTailscale(a.User, t, err)
@@ -113,7 +120,8 @@ func (v *variantProvider) Prepare(ctx context.Context, a terminal.VariantAttempt
 	if err != nil {
 		return client.Target{}, nil, nil, err
 	}
-	t.Variant = attempt.Variant(true)
+	// A file connection has no temporary terminal to prepare.
+	t.Variant = attempt.Variant(!a.Files)
 	return t, actx, end, nil
 }
 

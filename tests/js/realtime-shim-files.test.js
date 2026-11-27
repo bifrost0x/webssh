@@ -101,7 +101,7 @@ test('Quick SFTP maps onto files.quick.open and answers with the events of today
         password: 'ignored', client_request_id: 'quick_1', gateway_interaction: 1});
     let request = ws.lastRequest('files.quick.open');
     assert.deepEqual(plain(request.p), {host: 'h', username: 'u', credential_target_token: 'tok', client_request_id: 'quick_1',
-        auth_type: 'password', port: 2222, saved_password: true, credential_id: 'c1'});
+        auth_type: 'password', interactive: true, port: 2222, saved_password: true, credential_id: 'c1'});
     ws.reply(request.id, {client_request_id: 'quick_1', connection_id: 'hX', host: 'h', port: 2222, username: 'u', file_source: {source_id: 'sftp-quick:hX'}});
     socket.emit('quick_connect', {host: 'h', username: 'u', key_id: 'k', client_request_id: 'quick_2'});
     request = ws.lastRequest('files.quick.open');
@@ -114,6 +114,27 @@ test('Quick SFTP maps onto files.quick.open and answers with the events of today
         ['ok', {client_request_id: 'quick_1', connection_id: 'hX', host: 'h', port: 2222, username: 'u', file_source: {source_id: 'sftp-quick:hX'}}],
         ['err', {error: 'Maximum number of quick connections reached', code: 'busy', client_request_id: 'quick_2'}],
         ['closed', {connection_id: 'hX'}],
+    ]);
+    socket.disconnect();
+});
+
+test('a gateway Quick SFTP attempt is cancelled with the acknowledgement of the Python handler', async () => {
+    const window = loadShim();
+    const {socket, ws} = await connected(window);
+    const acks = [];
+    socket.emit('ssh_gateway_quick_cancel', {client_request_id: 'quick_1'}, ack => acks.push(ack));
+    let request = ws.lastRequest('files.quick.cancel');
+    assert.deepEqual(plain(request.p), {client_request_id: 'quick_1'});
+    ws.reply(request.id, {});
+    socket.emit('ssh_gateway_quick_cancel', {client_request_id: 'quick_1'}, ack => acks.push(ack));
+    ws.fail(ws.lastRequest('files.quick.cancel').id, {code: 'not_found', message: ''});
+    socket.emit('ssh_gateway_quick_cancel', {client_request_id: 'quick_2'}, ack => acks.push(ack));
+    ws.fail(ws.lastRequest('files.quick.cancel').id, {code: 'conflict', message: 'The connection was already established.'});
+    await tick();
+    assert.deepEqual(plain(acks), [
+        {success: true},
+        {success: false, reason: 'not_found'},
+        {success: false, reason: 'already_committed'},
     ]);
     socket.disconnect();
 });

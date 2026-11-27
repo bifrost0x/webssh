@@ -30,6 +30,10 @@ const (
 type Connector interface {
 	Target(ctx context.Context, owner int64, req protocol.OpenTarget) (client.Target, error)
 	Interaction(peer protocol.Peer, requestID string) client.Interaction
+	// NeedsVariant reports a target of the SSH gateway or Tailscale SSH;
+	// PrepareFiles prepares the gateway form of one (quick_gateway.go).
+	NeedsVariant(t client.Target) bool
+	PrepareFiles(ctx context.Context, peer protocol.Peer, requestID string, t client.Target) (client.Target, context.Context, func(), error)
 }
 
 // Registry is the file source registry (internal/files).
@@ -48,6 +52,7 @@ type Area struct {
 
 	mu      sync.Mutex
 	probing map[string]bool // sessions with a directory probe running
+	quick   map[quickKey]*quickAttempt
 }
 
 // Routes are the files.quick.* and files.session.* types.
@@ -56,6 +61,7 @@ func (a *Area) Routes() []protocol.Route {
 		Timeout: 5 * time.Minute}
 	return []protocol.Route{
 		protocol.Handle(protocol.TypeFilesQuickOpen, open, a.quickOpen),
+		protocol.Handle(protocol.TypeFilesQuickCancel, protocol.Spec{}, a.quickCancel),
 		protocol.Handle(protocol.TypeFilesQuickClose, protocol.Spec{Mutates: true, Timeout: quickCloseWait}, a.quickClose),
 		protocol.Handle(protocol.TypeFilesSessionProbe, protocol.Spec{Async: true, RateKey: RateProbe, Timeout: 2 * ProbeTimeout}, a.probe),
 		protocol.Handle(protocol.TypeFilesSessionDirectory, protocol.Spec{Async: true, RateKey: RateDirectory, Timeout: 2 * DirectoryTimeout}, a.directory),
@@ -75,16 +81,19 @@ func (a *Area) quickOpen(ctx context.Context, peer protocol.Peer, req protocol.F
 		return protocol.FilesQuickOpened{}, fault.New(fault.InvalidRequest, "")
 	}
 	// Persistent sessions and the gateway's temporary terminal belong to
-	// the terminal; Quick SFTP is one file source.
+	// the terminal; Quick SFTP is one file source. interactive says the
+	// page answers the prompts of a gateway selector (gateway_interaction).
+	interactive := req.Interactive
 	req.UseTmux, req.TmuxSessionName, req.Interactive = false, "", false
 	t, err := a.Connector.Target(ctx, p.UserID, req.OpenTarget)
 	if err != nil {
 		return protocol.FilesQuickOpened{}, err
 	}
-	if t.Variant != nil {
-		// Quick SFTP through the SSH gateway or Tailscale SSH (C-GW-02).
-		return protocol.FilesQuickOpened{}, fault.New(fault.NotAvailableInPreview, "")
+	t, ctx, end, err := a.gatewayTarget(ctx, peer, req, interactive, t)
+	if err != nil {
+		return protocol.FilesQuickOpened{}, err
 	}
+	defer end()
 	slot, err := a.Registry.Reserve(ctx, p, files.SourceSFTPQuick)
 	if err != nil {
 		if fault.Is(err, fault.Busy) {
@@ -97,7 +106,7 @@ func (a *Area) quickOpen(ctx context.Context, peer protocol.Peer, req protocol.F
 		slot.Release()
 		return protocol.FilesQuickOpened{}, err
 	}
-	if peer.Context().Err() != nil {
+	if peer.Context().Err() != nil || ctx.Err() != nil || !a.commitQuick(peer, req.ClientRequestID) {
 		slot.Release()
 		_ = b.Close()
 		return protocol.FilesQuickOpened{}, fault.New(fault.Cancelled, "")

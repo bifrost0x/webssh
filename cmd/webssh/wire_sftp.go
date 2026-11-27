@@ -75,6 +75,12 @@ func (t terminalFiles) Interaction(peer protocol.Peer, requestID string) client.
 	return t.m.Interaction(peer, requestID)
 }
 
+func (terminalFiles) NeedsVariant(t client.Target) bool { return terminal.NeedsVariant(t) }
+
+func (t terminalFiles) PrepareFiles(ctx context.Context, peer protocol.Peer, requestID string, target client.Target) (client.Target, context.Context, func(), error) {
+	return t.m.PrepareFiles(ctx, peer, requestID, target)
+}
+
 var (
 	_ sftp.Sessions  = terminalFiles{}
 	_ sftp.Connector = terminalFiles{}

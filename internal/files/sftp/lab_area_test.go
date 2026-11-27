@@ -27,6 +27,12 @@ func (c labConnector) Target(context.Context, int64, protocol.OpenTarget) (clien
 
 func (c labConnector) Interaction(protocol.Peer, string) client.Interaction { return c.ix }
 
+func (labConnector) NeedsVariant(client.Target) bool { return false }
+
+func (labConnector) PrepareFiles(context.Context, protocol.Peer, string, client.Target) (client.Target, context.Context, func(), error) {
+	panic("no gateway in the lab rig")
+}
+
 // Quick SFTP through the realtime type: the source takes one quota slot,
 // lists the home directory and frees the slot when it is closed.
 func TestLabQuickOpenThroughTheArea(t *testing.T) {
