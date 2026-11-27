@@ -44,12 +44,37 @@ func NewRotation(from, to *Ring, legacyPurged bool) (*Rotation, error) {
 	return &Rotation{from: from, to: to}, nil
 }
 
+// ErrRotationVerify reports a resealed value that does not open to the
+// original plaintext under the new ring.
+var ErrRotationVerify = errors.New("keyring: a resealed value does not verify under the new SECRET_KEY")
+
 // Reseal opens a value with the current ring and seals it for the same
-// record with the new one.
+// record with the new one. The new value is opened again and compared
+// with the plaintext before it is returned.
 func (rt *Rotation) Reseal(p Purpose, ad AAD, sealed []byte) ([]byte, error) {
 	plain, err := rt.from.Open(p, ad, sealed)
 	if err != nil {
 		return nil, err
 	}
-	return rt.to.Seal(p, ad, plain)
+	defer clear(plain)
+	out, err := rt.to.Seal(p, ad, plain)
+	if err != nil {
+		return nil, err
+	}
+	back, err := rt.to.Open(p, ad, out)
+	if err != nil || subtle.ConstantTimeCompare(back, plain) != 1 {
+		return nil, ErrRotationVerify
+	}
+	clear(back)
+	return out, nil
 }
+
+// OldHeader is the prefix every value sealed by the current ring starts
+// with (format version and key identifier). After a rotation no stored
+// value may start with it.
+func (rt *Rotation) OldHeader() []byte {
+	return append([]byte{sealVersion}, rt.from.id[:]...)
+}
+
+// To is the ring of the new SECRET_KEY.
+func (rt *Rotation) To() *Ring { return rt.to }

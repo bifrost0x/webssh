@@ -59,6 +59,9 @@ type cliCase struct {
 	Tool  string    `json:"tool"` // "flask" or "ldap"
 	Files []string  `json:"files,omitzero"`
 	Steps []cliStep `json:"steps"`
+	// PyEnv is set for the Python run only: what the container entrypoint
+	// exports and the Go command derives itself.
+	PyEnv []string `json:"py_env,omitzero"`
 }
 
 type cliResult struct {
@@ -139,6 +142,11 @@ func cliCases() []cliCase {
 			{Args: cs("delete", "--username", "admin1", "--kind", "socks-proxies", "--selector", "x", "--confirm-offline")},
 			{Args: cs("delete", "--username", "ADMIN1", "--kind", "socks-proxies", "--selector", "x", "--confirm-offline")},
 		}},
+		{Name: "rotate usage", Tool: "flask", Steps: []cliStep{{Args: []string{"rotate-secret-key", "--help"}},
+			{Args: []string{"rotate-secret-key", "--confirm-offline=yes"}}, {Args: []string{"rotate-secret-key", "extra"}},
+			{Args: []string{"rotate-secret-key", "--bogus"}}, {Args: []string{"rotate-secret-key"}}}},
+		{Name: "rotate environment secret", Tool: "flask", PyEnv: []string{"WEBSSH_SECRET_KEY_SOURCE=environment"},
+			Steps: []cliStep{{Args: []string{"rotate-secret-key", "--confirm-offline"}}}},
 		{Name: "ldap no command", Tool: "ldap", Steps: []cliStep{{Args: []string{"--secret-dir", "{tmp}/s"}}}},
 		{Name: "ldap help", Tool: "ldap", Steps: []cliStep{{Args: []string{"--help"}}, {Args: []string{"--secret-dir", "{tmp}/s", "set-password", "--help"}},
 			{Args: []string{"--secret-dir", "{tmp}/s", "install-ca", "--help"}}, {Args: []string{"--secret-dir", "{tmp}/s", "remove", "--help"}},
@@ -276,7 +284,7 @@ func pythonCLI(t *testing.T, c cliCase, step cliStep, tmp, dataDir string) cliRe
 		cmd = exec.CommandContext(t.Context(), filepath.Join(venv, "python"), append([]string{filepath.Join(root, "deployment", "ldap_secret_cli.py")}, substitute(step.Args, tmp)...)...) // #nosec G204 -- test oracle
 	}
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "DATA_DIR="+dataDir, "SECRET_KEY="+testSecret, "PYTHONWARNINGS=ignore")
+	cmd.Env = append(append(os.Environ(), "DATA_DIR="+dataDir, "SECRET_KEY="+testSecret, "PYTHONWARNINGS=ignore"), c.PyEnv...)
 	cmd.Stdin = strings.NewReader(step.Stdin)
 	// A new session has no controlling terminal: getpass reads standard
 	// input, as under "docker compose exec -T".

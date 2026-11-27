@@ -45,6 +45,7 @@ func commands() []command {
 		{name: "ldap-secret", summary: "manage the LDAP secret volume", run: runLDAPSecret},
 		{name: "issue-factor-bootstrap", summary: "issue a code for a GitHub account's first factor", run: runIssueFactorBootstrap},
 		{name: "connection-store", summary: "list or delete records of an oversized connection store", run: runConnectionStore},
+		{name: "rotate-secret-key", summary: "--confirm-offline: rotate SECRET_KEY and reseal the stored secrets", run: runRotateSecretKey},
 		{name: "migrate", summary: "--dry-run or --replace the migration of the Python data", run: runMigrate},
 		{name: "legacy", summary: "purge: remove the Python data after the migration", run: runLegacy},
 		{name: "version", summary: "print the version and source revision", run: runVersion},

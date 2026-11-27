@@ -181,6 +181,13 @@ func RecordKeyID(ctx context.Context, db *store.DB, keyID string) error {
 	return db.Write(ctx, func(tx *store.Tx) error { return writeKeyID(ctx, tx, keyID) })
 }
 
+// WriteKeyIDTx stores the key identifier inside a transaction of the
+// caller: rotate-secret-key stores the new one together with the
+// resealed records.
+func WriteKeyIDTx(ctx context.Context, tx *store.Tx, keyID string) error {
+	return writeKeyID(ctx, tx, keyID)
+}
+
 // StoredKeyID returns the key identifier of db, or "" when none is
 // stored.
 func StoredKeyID(ctx context.Context, db *store.DB) (string, error) {
