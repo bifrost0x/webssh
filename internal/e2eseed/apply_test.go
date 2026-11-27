@@ -70,9 +70,8 @@ func TestApplyCheckedInSeed(t *testing.T) {
 		t.Errorf("onboarding for %d accounts, want 7", n)
 	}
 
-	var keyID string
-	for id, k := range f.keys {
-		keyID = id
+	keyID := f.keyByName["E2E usable key"]
+	for _, k := range f.keys {
 		if len(k) != ed25519.PrivateKeySize {
 			t.Fatalf("generated key has %d bytes", len(k))
 		}

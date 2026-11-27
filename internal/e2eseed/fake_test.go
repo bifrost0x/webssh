@@ -10,18 +10,19 @@ import (
 
 // fakeStores records what the applier writes, in order.
 type fakeStores struct {
-	mu       sync.Mutex
-	calls    []string
-	nextUser int64
-	nextID   int
-	users    map[int64]string
-	admins   map[int64]bool
-	mfa      map[int64]bool
-	keys     map[string]ed25519.PrivateKey
-	jumps    map[string]JumpHostRecord
-	proxies  map[string]SOCKSProxyRecord
-	profiles map[int64][]ProfileRecord
-	failOn   string
+	keyByName map[string]string
+	mu        sync.Mutex
+	calls     []string
+	nextUser  int64
+	nextID    int
+	users     map[int64]string
+	admins    map[int64]bool
+	mfa       map[int64]bool
+	keys      map[string]ed25519.PrivateKey
+	jumps     map[string]JumpHostRecord
+	proxies   map[string]SOCKSProxyRecord
+	profiles  map[int64][]ProfileRecord
+	failOn    string
 }
 
 func newFakeStores() *fakeStores {
@@ -103,6 +104,10 @@ func (f *fakeStores) AddPasskeyPlaceholder(_ context.Context, userID int64, name
 func (f *fakeStores) AddKey(_ context.Context, owner int64, name string, key ed25519.PrivateKey) (string, error) {
 	id := f.id("key")
 	f.keys[id] = key
+	if f.keyByName == nil {
+		f.keyByName = map[string]string{}
+	}
+	f.keyByName[name] = id
 	return id, f.record(fmt.Sprintf("key %d %s", owner, name))
 }
 
