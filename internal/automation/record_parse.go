@@ -242,3 +242,17 @@ func ParseHistory(doc jsontext.Value) ([]Run, error) {
 	}
 	return runs, nil
 }
+
+// Recover applies the load-time rule of the history to a stored record
+// (migration): an unfinished run is unknown, its open steps interrupted.
+func Recover(r *Run) bool { return recoverRun(r) }
+
+// Trim drops the oldest runs (runs are newest first) while the history
+// is above its size limit.
+func Trim(runs []Run) []Run { return trim(runs) }
+
+// SameValue reports whether two JSON values are equal as Python
+// compares the dicts it loaded: members in any order.
+func SameValue(a, b jsontext.Value) bool {
+	return pyDump(a, dumpOptions{sortKeys: true}) == pyDump(b, dumpOptions{sortKeys: true})
+}

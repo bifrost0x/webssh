@@ -951,5 +951,51 @@
     "content_type": "text/csv; charset=utf-8"
    }
   }
- ]
+ ],
+ "golden": {
+  "datadir.tar": [
+   {
+    "user_id": 3,
+    "run_id": "golden-run-0001",
+    "json": "eyJpZCI6ICJnb2xkZW4tcnVuLTAwMDEiLCAibmFtZSI6ICJcdTAwZGNuXHUwMGVmY1x1MDBmOGRcdTAwZTkgXHUyNzEzIFx1NjcwZFx1NTJhMVx1NTY2OCBcdWQ4M2RcdWRlODAgXHUwNWUyXHUwNWQxXHUwNWU4XHUwNWQ5XHUwNWVhIiwgInJ1bmJvb2tfaWQiOiAiYzBhMmQzODYtZTlhMi00ZDJkLTliZjgtNjM3ZDczMzA4ZDEyIiwgImNyZWF0ZWRfYXQiOiAiMjAyNi0xMS0wMlQwOTowMzo1NC4yNTAwMDArMDA6MDAiLCAiZmluaXNoZWRfYXQiOiAiMjAyNi0xMS0wMlQwOTowMzo1NC4yNTAwMDArMDA6MDAiLCAic3RhdHVzIjogImZhaWxlZCIsICJ0YXJnZXRzIjogW3siaWQiOiAiYzExYWU3ODAtYjZlYi00ZGFjLWE3OTQtZDI3ZDBiMjNmMjU1IiwgIm5hbWUiOiAiUGFzc3dvcmQgc2VydmVyIiwgImhvc3QiOiAicHcuZ29sZGVuLnRlc3QiLCAicG9ydCI6IDIyLCAidXNlcm5hbWUiOiAib3BlcmF0b3IiLCAiZ3JvdXAiOiBudWxsLCAic3RhdHVzIjogImZhaWxlZCIsICJyZWFzb24iOiBudWxsLCAic3RlcHMiOiBbeyJuYW1lIjogIlNjaHJpdHQgMCBcdTI3MTMiLCAic3RhdHVzIjogImZhaWxlZCIsICJleGl0X2NvZGUiOiAxLCAiZHVyYXRpb24iOiAwLjI1LCAicmVhc29uIjogbnVsbCwgInN0ZG91dCI6ICJcdTAwZmNuXHUwMGVmY1x1MDBmOGRcdTAwZTlcbiIsICJzdGRlcnIiOiAiYm9vbVxuIiwgIm91dHB1dF90cnVuY2F0ZWQiOiBmYWxzZX1dfV19",
+    "csv": "cnVuX2lkLHdvcmtmbG93LGNyZWF0ZWRfYXQsZmluaXNoZWRfYXQscnVuX3N0YXR1cyx0YXJnZXRfaWQsdGFyZ2V0LGhvc3QscG9ydCx1c2VybmFtZSxncm91cCx0YXJnZXRfc3RhdHVzLHRhcmdldF9yZWFzb24sc3RlcCxzdGF0dXMscmVhc29uLGV4aXRfY29kZSxkdXJhdGlvbixvdXRwdXRfdHJ1bmNhdGVkLHN0ZG91dCxzdGRlcnINCmdvbGRlbi1ydW4tMDAwMSzDnG7Dr2PDuGTDqSDinJMg5pyN5Yqh5ZmoIPCfmoAg16LXkdeo15nXqiwyMDI2LTExLTAyVDA5OjAzOjU0LjI1MDAwMCswMDowMCwyMDI2LTExLTAyVDA5OjAzOjU0LjI1MDAwMCswMDowMCxmYWlsZWQsYzExYWU3ODAtYjZlYi00ZGFjLWE3OTQtZDI3ZDBiMjNmMjU1LFBhc3N3b3JkIHNlcnZlcixwdy5nb2xkZW4udGVzdCwyMixvcGVyYXRvciwsZmFpbGVkLCxTY2hyaXR0IDAg4pyTLGZhaWxlZCwsMSwwLjI1LEZhbHNlLCLDvG7Dr2PDuGTDqQoiLCJib29tCiINCg=="
+   }
+  ],
+  "datadir.tar:runbooks": [
+   {
+    "user_id": 3,
+    "run_id": "1370aa3c-0642-44d5-b9b5-1f03f04e3ad5",
+    "json": "bf1ae4bd734c02a8ae0dfcba41ea16d639059bcf465f04d70c354870e70b9861",
+    "csv": ""
+   },
+   {
+    "user_id": 3,
+    "run_id": "c0a2d386-e9a2-4d2d-9bf8-637d73308d12",
+    "json": "00aefacba518d0197c27a1d04316a1afcd454922636e0f9fceec3d18566f7ad9",
+    "csv": ""
+   }
+  ],
+  "datadir-extended.tar": [
+   {
+    "user_id": 3,
+    "run_id": "golden-run-0001",
+    "json": "eyJpZCI6ICJnb2xkZW4tcnVuLTAwMDEiLCAibmFtZSI6ICJcdTAwZGNuXHUwMGVmY1x1MDBmOGRcdTAwZTkgXHUyNzEzIFx1NjcwZFx1NTJhMVx1NTY2OCBcdWQ4M2RcdWRlODAgXHUwNWUyXHUwNWQxXHUwNWU4XHUwNWQ5XHUwNWVhIiwgInJ1bmJvb2tfaWQiOiAiYzBhMmQzODYtZTlhMi00ZDJkLTliZjgtNjM3ZDczMzA4ZDEyIiwgImNyZWF0ZWRfYXQiOiAiMjAyNi0xMS0wMlQwOTowMzo1NC4yNTAwMDArMDA6MDAiLCAiZmluaXNoZWRfYXQiOiAiMjAyNi0xMS0wMlQwOTowMzo1NC4yNTAwMDArMDA6MDAiLCAic3RhdHVzIjogImZhaWxlZCIsICJ0YXJnZXRzIjogW3siaWQiOiAiYzExYWU3ODAtYjZlYi00ZGFjLWE3OTQtZDI3ZDBiMjNmMjU1IiwgIm5hbWUiOiAiUGFzc3dvcmQgc2VydmVyIiwgImhvc3QiOiAicHcuZ29sZGVuLnRlc3QiLCAicG9ydCI6IDIyLCAidXNlcm5hbWUiOiAib3BlcmF0b3IiLCAiZ3JvdXAiOiBudWxsLCAic3RhdHVzIjogImZhaWxlZCIsICJyZWFzb24iOiBudWxsLCAic3RlcHMiOiBbeyJuYW1lIjogIlNjaHJpdHQgMCBcdTI3MTMiLCAic3RhdHVzIjogImZhaWxlZCIsICJleGl0X2NvZGUiOiAxLCAiZHVyYXRpb24iOiAwLjI1LCAicmVhc29uIjogbnVsbCwgInN0ZG91dCI6ICJcdTAwZmNuXHUwMGVmY1x1MDBmOGRcdTAwZTlcbiIsICJzdGRlcnIiOiAiYm9vbVxuIiwgIm91dHB1dF90cnVuY2F0ZWQiOiBmYWxzZX1dfV19",
+    "csv": "cnVuX2lkLHdvcmtmbG93LGNyZWF0ZWRfYXQsZmluaXNoZWRfYXQscnVuX3N0YXR1cyx0YXJnZXRfaWQsdGFyZ2V0LGhvc3QscG9ydCx1c2VybmFtZSxncm91cCx0YXJnZXRfc3RhdHVzLHRhcmdldF9yZWFzb24sc3RlcCxzdGF0dXMscmVhc29uLGV4aXRfY29kZSxkdXJhdGlvbixvdXRwdXRfdHJ1bmNhdGVkLHN0ZG91dCxzdGRlcnINCmdvbGRlbi1ydW4tMDAwMSzDnG7Dr2PDuGTDqSDinJMg5pyN5Yqh5ZmoIPCfmoAg16LXkdeo15nXqiwyMDI2LTExLTAyVDA5OjAzOjU0LjI1MDAwMCswMDowMCwyMDI2LTExLTAyVDA5OjAzOjU0LjI1MDAwMCswMDowMCxmYWlsZWQsYzExYWU3ODAtYjZlYi00ZGFjLWE3OTQtZDI3ZDBiMjNmMjU1LFBhc3N3b3JkIHNlcnZlcixwdy5nb2xkZW4udGVzdCwyMixvcGVyYXRvciwsZmFpbGVkLCxTY2hyaXR0IDAg4pyTLGZhaWxlZCwsMSwwLjI1LEZhbHNlLCLDvG7Dr2PDuGTDqQoiLCJib29tCiINCg=="
+   }
+  ],
+  "datadir-extended.tar:runbooks": [
+   {
+    "user_id": 3,
+    "run_id": "1370aa3c-0642-44d5-b9b5-1f03f04e3ad5",
+    "json": "bf1ae4bd734c02a8ae0dfcba41ea16d639059bcf465f04d70c354870e70b9861",
+    "csv": ""
+   },
+   {
+    "user_id": 3,
+    "run_id": "c0a2d386-e9a2-4d2d-9bf8-637d73308d12",
+    "json": "00aefacba518d0197c27a1d04316a1afcd454922636e0f9fceec3d18566f7ad9",
+    "csv": ""
+   }
+  ]
+ }
 }

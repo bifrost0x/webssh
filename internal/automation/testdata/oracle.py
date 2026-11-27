@@ -248,6 +248,30 @@ def export(run, fmt):
         routes._auth, routes._enabled, routes.service, routes.current_user = saved
 
 
+def golden():
+    """The exports of every run in the golden data sets, keyed by archive."""
+    import tarfile
+    out = {}
+    for archive in [WS / 'tests/golden/fixture/datadir.tar', *sorted((WS / 'tests/golden/fixture/legacy').glob('*.tar'))]:
+        with tarfile.open(archive) as tar:
+            for member in tar.getmembers():
+                if member.name.endswith('/automation.json'):
+                    user = int(member.name.split('/user_')[1].split('/')[0])
+                    for book in json.loads(tar.extractfile(member).read())['runbooks']:
+                        out.setdefault(archive.name + ':runbooks', []).append({
+                            'user_id': user, 'run_id': book['id'], 'json': store.digest(book), 'csv': ''})
+                    continue
+                if not member.name.endswith('/automation-runs.json'):
+                    continue
+                document = json.loads(tar.extractfile(member).read())
+                user = int(member.name.split('/user_')[1].split('/')[0])
+                for run in document['runs']:
+                    out.setdefault(archive.name, []).append({
+                        'user_id': user, 'run_id': run['id'],
+                        'json': export(run, 'json')['body'], 'csv': export(run, 'csv')['body']})
+    return out
+
+
 def main(path):
     corpus = {
         'runbooks': [normalize(v) for v in RUNBOOKS],
@@ -255,6 +279,7 @@ def main(path):
         'redact': redact_cases(),
         'steps': step_cases(),
         'runs': runs(),
+        'golden': golden(),
     }
     Path(path).write_text(json.dumps(corpus, indent=1, ensure_ascii=True) + '\n', encoding='utf-8')
 
