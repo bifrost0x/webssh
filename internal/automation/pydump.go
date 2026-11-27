@@ -20,9 +20,13 @@ type dumpOptions struct {
 // options: string escapes of ensure_ascii, number texts as Python prints
 // the parsed value, member order kept unless sorted. v must be valid,
 // strict JSON (pyjson.Load output or built by this package).
-func pyDump(v jsontext.Value, o dumpOptions) string {
+func pyDump(v jsontext.Value, o dumpOptions) string { return pyDumpAt(v, o, 0) }
+
+// pyDumpAt writes v as a member at the nesting depth of an indented
+// document.
+func pyDumpAt(v jsontext.Value, o dumpOptions, depth int) string {
 	var b strings.Builder
-	dumpValue(&b, v, o, 0)
+	dumpValue(&b, v, o, depth)
 	return b.String()
 }
 

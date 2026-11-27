@@ -45,7 +45,7 @@ func (s *Service) History(ctx context.Context, userID int64) ([]Run, error) {
 				recoverRun(&persisted[i])
 			}
 		}
-		return rewrite(ctx, tx, userID, stored, trim(persisted))
+		return storeRecovered(ctx, tx, userID, stored, persisted)
 	})
 	return out, storageErr(err)
 }

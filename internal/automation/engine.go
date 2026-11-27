@@ -81,7 +81,8 @@ func (s *Service) newRecord(j job) Run {
 }
 
 func (s *Service) persist(ctx context.Context, userID int64, r Run) error {
-	return storageErr(s.o.DB.Write(context.WithoutCancel(ctx), func(tx *store.Tx) error {
+	ctx = context.WithoutCancel(ctx)
+	return storageErr(s.o.DB.Write(ctx, func(tx *store.Tx) error {
 		return persistRun(ctx, tx, userID, r)
 	}))
 }
@@ -109,7 +110,7 @@ func (s *Service) dispatch(ctx context.Context, j job) (Run, error) {
 		return Run{}, &NotDispatched{Code: "busy"}
 	}
 	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), runDeadline)
-	a := &active{sessionID: j.sessionID, ctx: runCtx, cancel: cancel, stopped: make(chan struct{}), record: record}
+	a := &active{sessionID: j.sessionID, ctx: runCtx, cancel: cancel, stopped: make(chan struct{}), record: record.clone()}
 	if j.scheduled != nil {
 		a.scheduleID, a.claimID = j.scheduled.ScheduleID, j.scheduled.ClaimID
 	}

@@ -10,7 +10,9 @@ import "github.com/bifrost0x/webssh/internal/store"
 // runbook moves to the end. automation_runs holds the run history
 // (automation-runs.json): one JSON document per run, with the member
 // order the Python release wrote, so an export of a migrated run is the
-// same text. seq orders the history, the highest first.
+// same text. seq orders the history, the highest first. py_size is the
+// size the record takes in the Python file (indented), which the size
+// limit of the history counts.
 func Schema() store.Schema {
 	return store.Schema{Owner: "automation", Migrations: []store.Migration{{
 		Version: 1,
@@ -39,6 +41,7 @@ CREATE TABLE automation_runs (
 	id TEXT NOT NULL,
 	seq INTEGER NOT NULL,
 	document TEXT NOT NULL,
+	py_size INTEGER NOT NULL CHECK (py_size > 0),
 	PRIMARY KEY (user_id, id),
 	UNIQUE (user_id, seq)
 ) STRICT`,

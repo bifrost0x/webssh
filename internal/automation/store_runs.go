@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/bifrost0x/webssh/internal/pyjson"
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
@@ -42,6 +41,30 @@ func readRuns(ctx context.Context, q querier, userID int64) ([]storedRun, error)
 	return out, errors.Join(rows.Err(), rows.Close())
 }
 
+// runRow is a history row without its document.
+type runRow struct {
+	id   string
+	seq  int64
+	size int
+}
+
+func readRows(ctx context.Context, q querier, userID int64) ([]runRow, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, seq, py_size FROM automation_runs WHERE user_id = ? ORDER BY seq DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	var out []runRow
+	for rows.Next() {
+		var r runRow
+		if err := rows.Scan(&r.id, &r.seq, &r.size); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, errors.Join(rows.Err(), rows.Close())
+}
+
 // ExportRunsTx returns the stored history of a user, the newest first
 // (migration verification).
 func ExportRunsTx(ctx context.Context, tx *store.Tx, userID int64) ([]Run, error) {
@@ -71,85 +94,114 @@ func ImportRunsTx(ctx context.Context, tx *store.Tx, userID int64, runs []Run) e
 }
 
 func upsertRun(ctx context.Context, tx *store.Tx, userID, seq int64, r *Run) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO automation_runs (user_id, id, seq, document) VALUES (?, ?, ?, ?)
-ON CONFLICT (user_id, id) DO UPDATE SET seq = excluded.seq, document = excluded.document`, userID, r.ID, seq, string(r.Value()))
+	doc := r.Value()
+	_, err := tx.ExecContext(ctx, `INSERT INTO automation_runs (user_id, id, seq, document, py_size) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (user_id, id) DO UPDATE SET seq = excluded.seq, document = excluded.document, py_size = excluded.py_size`,
+		userID, r.ID, seq, string(doc), runBytes(doc))
 	if err != nil {
 		return fmt.Errorf("automation: store run: %w", err)
 	}
 	return nil
 }
 
-// historyBytes is the size of automation-runs.json as the Python release
-// wrote it (document_bytes), which the trimming rule applies to.
+// runBytes is the size of a record inside the indented history file.
+func runBytes(doc jsontext.Value) int { return len(pyDumpAt(doc, dumpOptions{indent: 2}, 2)) }
+
+// Framing of automation-runs.json written with indent 2: the members
+// before the list, the separator and indentation before each record,
+// and the end.
+const (
+	historyHead  = len("{\n  \"version\": 1,\n  \"runs\": [")
+	historyItem  = len(",\n    ")
+	historyTail  = len("\n  ]\n}")
+	historyEmpty = len("{\n  \"version\": 1,\n  \"runs\": []\n}")
+)
+
+// historySize is document_bytes of a history with records of the sizes.
+func historySize(sizes []int) int {
+	if len(sizes) == 0 {
+		return historyEmpty
+	}
+	n := historyHead + historyTail - 1 // the first record has no comma
+	for _, s := range sizes {
+		n += historyItem + s
+	}
+	return n
+}
+
+// historyBytes is the size of automation-runs.json for the runs.
 func historyBytes(runs []Run) int {
-	items := make([]jsontext.Value, len(runs))
+	sizes := make([]int, len(runs))
 	for i := range runs {
-		items[i] = runs[i].Value()
+		sizes[i] = runBytes(runs[i].Value())
 	}
-	doc := pyjson.Object([]pyjson.Member{
-		{Name: "version", Value: jsontext.Value("1")},
-		{Name: "runs", Value: pyjson.Array(items)},
-	})
-	return len(pyDump(doc, dumpOptions{indent: 2}))
+	return historySize(sizes)
 }
 
-// trim drops the oldest runs while the history is above MaxStoreBytes;
-// the newest run is never dropped (_trim_history).
+// keep is how many of the newest records stay within MaxStoreBytes; the
+// newest always stays (_trim_history).
+func keep(sizes []int) int {
+	n := len(sizes)
+	for n > 1 && historySize(sizes[:n]) > MaxStoreBytes {
+		n--
+	}
+	return n
+}
+
+// trim drops the oldest runs while the history is above MaxStoreBytes.
 func trim(runs []Run) []Run {
-	for len(runs) > 1 && historyBytes(runs) > MaxStoreBytes {
-		runs = runs[:len(runs)-1]
+	sizes := make([]int, len(runs))
+	for i := range runs {
+		sizes[i] = runBytes(runs[i].Value())
 	}
-	return runs
+	return runs[:keep(sizes)]
 }
 
-// rewrite stores runs (newest first) as the user's whole history: rows
-// that are no longer listed go, the others keep or get their order.
-func rewrite(ctx context.Context, tx *store.Tx, userID int64, before []storedRun, runs []Run) error {
-	keep := map[string]bool{}
-	for _, r := range runs {
-		keep[r.ID] = true
+// persistRun is _persist: the record goes to the front of the history,
+// which keeps MaxRuns records within MaxStoreBytes. Only the record is
+// written; older rows keep their documents.
+func persistRun(ctx context.Context, tx *store.Tx, userID int64, r Run) error {
+	rows, err := readRows(ctx, tx, userID)
+	if err != nil {
+		return err
 	}
-	for _, s := range before {
-		if !keep[s.run.ID] {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM automation_runs WHERE user_id = ? AND id = ?`, userID, s.run.ID); err != nil {
+	doc := r.Value()
+	list := []runRow{{id: r.ID, size: runBytes(doc)}}
+	var top int64
+	for _, row := range rows {
+		top = max(top, row.seq)
+		if row.id != r.ID {
+			list = append(list, row)
+		}
+	}
+	if len(list) > MaxRuns {
+		list = list[:MaxRuns]
+	}
+	sizes := make([]int, len(list))
+	for i, row := range list {
+		sizes[i] = row.size
+	}
+	list = list[:keep(sizes)]
+	if err := dropRows(ctx, tx, userID, rows, list); err != nil {
+		return err
+	}
+	seq := top + 1
+	if len(rows) > 0 && rows[0].id == r.ID {
+		seq = rows[0].seq
+	}
+	return upsertRun(ctx, tx, userID, seq, &r)
+}
+
+// dropRows deletes the rows that are no longer listed.
+func dropRows(ctx context.Context, tx *store.Tx, userID int64, before, after []runRow) error {
+	for _, row := range before {
+		if !slices.ContainsFunc(after, func(a runRow) bool { return a.id == row.id }) {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM automation_runs WHERE user_id = ? AND id = ?`, userID, row.id); err != nil {
 				return err
 			}
 		}
 	}
-	var top int64
-	if len(before) > 0 {
-		top = before[0].seq
-	}
-	// Renumbering from the top keeps the unique order without a gap
-	// check; at most MaxRuns rows move.
-	if _, err := tx.ExecContext(ctx, `UPDATE automation_runs SET seq = -seq - 1 WHERE user_id = ?`, userID); err != nil {
-		return err
-	}
-	for i := range runs {
-		if err := upsertRun(ctx, tx, userID, top+int64(len(runs)-i), &runs[i]); err != nil {
-			return err
-		}
-	}
 	return nil
-}
-
-// persistRun is _persist: the record goes to the front of the history,
-// which keeps MaxRuns records within MaxStoreBytes.
-func persistRun(ctx context.Context, tx *store.Tx, userID int64, r Run) error {
-	before, err := readRuns(ctx, tx, userID)
-	if err != nil {
-		return err
-	}
-	runs := []Run{r}
-	for _, s := range before {
-		if s.run.ID != r.ID {
-			runs = append(runs, s.run)
-		}
-	}
-	if len(runs) > MaxRuns {
-		runs = runs[:MaxRuns]
-	}
-	return rewrite(ctx, tx, userID, before, trim(runs))
 }
 
 // recoverRun applies the load-time rule of history(): a record that is
@@ -178,27 +230,42 @@ func recoverRun(r *Run) bool {
 	return true
 }
 
+// storeRecovered writes the recovered records in place, then trims.
+func storeRecovered(ctx context.Context, tx *store.Tx, userID int64, stored []storedRun, recovered []Run) error {
+	for i := range recovered {
+		if err := upsertRun(ctx, tx, userID, stored[i].seq, &recovered[i]); err != nil {
+			return err
+		}
+	}
+	rows, err := readRows(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	sizes := make([]int, len(rows))
+	for i, row := range rows {
+		sizes[i] = row.size
+	}
+	return dropRows(ctx, tx, userID, rows, rows[:keep(sizes)])
+}
+
 // deleteRuns removes finished runs: ids nil removes every run that is
 // not active. It returns the number removed.
 func deleteRuns(ctx context.Context, tx *store.Tx, userID int64, ids []string, active func(string) bool) (int, error) {
-	before, err := readRuns(ctx, tx, userID)
+	rows, err := readRows(ctx, tx, userID)
 	if err != nil {
 		return 0, err
 	}
-	var kept []Run
-	for _, s := range before {
-		if active(s.run.ID) || (ids != nil && !slices.Contains(ids, s.run.ID)) {
-			kept = append(kept, s.run)
+	var kept []runRow
+	for _, row := range rows {
+		if active(row.id) || (ids != nil && !slices.Contains(ids, row.id)) {
+			kept = append(kept, row)
 		}
 	}
-	removed := len(before) - len(kept)
+	removed := len(rows) - len(kept)
 	if ids != nil && removed != len(dedupe(ids)) {
 		return 0, Fail("not_found")
 	}
-	if removed == 0 {
-		return 0, nil
-	}
-	return removed, rewrite(ctx, tx, userID, before, trim(kept))
+	return removed, dropRows(ctx, tx, userID, rows, kept)
 }
 
 func dedupe(ids []string) []string {
