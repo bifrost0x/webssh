@@ -225,9 +225,6 @@ func serveOnce(ctx context.Context, opts serveOptions, logger *slog.Logger, buil
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
-	if _, err := platform.Notify(platform.NotifyReady); err != nil {
-		logger.Warn("service manager notification failed", "err", err)
-	}
 	logger.Info("ready", "version", buildinfo.Read().String(), "addr", ln.Addr().String(),
 		"pid", os.Getpid(), "startup_ms", time.Since(started).Milliseconds())
 	if ready != nil {
@@ -252,9 +249,6 @@ func shutdown(srv *http.Server, app application, state *runtimeState, limit time
 	begin := time.Now()
 	logger := state.logger
 	state.stopping.Store(true)
-	if _, err := platform.Notify(platform.NotifyStopping); err != nil {
-		logger.Warn("service manager notification failed", "err", err)
-	}
 	logger.Info("shutdown requested", "grace", limit)
 
 	ctx, cancel := context.WithTimeoutCause(context.Background(), limit, errShutdownDeadline)
