@@ -97,8 +97,9 @@ test('every area and dialog opens without errors or endless loading', async ({br
     await test.step('sign-in page', async () => {
         await page.goto('/login');
         await settled(page, '/login');
-        if (kind === 'go') await expect(page.locator('#previewNotice')).toBeVisible();
-        else await expect(page.locator('#previewNotice')).toHaveCount(0);
+        // Every sign-in provider is built, so neither release shows the
+        // preview notice before sign-in.
+        await expect(page.locator('#previewNotice')).toHaveCount(0);
     });
 
     await ui.signIn(page, admin.username, admin.password);
