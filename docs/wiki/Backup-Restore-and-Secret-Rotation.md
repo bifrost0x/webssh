@@ -80,7 +80,10 @@ bootstrap codes and known-device cookies end, and schedules need a new
 approval. The restore state is kept in `DATA_DIR/go/restore-status.json`,
 so an interrupted restore is completed or rolled back at the next start.
 While a failed rollback is unresolved, `/ready` and the sign-in page answer
-503 until `webssh backup restore` succeeds.
+503 until `webssh backup restore` succeeds. That command keeps the files of
+the failed restore (the previous and the restored database) as
+`DATA_DIR/go/failed-restore-<id>/` and names them; remove them once they are
+no longer needed. `rotate-secret-key` is refused until then.
 
 ### SECRET_KEY on restore
 
