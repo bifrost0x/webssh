@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"net/netip"
 	"slices"
 	"time"
 
@@ -89,6 +90,7 @@ func (d *Dialer) Dial(ctx context.Context, t Target, ix Interaction) (*Conn, err
 	if err != nil {
 		return nil, err
 	}
+	first := conn.RemoteAddr()
 	var chain []*ssh.Client
 	closeChain := func() {
 		for _, c := range slices.Backward(chain) {
@@ -110,6 +112,9 @@ func (d *Dialer) Dial(ctx context.Context, t Target, ix Interaction) (*Conn, err
 		chain = append(chain, client)
 	}
 	c := newConn(chain, cfg.Keepalive, cfg.HandshakeTimeout)
+	if t.dialVariant() == nil {
+		c.route, c.routed = routeOf(first, t, hops), true
+	}
 	if t.Variant != nil && t.Variant.Ready != nil {
 		if err := t.Variant.Ready(ctx, chain[len(chain)-1]); err != nil {
 			_ = c.Close()
@@ -188,6 +193,26 @@ func (d *Dialer) prepare(ctx context.Context, t Target) ([]hop, error) {
 		h.signer = signer
 	}
 	return hops, nil
+}
+
+// routeOf records the pinned peer of the first TCP connection and what
+// each relay was asked to reach.
+func routeOf(first net.Addr, t Target, hops []hop) Route {
+	var r Route
+	if first != nil {
+		if ap, err := netip.ParseAddrPort(first.String()); err == nil {
+			r.Peer = ap.Addr()
+		}
+	}
+	switch {
+	case t.Proxy != nil:
+		r.Onward = []string{hops[0].dest}
+	case len(hops) > 1:
+		for _, h := range hops[1:] {
+			r.Onward = append(r.Onward, h.dest)
+		}
+	}
+	return r
 }
 
 // firstConn opens the TCP connection to the first hop, or to the SOCKS5

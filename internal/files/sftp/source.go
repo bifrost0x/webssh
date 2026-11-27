@@ -100,6 +100,7 @@ func (q *Quick) Open(ctx context.Context, p principal.Principal, t client.Target
 	if err != nil {
 		return files.Descriptor{}, nil, err
 	}
+	b.route, b.routed = conn.Route()
 	return descriptor(t.Hop, t.Display.Name, true), b, nil
 }
 

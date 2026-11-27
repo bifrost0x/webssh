@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"maps"
+	"net/netip"
 	"path"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/files"
+	"github.com/bifrost0x/webssh/internal/ssh/client"
 )
 
 // Backend is a files.Backend on one SFTP channel. It is safe for
@@ -32,6 +34,16 @@ type Backend struct {
 	// connection and releases its quota there).
 	onClose func()
 	once    sync.Once
+
+	// route is the path of a Quick SFTP connection (files.Routed).
+	route  client.Route
+	routed bool
+}
+
+// Route implements files.Routed for a Quick SFTP source. A terminal
+// session source reports no route: it ends with its session.
+func (b *Backend) Route() (netip.Addr, []string, bool) {
+	return b.route.Peer, b.route.Onward, b.routed
 }
 
 // Open starts SFTP on ch, the data stream of the SFTP subsystem
@@ -319,3 +331,4 @@ func strictName(n string) bool {
 }
 
 var _ files.Backend = (*Backend)(nil)
+var _ files.Routed = (*Backend)(nil)

@@ -128,7 +128,7 @@ func connect(ctx context.Context, cfg Config, t Target) (*Backend, error) {
 		_ = session.Abort()
 		return nil, err
 	}
-	b.host, b.share = adm.Host, t.Share
+	b.host, b.share, b.peer = adm.Host, t.Share, adm.Addr.Addr()
 	return b, nil
 }
 

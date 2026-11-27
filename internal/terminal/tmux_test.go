@@ -36,6 +36,8 @@ type fakeHost struct {
 	pty        *fakeShell
 	closed     int
 	noHerdr    bool // the Herdr lookup fails
+	route      client.Route
+	routed     bool
 }
 
 func (h *fakeHost) run(_ context.Context, line string, _ time.Duration) (int, []byte, error) {
@@ -73,6 +75,8 @@ func (h *fakeHost) commandShell(_ context.Context, line string, _, _ int) (clien
 func (h *fakeHost) shell(context.Context, int, int) (client.Shell, error) { return h.open("") }
 
 func (h *fakeHost) sshConn() *client.Conn { return nil }
+
+func (h *fakeHost) netRoute() (client.Route, bool) { return h.route, h.routed }
 
 func (h *fakeHost) Close() error {
 	h.mu.Lock()
