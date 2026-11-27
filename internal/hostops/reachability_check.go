@@ -45,6 +45,7 @@ func (c *Reachability) run(ctx context.Context, p principal.Principal, wanted ma
 		c.inFlight, c.cache = map[int64]bool{}, map[int64]cached{}
 	}
 	c.inFlight[owner] = true
+	generation := c.generation
 	c.mu.Unlock()
 	outcomes := c.probeAll(ctx, p, targets)
 	c.mu.Lock()
@@ -82,7 +83,10 @@ func (c *Reachability) run(ctx context.Context, p principal.Principal, wanted ma
 	}
 	checkedAt := unix(c.clock())
 	c.mu.Lock()
-	c.cache[owner] = cached{at: c.clock(), signature: signature, results: results, checkedAt: checkedAt}
+	// A policy change during the check makes its answer stale.
+	if generation == c.generation {
+		c.cache[owner] = cached{at: c.clock(), signature: signature, results: results, checkedAt: checkedAt}
+	}
 	c.mu.Unlock()
 	if log != nil {
 		log.InfoContext(ctx, "overview reachability check", "user_id", owner, "hosts", len(plans), "endpoints", len(targets))

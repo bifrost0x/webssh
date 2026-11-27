@@ -118,6 +118,15 @@ func TestReachabilityOutcomes(t *testing.T) {
 	if err != nil || last["results"] == nil {
 		t.Errorf("last: %v %v", last, err)
 	}
+	// A change of the tailnet route restriction drops every answer
+	// (clear_reachability_cache, OP3-2): the next check contacts the hosts.
+	h.Check.Clear()
+	if last, err := h.Check.Last(t.Context(), principaltest.User(1)); err != nil || last["results"] != nil {
+		t.Errorf("last after Clear: %v %v", last, err)
+	}
+	if _, body := reachRequest(t, h, principaltest.User(1), `{"ids":null}`); body["cached"] == true || len(prober.dials()) == dialed {
+		t.Errorf("answered from the cache after Clear: %v", body)
+	}
 }
 
 func TestReachabilityRefusals(t *testing.T) {

@@ -155,11 +155,12 @@ type Reachability struct {
 	now      func() time.Time
 	deadline time.Duration
 
-	mu       sync.Mutex
-	cache    map[int64]cached
-	inFlight map[int64]bool
-	probes   chan struct{}
-	once     sync.Once
+	mu         sync.Mutex
+	generation uint64
+	cache      map[int64]cached
+	inFlight   map[int64]bool
+	probes     chan struct{}
+	once       sync.Once
 }
 
 func (r *Reachability) clock() time.Time {
@@ -210,6 +211,16 @@ func (r *Reachability) plans(p principal.Principal, hosts []ReachHost, wanted ma
 	}
 	slices.Sort(keys)
 	return plans, strings.Join(keys, "\x01")
+}
+
+// Clear drops every stored answer after a change of the network policy
+// (clear_reachability_cache of app/overview_routes.py); a check that is
+// still running does not store its answer.
+func (r *Reachability) Clear() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	clear(r.cache)
+	r.generation++
 }
 
 // Last returns the last check for the current hosts without contacting

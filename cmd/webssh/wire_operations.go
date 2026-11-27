@@ -59,9 +59,14 @@ func wireOperations(sys *system) error {
 }
 
 // settingsChanged applies the effects of an administrator change outside
-// the store: switching the SSH gateway off cancels its pending attempts.
+// the store: a change of the tailnet route restriction drops the stored
+// reachability answers, switching the SSH gateway off cancels its pending
+// attempts.
 func settingsChanged(sys *system) func(context.Context, map[string]settings.AdminChange) {
 	return func(_ context.Context, changes map[string]settings.AdminChange) {
+		if c, ok := changes["tailscale_ssh_restrict_tailnet_routes"]; ok && c.Current != c.Previous && sys.optional.reachability != nil {
+			sys.optional.reachability.Clear()
+		}
 		if c, ok := changes["ssh_gateway_enabled"]; ok && c.Current == false {
 			if v, ok := sys.optional.terminalVariants.(*variantProvider); ok {
 				v.registry.Disable()
