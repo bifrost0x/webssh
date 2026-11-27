@@ -233,7 +233,6 @@
                 sendBinary: bytes => this._sendBinary(bytes),
                 dispatch: (event, ...args) => this._dispatch(event, ...args),
                 listenerCount: event => this.listeners(event).length,
-                unavailable: () => catalog.unavailable(root),
                 answer: acks.answer,
                 inputLimit: inputLimit(),
                 delay: ms => new Promise(resolve => root.setTimeout(resolve, ms)),

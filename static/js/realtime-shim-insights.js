@@ -33,8 +33,5 @@
                 push: [['session_runtime_inventory', a => a]],
             },
         }),
-        features: Object.freeze([
-            ['insights', /^request_session_(insights|runtime_inventory)$/],
-        ]),
     });
 });

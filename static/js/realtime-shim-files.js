@@ -249,12 +249,5 @@
 
     return Object.freeze({
         requests: Object.freeze(requests),
-        // Events the frontend sends without an acknowledgement and answers
-        // with a listener; a local reply keeps those views from waiting.
-        unavailable: Object.freeze({}),
-        // Feature groups of the preview notice: what this build does not
-        // answer yet (none: every files event is built).
-        features: Object.freeze([
-        ]),
     });
 });

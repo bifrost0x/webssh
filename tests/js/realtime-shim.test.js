@@ -287,14 +287,14 @@ test('an upgrade without the v1 subprotocol is treated as a version mismatch', a
     assert.equal(FakeWebSocket.instances.length, 1, 'no reconnect into the same mismatch');
 });
 
-test('event names that exist on Object.prototype are plain unavailable events', async () => {
+test('event names that exist on Object.prototype are plain unknown events', async () => {
     const window = loadShim();
     const {socket, ws} = await connected(window);
     const acks = [];
     const sent = ws.sent.length;
     for (const name of ['toString', 'constructor', 'hasOwnProperty']) socket.emit(name, {}, ack => acks.push(ack.code));
     await tick();
-    assert.deepEqual(acks, ['not_available_in_preview', 'not_available_in_preview', 'not_available_in_preview']);
+    assert.deepEqual(acks, ['unknown_type', 'unknown_type', 'unknown_type']);
     assert.equal(ws.sent.length, sent);
     socket.disconnect();
 });

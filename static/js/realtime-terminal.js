@@ -54,11 +54,21 @@
     // routes are not projected. use_tmux carries the persistent
     // session to reattach, which the server checks. gateway_interaction and
     // ssh_interaction say the page answers prompt.interactive.
+    // The checks of handle_ssh_connect that need no stored data, with the
+    // texts of the Python release; null when the request passes them.
+    function targetError(data) {
+        const authType = data.auth_type || (data.key_id ? 'key' : 'password');
+        if (savedRoute(data.socks_proxy, 'socks_proxy_id', data.socks_proxy_id) === null) return 'SOCKS proxy reference not found';
+        if (savedRoute(data.proxy_jump, 'jump_host_id', data.jump_host_id) === null) return 'Jump host reference not found';
+        if (!['password', 'key', 'tailscale'].includes(authType)) return 'Invalid authentication method';
+        return null;
+    }
+
     function openTarget(data) {
+        if (targetError(data) !== null) return null;
         const authType = data.auth_type || (data.key_id ? 'key' : 'password');
         const jump = savedRoute(data.proxy_jump, 'jump_host_id', data.jump_host_id);
         const socks = savedRoute(data.socks_proxy, 'socks_proxy_id', data.socks_proxy_id);
-        if (!['password', 'key', 'tailscale'].includes(authType) || jump === null || socks === null) return null;
         const target = {auth_type: authType};
         if (data.gateway_interaction === 1 || data.ssh_interaction === 1) target.interactive = true;
         for (const name of TARGET_FIELDS) {
@@ -241,7 +251,7 @@
             const requestId = data.client_request_id;
             const target = openTarget(data);
             if (!target) {
-                host.dispatch('ssh_error', {...host.unavailable(), client_request_id: requestId});
+                host.dispatch('ssh_error', {error: targetError(data), client_request_id: requestId});
                 return;
             }
             const channel = allocate({mode: 'opening', requestId});

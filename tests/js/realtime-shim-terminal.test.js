@@ -110,12 +110,13 @@ test('a failed open and an unsupported target become ssh_error with the request 
     socket.emit('ssh_connect', {host: 'h', username: 'u', auth_type: 'key', key_id: 'k', socks_proxy: 'p', client_request_id: 'req_e'});
     await tick();
     assert.equal(ws.sent.length, sent, 'unsupported targets never reach the server');
-    assert.deepEqual(errors.map(e => [e.client_request_id, e.code]), [
-        ['req_b', 'not_available_in_preview'],
-        ['req_c', 'not_available_in_preview'],
-        ['req_d', 'not_available_in_preview'],
-        ['req_e', 'not_available_in_preview'],
-        ['req_a', 'unreachable'],
+    // The texts of handle_ssh_connect in the Python release.
+    assert.deepEqual(errors.map(e => [e.client_request_id, e.code, e.error]), [
+        ['req_b', undefined, 'Invalid authentication method'],
+        ['req_c', undefined, 'Jump host reference not found'],
+        ['req_d', undefined, 'Jump host reference not found'],
+        ['req_e', undefined, 'SOCKS proxy reference not found'],
+        ['req_a', 'unreachable', 'The host could not be reached.'],
     ]);
     assert.equal(errors[4].error, 'The host could not be reached.');
     socket.disconnect();
