@@ -262,3 +262,22 @@ func wirePlacements(in []placement) []protocol.HostsPlacement {
 	}
 	return out
 }
+
+// ProfileIDs lists the ids of the saved hosts of owner (provided to
+// internal/hostops for the host context).
+func (s *Service) ProfileIDs(ctx context.Context, owner int64) ([]string, error) {
+	var ids []string
+	err := s.DB.Read(ctx, func(tx *store.Tx) error {
+		profiles, err := load(ctx, tx, profileTable, owner)
+		for _, p := range profiles {
+			if id, ok := p.str("id"); ok {
+				ids = append(ids, id)
+			}
+		}
+		return err
+	})
+	if err != nil {
+		return nil, classify(err, "Failed to load profiles")
+	}
+	return ids, nil
+}
