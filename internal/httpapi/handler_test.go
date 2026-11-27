@@ -49,7 +49,7 @@ func TestNoHSTSInDebug(t *testing.T) {
 func TestPreviewRouteLetsNothingThrough(t *testing.T) {
 	e := newEdge(t)
 	body := &countingReader{r: strings.NewReader(`{"name":"x"}`)}
-	r := httptest.NewRequest(http.MethodPost, "http://webssh.test/api/credentials", body)
+	r := httptest.NewRequest(http.MethodPost, "http://webssh.test/api/credentials/apply", body)
 	r.Header.Set("Content-Type", "application/json")
 	r.AddCookie(&http.Cookie{Name: "session", Value: "tok-alice"})
 	w := httptest.NewRecorder()

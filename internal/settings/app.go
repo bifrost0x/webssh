@@ -72,11 +72,15 @@ var RuntimeFeatures = map[string]string{
 // App is a snapshot of the effective application settings this release
 // acts on. Every other stored key is kept but not interpreted.
 type App struct {
-	RegistrationEnabled    bool
-	SupportLinksEnabled    bool
-	SSHGatewayEnabled      bool
-	HerdrEnabled           bool
-	CredentialsEnabled     bool
+	RegistrationEnabled bool
+	SupportLinksEnabled bool
+	SSHGatewayEnabled   bool
+	HerdrEnabled        bool
+	CredentialsEnabled  bool
+	// CredentialsRevision changes whenever an administrator turns saved
+	// passwords on or off (credentials_enabled_revision); prepared
+	// password operations are bound to it.
+	CredentialsRevision    string
 	AutomationEnabled      bool
 	TailnetRouteRestricted bool
 	AuditBackupCount       int
@@ -139,6 +143,9 @@ func effectiveApp(rows map[string]appRow, env Environment) App {
 	a.SSHGatewayEnabled = isTrue("ssh_gateway_enabled")
 	a.HerdrEnabled = isTrue("herdr_enabled")
 	a.CredentialsEnabled = isTrue("credentials_enabled")
+	if r, ok := rows["credentials_enabled_revision"]; ok {
+		a.CredentialsRevision, _ = asString(r.value)
+	}
 	if env.Explicit["AUTOMATION_ENABLED"] {
 		a.AutomationEnabled = env.Values["AUTOMATION_ENABLED"]
 	} else {

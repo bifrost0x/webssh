@@ -76,10 +76,16 @@
       {"title": "referenced commands and command sets cannot be deleted", "reason": "command sets (C-CMD)", "package": "CM1"}
     ]},
     {"file": "socks-proxy-routes.spec.js", "exclude": [
-      {"title": "saved SOCKS password launches automatically and reconnect retains the reference", "reason": "saved passwords (E32, credentials not in M1)", "package": "VA1"},
       {"title": "SOCKS hosts are blocked at all Quick SFTP entry points", "reason": "Quick SFTP (C-SFTP)", "package": "FS2"},
       {"title": "host export warns that SOCKS routes are omitted", "reason": "host export (C-EXCH)", "package": "HO3"}
     ]},
+    {"file": "native-credentials.spec.js", "exclude": []},
+    {"file": "credential-picker.spec.js", "exclude": []},
+    {"file": "credential-inline.spec.js", "exclude": []},
+    {"file": "credential-connection.spec.js", "exclude": []},
+    {"file": "credential-jump-auto.spec.js", "exclude": []},
+    {"file": "host-resource-consistency.spec.js", "exclude": []},
+    {"file": "automation-navigation.spec.js", "exclude": []},
 
     {"file": "terminal-safety.spec.js", "exclude": []},
     {"file": "terminal-parser-bounds.spec.js", "exclude": []},
