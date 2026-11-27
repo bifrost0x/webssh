@@ -44,6 +44,9 @@ type Deps struct {
 	// Variants connects SSH gateway selectors and Tailscale SSH hosts;
 	// without it they answer not_available_in_preview.
 	Variants Variants
+	// Herdr grants the Herdr overview and session mode of saved hosts;
+	// without it, or without Connections, sessions open the login shell.
+	Herdr Herdr
 }
 
 // Auditor writes warning-level security events (provided by
@@ -63,6 +66,7 @@ type Manager struct {
 	routes   SavedRoutes
 	saved    SavedPasswords
 	variants Variants
+	herdr    Herdr
 	log      *slog.Logger
 	now      func() time.Time
 
@@ -97,7 +101,7 @@ func New(cfg Config, deps Deps) (*Manager, error) {
 	}
 	cfg.defaults()
 	m := &Manager{
-		cfg: cfg, shells: deps.Shells, profiles: deps.Profiles, routes: deps.Routes, saved: deps.Passwords, variants: deps.Variants, log: deps.Log, now: time.Now,
+		cfg: cfg, shells: deps.Shells, profiles: deps.Profiles, routes: deps.Routes, saved: deps.Passwords, variants: deps.Variants, herdr: deps.Herdr, log: deps.Log, now: time.Now,
 		flow: newLedger(cfg.Flow), input: newInputBudget(cfg.Input),
 		quota:    &sessionQuota{policy: deps.Quotas},
 		prompts:  newPrompts(cfg.MaxPrompts),

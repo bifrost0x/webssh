@@ -122,6 +122,10 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	if err != nil {
 		return protocol.TerminalOpened{}, err
 	}
+	hplan, err := m.planHerdr(actx, p.UserID, req.Target, target)
+	if err != nil {
+		return protocol.TerminalOpened{}, err
+	}
 	// The reservation does not end with the attempt; a cancelled attempt
 	// gives it back below, as before the quota moved to the policy.
 	release, err := m.quota.reserve(context.WithoutCancel(actx), p.UserID)
@@ -132,7 +136,14 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	if challenger != nil {
 		ix = challengingInteraction{ix, challenger}
 	}
-	sh, tm, err := m.openShell(actx, target, ix, req.Rows, req.Cols, plan)
+	var sh client.Shell
+	var tm *tmuxBinding
+	herdrRunning := false
+	if hplan.session {
+		sh, herdrRunning, err = m.openHerdr(actx, p.UserID, target, ix, req.Rows, req.Cols)
+	} else {
+		sh, tm, err = m.openShell(actx, target, ix, req.Rows, req.Cols, plan)
+	}
 	if err != nil {
 		release()
 		if m.cancelled(att) {
@@ -145,7 +156,8 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 		m.spawn(func() { m.finish("", p.UserID, sh, tm, endDiscard) })
 		return protocol.TerminalOpened{}, errCancelled
 	}
-	s := m.newSession(p.UserID, sh, withTmux(sessionInfo(target), tm, plan), release)
+	info := m.withHerdr(actx, p.UserID, withTmux(sessionInfo(target), tm, plan), hplan, herdrRunning)
+	s := m.newSession(p.UserID, sh, info, release)
 	s.opener, s.request, s.tmux = peer.ID(), req.RequestID, tm
 	if tm != nil {
 		m.recordTmux(s)
@@ -163,7 +175,7 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 		s.terminateAs(reasonClosed, nil, endDiscard)
 		return protocol.TerminalOpened{}, attachErr
 	}
-	info, _ := s.snapshot()
+	info, _ = s.snapshot()
 	return protocol.TerminalOpened{SessionID: s.id, Info: info}, nil
 }
 

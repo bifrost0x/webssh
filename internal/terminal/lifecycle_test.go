@@ -85,7 +85,7 @@ func TestOpenProfile(t *testing.T) {
 	m, err := New(Config{}, Deps{Shells: shells, Quotas: testQuotas(t, 10, 5), Log: newManager(t, Config{}, shells).log, Profiles: fakeProfiles{
 		"p1": {Owner: 1, Hop: client.Hop{Host: "saved", Port: 2222, User: "alice"},
 			Jumps:   []client.Hop{{Host: "bastion", Port: 22, User: "j", Auth: client.Auth{KeyID: "k"}}},
-			Display: client.Display{JumpHostID: "j1", UseHerdr: true}},
+			Display: client.Display{JumpHostID: "j1", StartupCommand: true}},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestOpenProfile(t *testing.T) {
 	if i := res.Info; i.ProfileID != "p1" || i.ViaJump != "bastion" || i.JumpHostID != "j1" || i.Port != 2222 {
 		t.Fatalf("info %+v", i)
 	}
-	// The profile asks for Herdr, which M1 does not run: a notice first.
+	// The profile asks for startup commands, which are not run yet: a notice first.
 	eventually(t, "notice", func() bool { return strings.Contains(output(t, peer, 1), "not run yet") })
 	// Another user's profile does not resolve.
 	if werr := call(t, m, user(t, 2), protocol.TypeTerminalOpen, req, nil); werr == nil || werr.Code != fault.NotFound {

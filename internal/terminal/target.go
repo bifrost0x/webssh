@@ -146,11 +146,11 @@ func sessionInfo(t client.Target) protocol.SessionInfo {
 }
 
 // previewNotice is written to the terminal when the profile asks for
-// something M1 does not run: Herdr or startup commands.
-const previewNotice = "\r\n\x1b[33mWebSSH preview: Herdr and startup commands are not run yet.\x1b[0m\r\n"
+// something this build does not run yet: startup commands.
+const previewNotice = "\r\n\x1b[33mWebSSH preview: startup commands are not run yet.\x1b[0m\r\n"
 
 func notice(t client.Target, _ protocol.OpenTarget) []byte {
-	if t.Display.UseHerdr || t.Display.StartupCommand {
+	if t.Display.StartupCommand {
 		return []byte(previewNotice)
 	}
 	return nil
