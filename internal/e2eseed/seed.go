@@ -36,6 +36,9 @@ type Seed struct {
 	CommandSets        []OwnedEntry      `json:"command_sets"`
 	Profiles           []Profile         `json:"profiles"`
 	TestHooks          []Hook            `json:"test_hooks"`
+
+	// peer is the running automation peer of the hook (Run starts it).
+	peer *AutomationPeer
 }
 
 // AdminSettings are the admin policies applied before accounts exist.

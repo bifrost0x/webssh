@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"golang.org/x/crypto/ssh"
 	"log/slog"
 )
 
@@ -31,6 +32,13 @@ type AppSettings interface {
 	// for all usernames together, so that many cases can sign in to the
 	// same accounts.
 	SetLoginUsernameLimits(ctx context.Context, perUsername, global int) error
+	// SetAutomationEnabled stores the automation switch.
+	SetAutomationEnabled(ctx context.Context, enabled bool) error
+}
+
+// HostKeys trusts host keys for an account (the automation peer).
+type HostKeys interface {
+	Record(ctx context.Context, owner int64, host string, port int, key ssh.PublicKey) error
 }
 
 // UserSettings stores per-account settings.
@@ -109,11 +117,12 @@ type Stores struct {
 	Keys         Keys
 	Hosts        Hosts
 	Identities   Identities
+	HostKeys     HostKeys
 }
 
 func (s Stores) complete() error {
 	if s.Accounts == nil || s.AppSettings == nil || s.UserSettings == nil || s.FeatureGates == nil ||
-		s.Factors == nil || s.Keys == nil || s.Hosts == nil || s.Identities == nil {
+		s.Factors == nil || s.Keys == nil || s.Hosts == nil || s.Identities == nil || s.HostKeys == nil {
 		return errors.New("e2e seed: a store is not wired")
 	}
 	return nil
@@ -125,6 +134,9 @@ type Applied struct {
 	Users map[string]int64
 	// Skipped names the parts of the seed this build does not apply.
 	Skipped []string
+	// Peer is the automation peer Apply started because the caller had
+	// not (Run starts it before the backend); the caller closes it.
+	Peer *AutomationPeer
 }
 
 // Apply writes the seed into the stores, in the order of run_app.py:
@@ -140,6 +152,13 @@ func Apply(ctx context.Context, s *Seed, st Stores, log *slog.Logger) (Applied, 
 		return Applied{}, err
 	}
 	a := Applied{Users: map[string]int64{}, Skipped: s.skipped()}
+	if s.peer == nil {
+		p, err := s.StartAutomationPeer()
+		if err != nil {
+			return Applied{}, err
+		}
+		s.peer, a.Peer = p, p
+	}
 	for _, part := range a.Skipped {
 		owner, _ := SkippedOwner(part)
 		log.Info("e2e seed: skipped, not part of this build", "part", part, "package", owner)
@@ -167,16 +186,20 @@ func (s *Seed) skipped() []string {
 			parts = append(parts, part)
 		}
 	}
-	add(s.AdminSettings.AutomationEnabled != nil, "admin_settings.automation_enabled")
 	add(len(s.Commands) > 0, "commands")
 	add(len(s.CommandSets) > 0, "command_sets")
 	for _, h := range s.TestHooks {
-		add(h.Name == HookAutomationSSHPeer || h.Name == HookSocketHerdrSessions, "test_hooks."+h.Name)
+		add(h.Name == HookSocketHerdrSessions, "test_hooks."+h.Name)
 	}
 	return parts
 }
 
 func applyAdminSettings(ctx context.Context, as AdminSettings, st AppSettings) error {
+	if as.AutomationEnabled != nil {
+		if err := st.SetAutomationEnabled(ctx, *as.AutomationEnabled); err != nil {
+			return fmt.Errorf("automation setting: %w", err)
+		}
+	}
 	if as.RegistrationEnabled != nil {
 		if err := st.SetRegistrationEnabled(ctx, *as.RegistrationEnabled); err != nil {
 			return fmt.Errorf("registration setting: %w", err)
@@ -287,6 +310,18 @@ func applyConnections(ctx context.Context, s *Seed, st Stores, users map[string]
 			StartupMode:  mode, StartupCommands: p.StartupCommands,
 			CommandID: p.CommandID, CommandSetID: p.CommandSetID, ParametersOverride: p.ParametersOverride,
 		})
+	}
+	if p := s.peer; p != nil {
+		for _, ref := range p.accounts {
+			rec, err := p.seedAccount(ctx, st, users[ref])
+			if err != nil {
+				return fmt.Errorf("automation peer for %s: %w", ref, err)
+			}
+			if _, seen := byAccount[ref]; !seen {
+				order = append(order, ref)
+			}
+			byAccount[ref] = append(byAccount[ref], rec)
+		}
 	}
 	for _, ref := range order {
 		if err := st.Hosts.SaveProfiles(ctx, users[ref], byAccount[ref]); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	"golang.org/x/crypto/ssh"
 	"sync"
 )
 
@@ -32,7 +33,7 @@ func newFakeStores() *fakeStores {
 }
 
 func (f *fakeStores) stores() Stores {
-	return Stores{Accounts: f, AppSettings: f, UserSettings: f, FeatureGates: f, Factors: f, Keys: f, Hosts: f, Identities: f}
+	return Stores{Accounts: f, AppSettings: f, UserSettings: f, FeatureGates: f, Factors: f, Keys: f, Hosts: f, Identities: f, HostKeys: f}
 }
 
 func (f *fakeStores) record(call string) error {
@@ -69,6 +70,14 @@ func (f *fakeStores) MarkMFAEnabled(_ context.Context, userID int64) error {
 
 func (f *fakeStores) SetRegistrationEnabled(_ context.Context, enabled bool) error {
 	return f.record(fmt.Sprintf("registration %t", enabled))
+}
+
+func (f *fakeStores) SetAutomationEnabled(_ context.Context, enabled bool) error {
+	return f.record(fmt.Sprintf("automation %t", enabled))
+}
+
+func (f *fakeStores) Record(_ context.Context, owner int64, host string, port int, _ ssh.PublicKey) error {
+	return f.record(fmt.Sprintf("host key %d %s:%d", owner, host, port))
 }
 
 func (f *fakeStores) SetLoginUsernameLimits(_ context.Context, per, global int) error {

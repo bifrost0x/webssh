@@ -2,6 +2,8 @@ package settings
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json/jsontext"
 	"fmt"
 
@@ -205,6 +207,15 @@ func (s *Service) SetRegistrationEnabled(ctx context.Context, enabled bool) erro
 	return s.setApp(ctx, map[string]jsontext.Value{"registration_enabled": marshalValue(enabled)})
 }
 
+// SetAutomationEnabled stores the automation switch with a new revision,
+// as set_automation_enabled did; AUTOMATION_ENABLED still wins over it.
+func (s *Service) SetAutomationEnabled(ctx context.Context, enabled bool) error {
+	return s.setApp(ctx, map[string]jsontext.Value{
+		"automation_enabled":          marshalValue(enabled),
+		"automation_enabled_revision": marshalValue(newRevision()),
+	})
+}
+
 // SetLoginUsernameLimits stores both username limits per minute; the
 // limit across all sources must not be below the per-source limit.
 func (s *Service) SetLoginUsernameLimits(ctx context.Context, perUsername, global int) error {
@@ -255,4 +266,11 @@ func putApp(ctx context.Context, tx *store.Tx, key string, v jsontext.Value, sou
 ON CONFLICT (key) DO UPDATE SET value = excluded.value, source = excluded.source, rule = excluded.rule, updated_us = excluded.updated_us`,
 		key, string(v), string(source), rule, nowUS)
 	return err
+}
+
+// newRevision is secrets.token_hex(32).
+func newRevision() string {
+	var b [32]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }

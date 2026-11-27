@@ -5,10 +5,8 @@ package e2eseed
 // becomes a step of Apply in the same change that merges the entity's
 // capability, and leaves this table.
 var skippedOwners = map[string]string{
-	"admin_settings.automation_enabled":     "AU1",
 	"commands":                              "CM1",
 	"command_sets":                          "CM1",
-	"test_hooks." + HookAutomationSSHPeer:   "AU1",
 	"test_hooks." + HookSocketHerdrSessions: "HO1",
 }
 

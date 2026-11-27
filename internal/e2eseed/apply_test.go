@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -27,6 +28,10 @@ func TestApplyCheckedInSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if a.Peer == nil {
+		t.Fatal("the automation peer did not start")
+	}
+	t.Cleanup(func() { _ = a.Peer.Close() })
 	admin, user, mixed := a.Users["admin"], a.Users["user"], a.Users["mixed_mfa"]
 	if len(a.Users) != 7 || !f.admins[admin] || f.admins[user] {
 		t.Fatalf("users = %v, admins = %v", a.Users, f.admins)
@@ -34,8 +39,7 @@ func TestApplyCheckedInSeed(t *testing.T) {
 	if !f.mfa[mixed] || len(f.mfa) != 1 {
 		t.Fatalf("mfa = %v", f.mfa)
 	}
-	wantSkipped := []string{"admin_settings.automation_enabled", "commands", "command_sets",
-		"test_hooks.automation_ssh_peer", "test_hooks.socket_herdr_sessions"}
+	wantSkipped := []string{"commands", "command_sets", "test_hooks.socket_herdr_sessions"}
 	if !slices.Equal(a.Skipped, wantSkipped) {
 		t.Fatalf("skipped = %q", a.Skipped)
 	}
@@ -46,9 +50,9 @@ func TestApplyCheckedInSeed(t *testing.T) {
 	}
 	// Order of run_app.py: settings before accounts, accounts before
 	// everything that refers to them, keys before routes before profiles.
-	order := []string{"registration true", "limits 100 1000", "account e2e_admin", "onboarding 1 completed true",
+	order := []string{"automation true", "registration true", "limits 100 1000", "account e2e_admin", "onboarding 1 completed true",
 		"mfa 4", "feature totp true 1", "totp 4 E2E authenticator true", "passkey 4 E2E passkey e2e-mixed-passkey 0",
-		"key 1 E2E usable key", "jump 1 E2E key jump host", "socks 1 E2E none SOCKS proxy", "profiles 1 23", "profiles 2 1"}
+		"key 1 E2E usable key", "jump 1 E2E key jump host", "socks 1 E2E none SOCKS proxy", "key 2 Automation fixture key", "host key 2 127.0.0.1:" + strconv.Itoa(a.Peer.Port()), "profiles 1 23", "profiles 2 2"}
 	last := -1
 	for _, call := range order {
 		i := slices.Index(f.calls, call)

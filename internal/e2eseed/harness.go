@@ -83,13 +83,21 @@ func Run(ctx context.Context, o Options, wire Wire) (err error) {
 	if err := sc.WriteDataFiles(seed.DataFiles); err != nil {
 		return err
 	}
+	peer, err := seed.StartAutomationPeer()
+	if err != nil {
+		return err
+	}
+	if peer != nil {
+		seed.peer = peer
+		defer func() { err = errors.Join(err, peer.Close()) }()
+	}
 	env := Env{
 		Config:      seed.Config(o.Environ, o.Port, sc),
 		DataDir:     sc.DataDir,
 		BackupDir:   sc.BackupDir,
 		TransferDir: sc.TransferDir,
 		FastHashing: o.FastHashing,
-		Dialer:      seed.Guard(),
+		Dialer:      seed.Guard().Allow(peer),
 	}
 	b, err := wire(ctx, env)
 	if err != nil {
