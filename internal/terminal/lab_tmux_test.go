@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -194,6 +195,23 @@ func TestLabTmuxStartupAndSessionConn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if sc.Tmux != name || sc.Name != "Lab startup" {
+		t.Fatalf("session connection %+v", sc)
+	}
+	// The session's file source opens the SFTP subsystem on the same
+	// connection (sftp-session); the server answers SSH_FXP_INIT.
+	sub, err := sc.Conn.Subsystem(t.Context(), "sftp")
+	if err != nil {
+		t.Fatalf("sftp beside the shell: %v", err)
+	}
+	if _, err := sub.Write([]byte{0, 0, 0, 5, 1, 0, 0, 0, 3}); err != nil {
+		t.Fatal(err)
+	}
+	reply := make([]byte, 5)
+	if _, err := io.ReadFull(sub, reply); err != nil || reply[4] != 2 {
+		t.Fatalf("sftp version reply %v %v", reply, err)
+	}
+	_ = sub.Close()
 	r, err := remotecmd.Run(t.Context(), sc.Conn, remotecmd.Command{Line: "tmux has-session -t '=" + name + "' && echo beside"})
 	if err != nil || r.ExitStatus != 0 || !strings.Contains(string(r.Stdout), "beside") {
 		t.Fatalf("exec beside the shell: %+v %v", r, err)

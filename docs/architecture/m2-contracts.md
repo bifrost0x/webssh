@@ -354,7 +354,7 @@ registry reserves `quick_connection` before the dial ("Maximum number of
 quick connections reached"). A target of the SSH gateway or Tailscale SSH
 answers `not_available_in_preview` (C-GW-02, open). The terminal session's
 own source (`sftp-session:<session id>`) opens on first use over the
-session's connection (`terminal.Manager.FileSession`).
+session's connection (`terminal.Manager.SessionConn`).
 
 The payload bound of the other types is 32 KiB. `check_exists` and
 `get_file_stat` have no caller in the frontend and get no type (D-13).

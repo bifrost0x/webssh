@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/bifrost0x/webssh/internal/config"
+	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/files"
 	"github.com/bifrost0x/webssh/internal/files/sftp"
 	"github.com/bifrost0x/webssh/internal/principal"
@@ -56,12 +57,14 @@ func sftpOptions(f config.Files) sftp.Options {
 type terminalFiles struct{ m *terminal.Manager }
 
 func (t terminalFiles) Session(_ context.Context, p principal.Principal, handle string) (sftp.Session, error) {
-	f, err := t.m.FileSession(p.UserID, handle)
+	// An unknown, foreign or ended session is a source that is not
+	// available, whichever it was.
+	f, err := t.m.SessionConn(p.UserID, handle)
 	if err != nil {
-		return sftp.Session{}, err
+		return sftp.Session{}, fault.New(fault.SourceUnavailable, "")
 	}
 	return sftp.Session{Conn: f.Conn, Exec: f.Conn, Tmux: f.Tmux, Name: f.Name,
-		Hop: client.Hop{Host: f.Host, Port: f.Port, User: f.User}}, nil
+		Hop: client.Hop{Host: f.Host, Port: f.Port, User: f.Username}}, nil
 }
 
 func (t terminalFiles) Target(ctx context.Context, owner int64, req protocol.OpenTarget) (client.Target, error) {

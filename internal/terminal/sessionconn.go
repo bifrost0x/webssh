@@ -23,6 +23,11 @@ type SessionConn struct {
 	Username  string
 	// Herdr and UseHerdr are the session's Herdr flags.
 	Herdr, UseHerdr bool
+	// Name is the display name of the session, if any; Tmux the tmux
+	// session the shell runs in, if any (the file source and the directory
+	// probe of the session).
+	Name string
+	Tmux string
 }
 
 // SessionConn returns the connection of owner's live session id. Every
@@ -38,8 +43,13 @@ func (m *Manager) SessionConn(owner int64, id string) (SessionConn, error) {
 	if !live || s.host == nil || s.host.sshConn() == nil {
 		return SessionConn{}, fault.New(fault.NotFound, "Session not found.")
 	}
-	return SessionConn{
+	sc := SessionConn{
 		Conn: s.host.sshConn(), Done: s.done, ProfileID: info.ProfileID,
 		Host: info.Host, Port: info.Port, Username: info.Username, Herdr: info.Herdr, UseHerdr: info.UseHerdr,
-	}, nil
+		Name: info.DisplayName,
+	}
+	if s.tmux != nil {
+		sc.Tmux = s.tmux.name
+	}
+	return sc, nil
 }
