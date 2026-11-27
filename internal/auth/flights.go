@@ -11,8 +11,9 @@ import (
 
 // Bounds of the flight store: a browser keeps at most
 // MaxFlightsPerBinding redirects in progress (oidc_service.py
-// _MAX_STATES_PER_BINDING), the process at most maxFlights; the oldest
-// give way.
+// _MAX_STATES_PER_BINDING); its oldest gives way. The process keeps at
+// most maxFlights; a full store refuses new starts, so that starts from
+// many bindings cannot push out the flights of other browsers.
 const (
 	MaxFlightsPerBinding = 8
 	maxFlights           = 4096
@@ -48,7 +49,10 @@ func (s *Flights) now() time.Time {
 
 func digest(v string) [32]byte { return sha256.Sum256([]byte(v)) }
 
-var errFlight = fault.New(fault.AuthFailed, "")
+var (
+	errFlight      = fault.New(fault.AuthFailed, "")
+	errFlightsFull = fault.New(fault.Unavailable, "")
+)
 
 // Put stores f for the browser binding until f.IssuedAt plus FlightTTL.
 // A browser without binding cannot start a redirect.
@@ -77,7 +81,10 @@ func (s *Flights) Put(binding string, f Flight) error {
 		mine = s.keysOf(b)
 	}
 	if len(s.m) >= maxFlights {
-		s.dropOldest(nil)
+		if len(mine) == 0 {
+			return errFlightsFull
+		}
+		s.dropOldest(mine) // a full store only gives way to the same browser
 	}
 	s.seq++
 	s.m[digest(f.State)] = storedFlight{binding: b, flight: f, expires: f.IssuedAt.Add(FlightTTL), seq: s.seq}
@@ -94,23 +101,14 @@ func (s *Flights) keysOf(b [32]byte) [][32]byte {
 	return out
 }
 
-// dropOldest removes the oldest flight among keys (all flights for nil).
+// dropOldest removes the oldest flight among keys.
 func (s *Flights) dropOldest(keys [][32]byte) {
 	var oldest [32]byte
 	found := false
 	var seq uint64
-	consider := func(k [32]byte, v storedFlight) {
-		if !found || v.seq < seq {
+	for _, k := range keys {
+		if v := s.m[k]; !found || v.seq < seq {
 			oldest, seq, found = k, v.seq, true
-		}
-	}
-	if keys == nil {
-		for k, v := range s.m {
-			consider(k, v)
-		}
-	} else {
-		for _, k := range keys {
-			consider(k, s.m[k])
 		}
 	}
 	if found {
