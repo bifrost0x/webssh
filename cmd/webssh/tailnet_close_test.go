@@ -14,6 +14,42 @@ import (
 	"github.com/bifrost0x/webssh/internal/principal"
 )
 
+// tailnetNode is the address the test route table puts on the tailnet
+// interface; every other address routes through the LAN.
+const tailnetNode = "100.100.100.10"
+
+// tailnetTestPolicy is the network policy with a route table in which
+// only tailnetNode is on the tailnet. restricted is the administrator
+// setting.
+func tailnetTestPolicy(t *testing.T, restricted func() bool) *netpolicy.Policy {
+	t.Helper()
+	policy, err := netpolicy.New(netpolicy.Config{Tailnet: netpolicy.Tailnet{
+		Restricted: restricted, Interface: "tailscale0", InterfaceConfigured: true,
+		Lookup: func(_ context.Context, addr netip.Addr) (netpolicy.Route, error) {
+			if addr.String() == tailnetNode {
+				return netpolicy.Route{Interface: "tailscale0", Table: 52}, nil
+			}
+			return netpolicy.Route{Interface: "eth0", Table: 254}, nil
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return policy
+}
+
+// setTailnetBlock saves tailscale_ssh_restrict_tailnet_routes through
+// /admin/api/settings with a fresh step-up grant.
+func setTailnetBlock(t *testing.T, admin *http.Client, base, password string, restrict bool) {
+	t.Helper()
+	grant := adminGrant(t, admin, base, "settings.update", "global", password)
+	status, body := apiCall(t, admin, base, http.MethodPost, "/admin/api/settings",
+		map[string]bool{"tailscale_ssh_restrict_tailnet_routes": restrict}, grant)
+	if status != http.StatusOK {
+		t.Fatalf("settings: %d %s", status, body)
+	}
+}
+
 // routedSource is a file source on a known network path.
 type routedSource struct {
 	*filestest.Backend
@@ -29,28 +65,11 @@ func (b routedSource) Route() (netip.Addr, []string, bool) { return b.peer, nil,
 // block closes nothing.
 func TestTailnetBlockClosesOpenConnections(t *testing.T) {
 	sys, ts := openTestSystem(t, map[string]string{"ADMIN_PANEL_ENABLED": "true"})
-	policy, err := netpolicy.New(netpolicy.Config{Tailnet: netpolicy.Tailnet{
-		Restricted: sys.tailnetRestricted, Interface: "tailscale0", InterfaceConfigured: true,
-		Lookup: func(_ context.Context, addr netip.Addr) (netpolicy.Route, error) {
-			if addr.String() == "100.100.100.10" {
-				return netpolicy.Route{Interface: "tailscale0", Table: 52}, nil
-			}
-			return netpolicy.Route{Interface: "eth0", Table: 254}, nil
-		},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sys.policy = policy
+	sys.policy = tailnetTestPolicy(t, sys.tailnetRestricted)
 	admin := signUp(t, ts.URL, "tailnetadmin", "tailnet-admin-password-1")
 	set := func(restrict bool) {
 		t.Helper()
-		grant := adminGrant(t, admin, ts.URL, "settings.update", "global", "tailnet-admin-password-1")
-		status, body := apiCall(t, admin, ts.URL, http.MethodPost, "/admin/api/settings",
-			map[string]bool{"tailscale_ssh_restrict_tailnet_routes": restrict}, grant)
-		if status != http.StatusOK {
-			t.Fatalf("settings: %d %s", status, body)
-		}
+		setTailnetBlock(t, admin, ts.URL, "tailnet-admin-password-1", restrict)
 	}
 	owner := principal.Principal{UserID: 1, SessionID: "browser-1", Username: "tailnetadmin"}
 	add := func(peer string) string {

@@ -28,6 +28,7 @@ const (
 type attempt struct {
 	owner  int64
 	gen    uint64 // revocation generation of owner at the start
+	pass   uint64 // Manager.tailnetPass at the start
 	cancel context.CancelFunc
 	state  attemptState
 }
@@ -41,7 +42,7 @@ func (m *Manager) addAttempt(k attemptKey, owner int64, cancel context.CancelFun
 	if m.attempts[k] != nil {
 		return nil, fault.New(fault.Busy, "Connection request already in progress.")
 	}
-	a := &attempt{owner: owner, cancel: cancel, gen: m.revoked[owner]}
+	a := &attempt{owner: owner, cancel: cancel, gen: m.revoked[owner], pass: m.tailnetPass}
 	m.attempts[k] = a
 	return a, nil
 }
@@ -163,7 +164,7 @@ func (m *Manager) open(ctx context.Context, peer protocol.Peer, req protocol.Ter
 	if tm != nil {
 		m.recordTmux(s)
 	}
-	if err := m.register(s, att.gen); err != nil {
+	if err := m.registerOpened(actx, s, att); err != nil {
 		release()
 		m.spawn(func() { m.finish(s.id, p.UserID, sh, tm, endDiscard) })
 		return protocol.TerminalOpened{}, err

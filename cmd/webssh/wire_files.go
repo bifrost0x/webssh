@@ -29,7 +29,7 @@ func filesArea() extension {
 }
 
 func prepareFiles(sys *system) error {
-	sys.fileSources = files.NewRegistry(files.RegistryOptions{Quotas: sys.quotas})
+	sys.fileSources = files.NewRegistry(files.RegistryOptions{Quotas: sys.quotas, RouteRestricted: sys.tailnetRestrictedNow})
 	sys.files = files.New(fileOptions(sys.cfg.Files, sys.fileSources, sys.audit))
 	sys.closers = append(sys.closers, func() error { sys.fileSources.Shutdown(); return nil })
 	return nil

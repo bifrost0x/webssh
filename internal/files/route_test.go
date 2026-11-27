@@ -81,3 +81,51 @@ func TestCloseRestrictedRoutes(t *testing.T) {
 		t.Fatal("an allowed source was closed")
 	}
 }
+
+// A Quick SFTP source whose slot was reserved before CloseRestrictedRoutes
+// ran is checked when it is added: refused on a route the policy refuses
+// now, and fail closed without RouteRestricted. Sources without a known
+// route, SMB sources and sources on an allowed route are added.
+func TestLateSourceAfterRestrictedPass(t *testing.T) {
+	t.Parallel()
+	node, lan := netip.MustParseAddr("100.100.100.10"), netip.MustParseAddr("192.168.1.10")
+	policy := func(_ context.Context, peer netip.Addr, _ []string) bool { return peer == node }
+	cases := []struct {
+		name    string
+		policy  func(context.Context, netip.Addr, []string) bool
+		kind    files.SourceKind
+		b       routedBackend
+		refused bool
+	}{
+		{"node", policy, files.SourceSFTPQuick, routedBackend{filestest.New(), node, nil, true}, true},
+		{"lan", policy, files.SourceSFTPQuick, routedBackend{filestest.New(), lan, nil, true}, false},
+		{"no policy", nil, files.SourceSFTPQuick, routedBackend{filestest.New(), lan, nil, true}, true},
+		{"no route", nil, files.SourceSFTPQuick, routedBackend{filestest.New(), node, nil, false}, false},
+		{"smb", nil, files.SourceSMBQuick, routedBackend{filestest.New(), node, nil, true}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			q := &quotas{used: map[int64]int{}, max: 3}
+			reg := files.NewRegistry(files.RegistryOptions{Quotas: q, RouteRestricted: c.policy})
+			slot, err := reg.Reserve(context.Background(), alice, c.kind)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n := reg.CloseRestrictedRoutes(func(netip.Addr, []string) bool { return true }); n != 0 {
+				t.Fatalf("closed %d", n)
+			}
+			_, err = slot.Add(files.Descriptor{Kind: files.KindSFTP}, c.b)
+			if c.refused {
+				wantCode(t, err, fault.TargetBlocked)
+				if q.count(1) != 0 {
+					t.Fatalf("quota held: %d", q.count(1))
+				}
+				return
+			}
+			if err != nil || q.count(1) != 1 {
+				t.Fatalf("add: %v, quota %d", err, q.count(1))
+			}
+		})
+	}
+}

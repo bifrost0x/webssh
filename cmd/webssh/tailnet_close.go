@@ -37,3 +37,15 @@ func closeTailnetRestricted(ctx context.Context, sys *system) {
 	}
 	sys.audit.Security("TAILNET_RESTRICTED_CONNECTIONS_CLOSED", "ssh_sessions", sessions, "pool_connections", sources, "errors", 0)
 }
+
+// tailnetRestrictedNow decides a terminal session or Quick SFTP source
+// whose connection was made while closeTailnetRestricted ran
+// (terminal.Deps.RouteRestricted, files.RegistryOptions.RouteRestricted):
+// refused only while the rule applies and refuses the route.
+func (s *system) tailnetRestrictedNow(ctx context.Context, peer netip.Addr, onward []string) bool {
+	return s.policy != nil && s.policy.TailnetRuleActive() && s.policy.OpenRouteRestricted(ctx, peer, onward)
+}
+
+func (s *system) tailnetRouteRestricted(ctx context.Context, r client.Route) bool {
+	return s.tailnetRestrictedNow(ctx, r.Peer, r.Onward)
+}

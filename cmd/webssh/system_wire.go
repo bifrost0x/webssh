@@ -117,7 +117,7 @@ func (s *system) buildCapabilities(in bootInput) error {
 		Connections: shells, DB: s.db, TmuxEnabled: s.tmuxEnabled, Audit: s.audit, Quotas: s.quotas,
 		Variants: opt.terminalVariants, GatewayTmuxName: gateway.TmuxName,
 		Commands: opt.terminalCommands, Herdr: opt.terminalHerdr,
-		Passwords: savedPasswords{s.vault}})
+		Passwords: savedPasswords{s.vault}, RouteRestricted: s.tailnetRouteRestricted})
 	if err != nil {
 		return fmt.Errorf("terminal: %w", err)
 	}
