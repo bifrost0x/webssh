@@ -508,16 +508,20 @@ def test_dependabot_tracks_pinned_docker_bases():
         config,
         re.DOTALL,
     )
-    assert len(docker_blocks) == 3
+    assert len(docker_blocks) == 4
     directories = {
         re.search(r'directory:\s*"([^"]+)"', block).group(1)
         for block in docker_blocks
     }
     assert directories == {
         '/',
+        '/deploy/docker',
         '/tests/integration/paramiko5',
         '/tests/integration/smb',
     }
+    # The Go release image lives on the integration branch only.
+    go_image = next(b for b in docker_blocks if '"/deploy/docker"' in b)
+    assert re.search(r'target-branch:\s*"go"', go_image)
     compose_blocks = re.findall(
         r'- package-ecosystem:\s*"docker-compose"\s+(.*?)(?=\n\s+- package-ecosystem:|\Z)',
         config,
