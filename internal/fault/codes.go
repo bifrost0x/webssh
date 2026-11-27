@@ -26,7 +26,7 @@ const (
 	PreconditionFailed    Code = "precondition_failed"     // If-Match or a confirmed impact no longer holds
 	RateLimited           Code = "rate_limited"            // too many attempts; see RetryAfter
 	Busy                  Code = "busy"                    // a concurrent operation holds the resource
-	NotAvailableInPreview Code = "not_available_in_preview" // spelling of the preview builds; only a capability built without an optional collaborator sends it
+	NotAvailableInPreview Code = "not_available_in_preview"
 	Maintenance           Code = "maintenance" // the server is in maintenance mode
 	Unavailable           Code = "unavailable" // a dependency is down or the server is stopping
 	StorageError          Code = "storage_error"
@@ -119,7 +119,9 @@ const (
 	statusGatewayTimeout      = 504
 )
 
-// entry is the fixed presentation of one code.
+// entry is the fixed presentation of one code. not_available_in_preview
+// keeps the spelling of the preview builds (codes are never renamed); only
+// a capability built without an optional collaborator sends it.
 type entry struct {
 	status  int
 	message string // default text, safe to show
