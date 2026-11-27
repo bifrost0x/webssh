@@ -257,11 +257,11 @@ func normalizeStartupCommands(v jsontext.Value) (string, error) {
 	return s, nil
 }
 
-// postConnect is validate_configuration. Commands and command sets are not
-// part of this release, so their references cannot be checked: a saved
-// host keeps the reference it already has, a new or changed one is
-// refused.
-func postConnect(r *record, p payload, existing *record) error {
+// postConnect is validate_configuration. With refsChecked the command or
+// set was checked against the library (checkStartupRefs); without the
+// library a saved host keeps the reference it already has, and a new or
+// changed one is refused.
+func postConnect(r *record, p payload, existing *record, refsChecked bool) error {
 	get := func(name string) (jsontext.Value, bool) { return p[name], p.has(name) }
 	modeValue, _ := startupMode(get)
 	mode, ok := asString(modeValue)
@@ -285,8 +285,8 @@ func postConnect(r *record, p payload, existing *record) error {
 		}
 		r.set("startup_commands", jsonString(text))
 	case "command":
-		if !sameReference(existing, mode, "command_id", p) ||
-			!sameField(existing, "parameters_override", p) {
+		if !refsChecked && (!sameReference(existing, mode, "command_id", p) ||
+			!sameField(existing, "parameters_override", p)) {
 			return errCommandsPreview
 		}
 		r.set("command_id", p.get("command_id"))
@@ -294,7 +294,7 @@ func postConnect(r *record, p payload, existing *record) error {
 			r.set("parameters_override", v)
 		}
 	case "command_set":
-		if !sameReference(existing, mode, "command_set_id", p) {
+		if !refsChecked && !sameReference(existing, mode, "command_set_id", p) {
 			return errCommandsPreview
 		}
 		r.set("command_set_id", p.get("command_set_id"))
