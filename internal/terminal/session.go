@@ -89,7 +89,11 @@ func (m *Manager) newSession(owner int64, shell client.Shell, info protocol.Sess
 // start must then launch. It fails once Shutdown began, and when the
 // owner was signed out since gen was read: such a session would outlive
 // the revocation.
-func (m *Manager) register(s *Session, gen uint64) error {
+func (m *Manager) register(s *Session, gen uint64) error { return m.registerAt(s, gen, nil) }
+
+// registerAt is register; with pass set it refuses with errPassMoved and
+// updates pass while that is not the current CloseRestrictedRoutes pass.
+func (m *Manager) registerAt(s *Session, gen uint64, pass *uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closing {
@@ -97,6 +101,10 @@ func (m *Manager) register(s *Session, gen uint64) error {
 	}
 	if m.revoked[s.owner] != gen {
 		return errCancelled
+	}
+	if pass != nil && *pass != m.tailnetPass {
+		*pass = m.tailnetPass
+		return errPassMoved
 	}
 	m.sessions[s.id] = s
 	m.wg.Add(3)

@@ -37,3 +37,10 @@ func closeTailnetRestricted(ctx context.Context, sys *system) {
 	}
 	sys.audit.Security("TAILNET_RESTRICTED_CONNECTIONS_CLOSED", "ssh_sessions", sessions, "pool_connections", sources, "errors", 0)
 }
+
+// tailnetRouteRestricted decides a terminal session whose connection was
+// made while closeTailnetRestricted ran (terminal.Deps.RouteRestricted):
+// refused only while the rule applies and refuses the route.
+func (s *system) tailnetRouteRestricted(ctx context.Context, r client.Route) bool {
+	return s.policy != nil && s.policy.TailnetRuleActive() && s.policy.OpenRouteRestricted(ctx, r.Peer, r.Onward)
+}

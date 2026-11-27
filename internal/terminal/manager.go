@@ -55,6 +55,11 @@ type Deps struct {
 	// Herdr grants the Herdr overview and session mode; without it no
 	// session gets either and use_herdr opens the login shell.
 	Herdr HerdrGrants
+	// RouteRestricted reports whether the network policy refuses an open
+	// route now (netpolicy.Policy.OpenRouteRestricted while the tailnet
+	// rule applies). It decides a terminal.open that was under way while
+	// CloseRestrictedRoutes ran; without it such an attempt is refused.
+	RouteRestricted func(context.Context, client.Route) bool
 }
 
 // Auditor writes warning-level security events (provided by
@@ -86,6 +91,7 @@ type Manager struct {
 	fileSources FileSources
 
 	gatewayTmuxName func(prefix, host string, port int, selector string, userID int64) (string, error)
+	routeRestricted func(context.Context, client.Route) bool
 
 	flow    *ledger
 	input   *inputBudget
@@ -97,8 +103,10 @@ type Manager struct {
 	peers    map[uint64]*peerState
 	attempts map[attemptKey]*attempt
 	revoked  map[int64]uint64 // revocation generation per user
-	closing  bool             // Shutdown began: no new attempts or sessions
-	stopping bool             // goroutines are being waited for
+	// tailnetPass counts the CloseRestrictedRoutes passes.
+	tailnetPass uint64
+	closing     bool // Shutdown began: no new attempts or sessions
+	stopping    bool // goroutines are being waited for
 
 	wg   sync.WaitGroup
 	stop chan struct{}
@@ -121,6 +129,7 @@ func New(cfg Config, deps Deps) (*Manager, error) {
 		stop:  make(chan struct{}),
 		store: persistent{db: deps.DB}, tmuxEnabled: deps.TmuxEnabled, audit: deps.Audit,
 		commands: deps.Commands, herdr: deps.Herdr, gatewayTmuxName: deps.GatewayTmuxName,
+		routeRestricted: deps.RouteRestricted,
 	}
 	if deps.Connections != nil {
 		m.dialHost = func(ctx context.Context, t client.Target, ix client.Interaction) (remoteHost, error) {

@@ -395,3 +395,76 @@ func TestTailnetBlockClosesTerminalSessions(t *testing.T) {
 		t.Fatalf("saving the block again: %+v", st)
 	}
 }
+
+// openDuringBlock starts terminal.open of target, turns the tailnet block
+// on while the host key prompt for promptHost is open, then trusts the
+// key and returns the outcome of the open.
+func (r *terminalRig) openDuringBlock(t *testing.T, target protocol.OpenTarget, promptHost string) (string, *protocol.Error) {
+	t.Helper()
+	type result struct {
+		id   string
+		perr *protocol.Error
+	}
+	done := make(chan result, 1)
+	go func() {
+		id, perr := r.open(t.Context(), 1, target)
+		done <- result{id, perr}
+	}()
+	var prompt protocol.PromptHostKey
+	deadline := time.Now().Add(10 * time.Second)
+	for prompt.PromptID == "" {
+		if time.Now().After(deadline) {
+			t.Fatal("no host key prompt")
+		}
+		for _, ev := range r.peer.Events(protocol.TypePromptHostKey) {
+			if err := json.Unmarshal(ev.Payload, &prompt); err != nil {
+				t.Fatal(err)
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if prompt.Host != promptHost {
+		t.Fatalf("prompt %+v", prompt)
+	}
+	r.set(t, true)
+	if _, perr := protocoltest.Call(t.Context(), r.routes[protocol.TypePromptAnswer], r.peer,
+		protocol.PromptAnswer{PromptID: prompt.PromptID, Kind: protocol.PromptKindHostKey, Accepted: true}); perr != nil {
+		t.Fatalf("answer: %+v", perr)
+	}
+	select {
+	case res := <-done:
+		return res.id, res.perr
+	case <-time.After(10 * time.Second):
+		t.Fatal("terminal.open did not return")
+		return "", nil
+	}
+}
+
+// A terminal.open that passed the network policy before the block was
+// turned on and still waits for the user to trust the node's host key
+// does not leave a session on the route the block now refuses; its quota
+// slot is free and both connections end. Negative: a pending open on an
+// allowed route still opens.
+func TestTailnetBlockRefusesPendingTerminalOpen(t *testing.T) {
+	r := newTerminalRig(t, "127.0.0.1")
+	id, perr := r.openDuringBlock(t, r.viaJump(), tailnetNode)
+	if perr == nil || !strings.Contains(perr.Message, "requires Tailscale SSH") {
+		t.Fatalf("terminal.open on a refused route: session %q, error %+v", id, perr)
+	}
+	if st := r.sys.terminal.Stats(); st.Sessions != 0 || st.Reserved != 0 {
+		t.Fatalf("after the refused open: %+v", st)
+	}
+	r.waitConns(t, 0)
+}
+
+func TestTailnetBlockKeepsPendingAllowedTerminalOpen(t *testing.T) {
+	r := newTerminalRig(t)
+	id, perr := r.openDuringBlock(t, r.direct(), "127.0.0.1")
+	if perr != nil {
+		t.Fatalf("terminal.open on an allowed route: %+v", perr)
+	}
+	if st := r.sys.terminal.Stats(); st.Sessions != 1 || st.Reserved != 1 || len(r.closedEvents(t)) != 0 {
+		t.Fatalf("after the allowed open %s: %+v", id, st)
+	}
+	r.waitConns(t, 1)
+}
