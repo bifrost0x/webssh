@@ -58,7 +58,9 @@ type assurance struct {
 
 // intents holds the prepared operations and the binding assurance of
 // recent step-ups. Both live only in memory, as in the Python release:
-// a restart asks the user to start again.
+// a restart asks the user to start again. Both are bound to the user and
+// the session, so a revoked session cannot use them any more; sweep
+// drops them once they expire.
 type intents struct {
 	mu        sync.Mutex
 	now       func() time.Time
@@ -190,23 +192,6 @@ func (s *intents) allow(userID int64, bucket string, limit int) bool {
 	}
 	s.attempts[k] = append(recent, now)
 	return true
-}
-
-// revokeUser drops a user's intents and assurance, as revoke() does after
-// a password change or a lock.
-func (s *intents) revokeUser(userID int64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for k, v := range s.byKey {
-		if v.userID == userID {
-			delete(s.byKey, k)
-		}
-	}
-	for k := range s.assurance {
-		if k.userID == userID {
-			delete(s.assurance, k)
-		}
-	}
 }
 
 // sweep drops expired entries; it runs periodically.

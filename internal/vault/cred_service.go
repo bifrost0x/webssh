@@ -199,14 +199,6 @@ func (s *Service) open(userID int64, c *credRow) ([]byte, error) {
 	return plain, nil
 }
 
-// Revoke ends the prepared operations and the binding assurance of a
-// user, for example after the account's sessions were revoked.
-func (s *Service) Revoke(userID int64) {
-	if s.creds != nil {
-		s.creds.intents.revokeUser(userID)
-	}
-}
-
 // Sweep drops expired intents; the server calls it periodically.
 func (s *Service) Sweep() {
 	if s.creds != nil {
