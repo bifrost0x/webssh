@@ -298,8 +298,8 @@ func (s *Service) Authenticate(ctx context.Context, token string) (principal.Pri
 
 // Check re-validates p: the session still exists, has not expired, the
 // account is eligible under the same generation, administrator rights
-// recorded in p are still held, and the recovery restriction did not
-// appear.
+// recorded in p are still held (principal.ErrRightsReduced otherwise),
+// and the recovery restriction did not appear.
 func (s *Service) Check(ctx context.Context, p principal.Principal) error {
 	if !p.Valid() {
 		return errNotEligible
@@ -318,8 +318,11 @@ func (s *Service) Check(ctx context.Context, p principal.Principal) error {
 	if err != nil {
 		return err
 	}
-	if (p.IsAdmin && !st.IsAdmin) || (sess.Recovery() && !p.Recovery) {
+	if sess.Recovery() && !p.Recovery {
 		return errNotEligible
+	}
+	if p.IsAdmin && !st.IsAdmin {
+		return principal.ErrRightsReduced
 	}
 	return nil
 }

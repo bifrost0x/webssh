@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	json "encoding/json/v2"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -188,10 +189,23 @@ func TestGenerationLockAndRights(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.accounts.set(1, func(s *Standing) { s.IsAdmin = false })
-	wantAuthNeeded(t, f.svc.Check(t.Context(), p), "admin rights removed")
+	err := f.svc.Check(t.Context(), p)
+	wantAuthNeeded(t, err, "admin rights removed")
+	if !errors.Is(err, principal.ErrRightsReduced) {
+		t.Fatalf("a demotion is not told apart from an ended session: %v", err)
+	}
+	// The session itself stays valid: a new principal has no rights to lose.
+	plain, err := f.svc.Authenticate(t.Context(), tok)
+	if err != nil || plain.IsAdmin || f.svc.Check(t.Context(), plain) != nil {
+		t.Fatalf("after the demotion: %+v, %v", plain, err)
+	}
 	f.accounts.set(1, func(s *Standing) { s.IsAdmin = true; s.Locked = true })
-	wantAuthNeeded(t, f.svc.Check(t.Context(), p), "locked")
-	_, err := f.svc.Authenticate(t.Context(), tok)
+	err = f.svc.Check(t.Context(), p)
+	wantAuthNeeded(t, err, "locked")
+	if errors.Is(err, principal.ErrRightsReduced) {
+		t.Fatal("a locked account only lost its rights")
+	}
+	_, err = f.svc.Authenticate(t.Context(), tok)
 	wantAuthNeeded(t, err, "locked token")
 	f.accounts.set(1, func(s *Standing) { s.Locked = false; s.Generation = 1 })
 	wantAuthNeeded(t, f.svc.Check(t.Context(), p), "generation")

@@ -55,6 +55,7 @@ const (
 	CloseUnsupportedVersion = 4001 // no common schema version: reload the page
 	CloseProtocolViolation  = 4002 // malformed frame or envelope
 	CloseUnauthenticated    = 4003 // session ended, revoked or never valid
+	CloseRightsChanged      = 4004 // the account lost rights the connection held: reconnect
 	CloseSlowConsumer       = 4008 // the client did not keep up (queue overflow, write timeout)
 	CloseMaintenance        = 4503 // server enters maintenance or shuts down
 )

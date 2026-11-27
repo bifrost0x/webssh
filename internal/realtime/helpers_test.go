@@ -35,6 +35,8 @@ type fakeSessions struct {
 	// onAuth, when set, runs at the start of every Authenticate.
 	onAuth func()
 	feed   principaltest.Revocations
+	// demoted are accounts that lost administrator rights.
+	demoted map[int64]bool
 }
 
 func newFakeSessions() *fakeSessions {
@@ -85,6 +87,9 @@ func (f *fakeSessions) Check(_ context.Context, p principal.Principal) error {
 	if f.revoked[p.SessionID] {
 		return fault.New(fault.AuthenticationNeeded, "")
 	}
+	if p.IsAdmin && f.demoted[p.UserID] {
+		return principal.ErrRightsReduced
+	}
 	return nil
 }
 
@@ -92,6 +97,17 @@ func (f *fakeSessions) checkCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.checks
+}
+
+// demote removes the administrator rights of uid without telling the
+// endpoint.
+func (f *fakeSessions) demote(uid int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.demoted == nil {
+		f.demoted = map[int64]bool{}
+	}
+	f.demoted[uid] = true
 }
 
 // markRevoked commits a revocation without publishing it.

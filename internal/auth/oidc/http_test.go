@@ -386,7 +386,13 @@ func TestAdminStepUp(t *testing.T) {
 	if w := x.do(t, "GET", start(), "b", admin, ""); w.Code != http.StatusFound || w.Header().Get("Location") != "/admin" {
 		t.Fatalf("step-up: %d %s", w.Code, w.Body)
 	}
-	w := x.do(t, "GET", "/api/step-up/oidc/result", "b", admin, "")
+	// RS8-H02: a navigation from another site does not use the result up.
+	for _, site := range []string{"cross-site", "same-site", "none"} {
+		if w := x.do(t, "GET", "/api/step-up/oidc/result", "b", admin, "", "Sec-Fetch-Site", site); w.Code != http.StatusForbidden {
+			t.Fatalf("result fetched from %s: %d", site, w.Code)
+		}
+	}
+	w := x.do(t, "GET", "/api/step-up/oidc/result", "b", admin, "", "Sec-Fetch-Site", "same-origin")
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"action":"user.manage"`) || !strings.Contains(w.Body.String(), "grant-for-admin-intent:") {
 		t.Fatalf("result: %d %s", w.Code, w.Body)
 	}

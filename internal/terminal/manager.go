@@ -214,11 +214,13 @@ func (m *Manager) Keepalive(peer protocol.Peer) {
 // keepReasons are the revocation reasons after which the user's
 // terminals keep running: ending another login from the session list, the
 // expiry of a login and the end of a factor-repair session (which never
-// has terminals). Every other reason, including any added later, closes
-// every SSH session of the user (fail closed). The Python release closed
-// them for sign-out, password change, factor reset, lock and role change
-// (user_lifecycle.revoke_user_access).
-var keptFor = []principal.Reason{principal.ReasonRevokedByUser, principal.ReasonExpired, principal.ReasonRecoveryEnded}
+// has terminals) and a removed administrator right, which ends no
+// session either (RS8-R01; a demotion publishes no revocation, the reason
+// is listed so that it never ends terminals). Every other reason,
+// including any added later, closes every SSH session of the user (fail
+// closed). The Python release closed them for sign-out, password change,
+// factor reset and lock (user_lifecycle.revoke_user_access).
+var keptFor = []principal.Reason{principal.ReasonRevokedByUser, principal.ReasonExpired, principal.ReasonRecoveryEnded, principal.ReasonRoleChanged}
 
 func keepsTerminals(r principal.Reason) bool { return slices.Contains(keptFor, r) }
 

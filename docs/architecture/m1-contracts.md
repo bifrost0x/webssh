@@ -60,7 +60,8 @@ func RequireAdmin(ctx context.Context) (Principal, error)
 - `principal.Revocation{SessionID, UserID, Reason}` announces an ended
   session. Reasons are stable strings (`logout`, `revoked_by_user`,
   `password_changed`, `factor_changed`, `account_locked`, `role_changed`,
-  `expired`, `recovery_ended`). An empty `SessionID` is an account-wide
+  `expired`, `recovery_ended`); `role_changed` is only a close reason of
+  realtime connections, a demotion publishes no revocation (RS8-R01). An empty `SessionID` is an account-wide
   revocation (M2, ID4): a lock, deletion or MFA reset of an account
   without a session left; it names no connection, and the terminal ends
   the account's terminals and persistent tmux sessions by the reason.
@@ -275,6 +276,7 @@ connection with 4002.
 | 4001 | no common schema version; reason `supported: webssh.v1` | `socket_protocol_mismatch`, no retry |
 | 4002 | malformed frame or envelope | retry with backoff |
 | 4003 | session ended, revoked or never valid; the reason is the `principal.Reason` value, otherwise `session_ended` | `io server disconnect` or `connect_error` with `authentication_required`, no retry |
+| 4004 | the account lost administrator rights the connection holds (reason `role_changed`); the session stays valid (M2, RS8-R01) | retry with backoff, the new connection has the current rights |
 | 4008 | slow consumer | retry with backoff |
 | 4503 | maintenance or shutdown | retry with backoff |
 
@@ -343,8 +345,8 @@ revocation enforceable:
 3. On a revocation the endpoint cancels the context of every connection of
    the session at once and closes it with 4003. Running handlers end with
    their context; the terminal stops forwarding output of that connection.
-   For the reasons `logout`, `password_changed`, `factor_changed`,
-   `account_locked` and `role_changed` the terminal (`Manager.Revoked`)
+   For the reasons `logout`, `password_changed`, `factor_changed` and
+   `account_locked` the terminal (`Manager.Revoked`)
    also ends every terminal session and pending attempt of the account,
    as the Python release closed every socket and SSH connection of the
    account on logout; on `password_changed` this includes the tmux
@@ -352,8 +354,25 @@ revocation enforceable:
    of the session.
 4. Before every message whose `Spec` has `Mutates` set, the dispatcher
    calls `Check`; a failure closes with 4003 and the handler does not run.
+   When `Check` fails only because the account lost administrator rights
+   the principal records (`principal.ErrRightsReduced`), the close is
+   4004 `role_changed` instead, here and in the periodic re-check.
 5. The periodic re-check stays as a backstop for expiry; it is not the
    revocation path.
+6. A demotion (M2, RS8-R01) is not a revocation: it ends no session, no
+   terminal and no tmux session, and the account keeps its ordinary
+   rights. HTTP reads the administrator flag on every request, so the
+   administration refuses the next request. In the demotion's write
+   transaction `accounts.RoleChanges.DemotedTx` drops the account's
+   step-up grants and intents of administrator actions
+   (`stepup.Service.RevokeAdminTx`), so none serves after a later
+   promotion; after the commit `Demoted` calls
+   `realtime.Server.RightsChanged`, which closes the account's
+   administrator connections with 4004 before the demotion returns. The
+   page reconnects and gets a principal without administrator rights;
+   its terminals are detached and reattached, not ended. Python only
+   cleared the flag; the closed realtime connection and the dropped
+   grants are the visible differences.
 
 `Limiter.Allow(userID, key)` (from `internal/auth`) and
 `Auditor.RealtimeCall(ctx, p, type, err)` (from `internal/audit`) are the
@@ -778,8 +797,13 @@ type Readiness struct { Maintenance, Stopping func() bool; Database Pinger; Data
 
 - Pipeline: client address, security headers, admin gate (404 while
   `ADMIN_PANEL_ENABLED` is false), preview routes (501 before the body is
-  read), per-request deadlines (none for `/ws`), body limit, session,
-  access level, origin, CSRF, handler.
+  read), per-request deadlines (none for `/ws`), session, access level,
+  origin, body limit, CSRF, handler. The body of an unsafe request is
+  read only after the session, the access level and the origin passed
+  (M2, RS8-01), into a buffer of its declared length; routes without a
+  session take at most 16 KiB, and the buffered bodies in flight share a
+  budget (64 MiB signed in, 16 MiB anonymous; `503 unavailable` after 5 s
+  without a share).
 - Capabilities register on `Mux()` with patterns relative to
   `APPLICATION_ROOT`; wildcard names do not matter. A pattern outside the
   route catalog is refused at run time. `Finish()` runs at start; every

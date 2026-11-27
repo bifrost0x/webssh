@@ -153,8 +153,9 @@ func (h *Handler) recoverPanic(w *statusRecorder, r *http.Request) {
 }
 
 // tokenPaths are the path prefixes whose next segment is a bearer
-// token: the one-time transfer tokens (TR1-1).
-var tokenPaths = []string{"/api/transfers/"}
+// token: the one-time transfer tokens (TR1-1) and the editor handoff
+// tokens (RS8-05).
+var tokenPaths = []string{"/api/transfers/", "/api/files/handoff/"}
 
 // LogPath is a request path as logs may show it: the token segment of a
 // token route is replaced, below any APPLICATION_ROOT. A token is spent

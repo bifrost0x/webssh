@@ -216,6 +216,7 @@ func serveOnce(ctx context.Context, opts serveOptions, logger *slog.Logger, buil
 	if err != nil {
 		return false, fmt.Errorf("listen: %w", err)
 	}
+	ln = httpapi.LimitListener(ln, httpapi.MaxConnections)
 	srv := &http.Server{
 		Handler:           app.handler,
 		ReadHeaderTimeout: 10 * time.Second, // ConfigureServer sets the edge's limits

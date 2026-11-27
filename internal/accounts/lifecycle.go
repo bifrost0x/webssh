@@ -21,6 +21,18 @@ type Sessions interface {
 	Publish(revs []principal.Revocation)
 }
 
+// RoleChanges withdraws what an administrator holds beyond the flag that
+// every request reads (provided by the composition root). DemotedTx runs
+// inside the demotion's write transaction and drops the step-up grants
+// and intents of administrator actions; Demoted runs after the commit and
+// reconnects the account's realtime connections, so that none keeps the
+// administrator flag of its upgrade. The sessions, the ordinary rights
+// and the terminals of the account stay (RS8-R01).
+type RoleChanges interface {
+	DemotedTx(ctx context.Context, tx *store.Tx, userID int64) error
+	Demoted(userID int64)
+}
+
 // Warner is the warning level of the audit log (internal/audit). An
 // Auditor without it writes administrator changes at the default level.
 type Warner interface {
@@ -112,12 +124,13 @@ func storage(err error) error {
 // administrator actor (admin_user_action). Every rule is checked inside
 // the write transaction, so concurrent changes cannot demote the last
 // administrator or promote a managed account. A lock ends every session
-// and live resource of the account before Manage returns. Delete has its
-// own method.
+// and live resource of the account before Manage returns; a demotion
+// withdraws the account's administrator grants and realtime rights
+// (Roles) before it returns. Delete has its own method.
 func (s *Service) Manage(ctx context.Context, actor principal.Principal, targetID int64, action string) (Account, error) {
 	var acc Account
 	var revs []principal.Revocation
-	changed := false
+	changed, demoted := false, false
 	err := s.DB.Write(ctx, func(tx *store.Tx) error {
 		var err error
 		if acc, err = getTx(ctx, tx, targetID); err != nil {
@@ -149,7 +162,13 @@ func (s *Service) Manage(ctx context.Context, actor principal.Principal, targetI
 			if err = s.CheckDemote(actor.UserID, acc, n); err != nil {
 				return err
 			}
-			_, err = tx.ExecContext(ctx, `UPDATE accounts_users SET is_admin = 0 WHERE id = ?`, acc.ID)
+			if _, err = tx.ExecContext(ctx, `UPDATE accounts_users SET is_admin = 0 WHERE id = ?`, acc.ID); err != nil {
+				return fmt.Errorf("accounts: demote: %w", err)
+			}
+			if s.Roles != nil {
+				err = s.Roles.DemotedTx(ctx, tx, acc.ID)
+			}
+			demoted = true
 		default:
 			return ErrUnknownAction
 		}
@@ -164,6 +183,9 @@ func (s *Service) Manage(ctx context.Context, actor principal.Principal, targetI
 	}
 	if changed {
 		s.announce(revs)
+	}
+	if demoted && s.Roles != nil {
+		s.Roles.Demoted(acc.ID)
 	}
 	s.logger().Info("Admin user action", "admin", actor.Username, "user", acc.Username, "action", action)
 	s.warn("ADMIN_USER_CHANGED", "admin", actor.Username, "user", acc.Username, "action", action)

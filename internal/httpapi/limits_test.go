@@ -58,7 +58,8 @@ func TestChunkedBodyIsBounded(t *testing.T) {
 	}
 }
 
-// The limit applies before the session lookup and the CSRF check.
+// The limit applies before the CSRF check; a request without a session
+// cookie needs no session lookup.
 func TestTooLargeBeforeCSRF(t *testing.T) {
 	e := newEdge(t)
 	w := e.do(req{method: http.MethodPost, target: "/login", body: strings.Repeat("a", 65<<10)})

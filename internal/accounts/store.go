@@ -61,6 +61,7 @@ type Service struct {
 	// locked, reset or deleted; Data removes a deleted account's rows after
 	// Retain received their copy. They are set by the composition root.
 	Sessions  Sessions
+	Roles     RoleChanges
 	Data      UserData
 	Retain    Retainer
 	Factors   Factors

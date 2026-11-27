@@ -64,6 +64,7 @@ func TestTransferTokenStaysOutOfTheLog(t *testing.T) {
 		"/webssh/api/transfers/" + token + "/upload": "/webssh/api/transfers/[token]/upload",
 		"/api/transfers/" + token:                    "/api/transfers/[token]",
 		"/api/transfers/":                            "/api/transfers/",
+		"/api/files/handoff/" + token:                "/api/files/handoff/[token]",
 		"/api/hosts":                                 "/api/hosts",
 	} {
 		if got := LogPath(in); got != want {

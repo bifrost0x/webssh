@@ -99,7 +99,7 @@ func (c *Conn) run(parent context.Context) {
 		return
 	}
 	if err := c.srv.deps.Sessions.Check(c.ctx, c.p); err != nil {
-		c.closeWith(protocol.CloseUnauthenticated, "session_ended")
+		c.closeWith(checkClose(err))
 		return
 	}
 	c.wg.Go(c.writeLoop)
@@ -205,7 +205,7 @@ func (c *Conn) keepalive() {
 			}
 		case <-recheck.C:
 			if err := c.srv.deps.Sessions.Check(c.ctx, c.p); err != nil && c.ctx.Err() == nil {
-				c.closeWith(protocol.CloseUnauthenticated, "session_ended")
+				c.closeWith(checkClose(err))
 				return
 			}
 		}
