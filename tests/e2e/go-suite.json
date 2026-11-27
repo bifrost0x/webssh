@@ -37,9 +37,7 @@
     {"file": "empty-states.spec.js", "exclude": [
       {"title": "empty management surfaces are consistent and actionable", "reason": "expects built-in commands in the command library (C-CMD)", "package": "CM1"}
     ]},
-    {"file": "onboarding.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "tour crosses workspaces, handles small screens and saves completion", "reason": "tour step 6 opens the automation workspace (C-AUTO)", "package": "AU1"}
-    ]},
+    {"file": "onboarding.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "management-dialogs-redesign.spec.js", "exclude": []},
     {"file": "management-persistence.spec.js", "exclude": [
       {"title": "command and command-set edits survive a reload", "reason": "commands and command sets (C-CMD)", "package": "CM1"},
@@ -131,10 +129,7 @@
     {"file": "host-toolbar-layout.spec.js", "exclude": []},
     {"file": "containment-refinements.spec.js", "exclude": []},
     {"file": "host-discovery.spec.js", "exclude": []},
-    {"file": "overview-filters.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "pending security updates open the matching upgrade workflow as a draft with exactly those hosts", "reason": "the upgrade workflow draft needs the automation area (C-AUTO-10 prefill, WebSSHAutomation)", "package": "AU1"},
-      {"title": "a restart hint offers to check the same hosts again, as a draft and without contacting them", "reason": "the restart check draft needs the automation area (C-AUTO-10 prefill, WebSSHAutomation)", "package": "AU1"}
-    ]},
+    {"file": "overview-filters.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-maintenance-dismissal.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "host-inventory-diagnostic.spec.js", "exclude": []},
     {"file": "product-data-truth.spec.js", "exclude": [
@@ -196,6 +191,40 @@
       {"title": "workspace tools resume after repeated transport interruptions", "reason": "uses the command library (C-CMD)", "package": "CM1"},
       {"title": "narrow desktop tools contain German diagnostics and commands inside every surface", "reason": "uses the command library (C-CMD)", "package": "CM1"}
     ]},
+    {"file": "automation.spec.js", "exclude": []},
+    {"file": "automation-real-journey.spec.js", "exclude": [
+      {"title": "own command set through real backend SSH run and exact overview history link", "reason": "commands and command sets (C-CMD): the page lists and resolves the user's command sets", "package": "CM1"},
+      {"title": "real parameterized command set imports server-quoted values and cancellation preserves the draft", "reason": "commands and command sets (C-CMD): the page lists and resolves the user's command sets", "package": "CM1"}
+    ]},
+    {"file": "automation-review-context.spec.js", "exclude": [
+      {"title": "delayed review rejects changed schedule context", "reason": "automation schedules (C-AUTO-06, /api/automation/schedules answers 501)", "package": "AU2"},
+      {"title": "delayed review rejects changed navigation context", "reason": "reviews a schedule: automation schedules (C-AUTO-06, /api/automation/schedules answers 501)", "package": "AU2"},
+      {"title": "existing schedule edits persist in place and can be paused after reapproval", "reason": "automation schedules (C-AUTO-06, /api/automation/schedules answers 501)", "package": "AU2"}
+    ]},
+    {"file": "automation-native.spec.js", "exclude": []},
+    {"file": "automation-editor-layout.spec.js", "exclude": []},
+    {"file": "automation-editor-roundtrip.spec.js", "exclude": []},
+    {"file": "automation-editor-sources.spec.js", "exclude": []},
+    {"file": "automation-library.spec.js", "exclude": []},
+    {"file": "automation-library-safety.spec.js", "exclude": []},
+    {"file": "automation-templates.spec.js", "exclude": []},
+    {"file": "automation-workspace.spec.js", "exclude": [
+      {"title": "workspace sequence and target inventory fit narrow and wide themes", "reason": "the preview notice raised by automation schedules (C-AUTO-06, /api/automation/schedules answers 501) takes the height the test measures", "package": "AU2"}
+    ]},
+    {"file": "automation-design.spec.js", "exclude": []},
+    {"file": "automation-followthrough.spec.js", "exclude": [
+      {"title": "source search preserves selected source and draft, without execution", "reason": "commands and command sets (C-CMD): the page lists and resolves the user's command sets as a third source group", "package": "CM1"}
+    ]},
+    {"file": "automation-import-race.spec.js", "exclude": []},
+    {"file": "automation-integrated-journey.spec.js", "exclude": []},
+    {"file": "automation-lock-races.spec.js", "exclude": []},
+    {"file": "automation-state.spec.js", "exclude": []},
+    {"file": "automation-results-refinement.spec.js", "exclude": []},
+    {"file": "automation-admin-tools.spec.js", "exclude": []},
+    {"file": "automation-diagnostics.spec.js", "exclude": []},
+    {"file": "feature-availability.spec.js", "exclude": []},
+    {"file": "session-diagnostics-automation.spec.js", "exclude": []},
+    {"file": "management-width.spec.js", "exclude": []},
     {"file": "product-captures.spec.js", "exclude": [
       {"title": "captures the focused session workspace and operational context", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
       {"title": "captures seeded command and connection option surfaces at Full HD scale", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
