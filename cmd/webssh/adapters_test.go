@@ -43,7 +43,8 @@ func TestPreviewNotice(t *testing.T) {
 		t.Errorf("sign-in notice %+v", signIn)
 	}
 	work := previewNotice(false)
-	if !work.Enabled || !slices.Contains(work.Unavailable, "commands") || slices.Contains(work.Unavailable, "files") {
+	if !work.Enabled || !slices.Contains(work.Unavailable, "automation") || slices.Contains(work.Unavailable, "files") ||
+		slices.Contains(work.Unavailable, "commands") {
 		t.Errorf("workspace notice %+v", work)
 	}
 }

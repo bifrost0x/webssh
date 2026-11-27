@@ -34,18 +34,13 @@
     {"file": "overview-default-content.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-classic.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "connection-overview.spec.js", "exclude": []},
-    {"file": "empty-states.spec.js", "exclude": [
-      {"title": "empty management surfaces are consistent and actionable", "reason": "expects built-in commands in the command library (C-CMD)", "package": "CM1"}
-    ]},
+    {"file": "empty-states.spec.js", "exclude": []},
     {"file": "onboarding.spec.js", "serial": "e2e_admin", "exclude": [
       {"title": "tour crosses workspaces, handles small screens and saves completion", "reason": "tour step 6 opens the automation workspace (C-AUTO)", "package": "AU1"}
     ]},
     {"file": "management-dialogs-redesign.spec.js", "exclude": []},
     {"file": "management-persistence.spec.js", "exclude": [
-      {"title": "command and command-set edits survive a reload", "reason": "commands and command sets (C-CMD)", "package": "CM1"},
-      {"title": "command-set editor does not steal focus after the user chooses another field", "reason": "command sets (C-CMD)", "package": "CM1"},
-      {"title": "command-set actions survive list refresh", "reason": "command sets (C-CMD)", "package": "CM1"},
-      {"title": "command-set refresh drops removed or filtered actions without stealing external focus", "reason": "command sets (C-CMD)", "package": "CM1"}
+      {"title": "command and command-set edits survive a reload at 1536px", "reason": "the preview notice (automation, saved passwords, host discovery) covers the actions menu of the duplicated set at 1536px; the notice goes with the last preview area", "package": "FE1"}
     ]},
     {"file": "jump-host-edit.spec.js", "exclude": []},
     {"file": "host-draft-navigation.spec.js", "exclude": []},
@@ -66,10 +61,7 @@
     {"file": "ssh-gateway.spec.js", "exclude": [
       {"title": "admin enables and disables the gateway using the protected settings control", "reason": "admin integration switches (C-ASET-05) answer 501", "package": "OP3"}
     ]},
-    {"file": "profile-launcher.spec.js", "exclude": [
-      {"title": "saved host and command set controls include their names", "reason": "command sets (C-CMD)", "package": "CM1"},
-      {"title": "referenced commands and command sets cannot be deleted", "reason": "command sets (C-CMD)", "package": "CM1"}
-    ]},
+    {"file": "profile-launcher.spec.js", "exclude": []},
     {"file": "socks-proxy-routes.spec.js", "exclude": []},
     {"file": "terminal-safety.spec.js", "exclude": []},
     {"file": "terminal-parser-bounds.spec.js", "exclude": []},
@@ -77,17 +69,12 @@
     {"file": "terminal-load.spec.js", "requires": "e2e_hooks", "exclude": [
       {"title": "20 active TUIs retain state without reconnecting over polling", "reason": "no long polling in the Go server (ADR 0005)", "package": "FE1"}
     ]},
-    {"file": "post-connect-profiles.spec.js", "exclude": [
-      {"title": "saving after mode changes removes stale post-connect fields", "reason": "the profile editor saves a command and a command set reference first (C-CMD, the hosts refuse new references until the library exists)", "package": "CM1"},
-      {"title": "missing post-connect references stop before the guarded SSH network layer", "reason": "without the command library the terminal answers not_available_in_preview instead of Command not found", "package": "CM1"}
-    ]},
-    {"file": "terminal-windows.spec.js", "exclude": [
-      {"title": "window layout retains each restored session and its placement after reload", "reason": "checks the command library of the restored session (C-CMD)", "package": "CM1"}
-    ]},
+    {"file": "post-connect-profiles.spec.js", "exclude": []},
+    {"file": "terminal-windows.spec.js", "exclude": []},
     {"file": "pane-assignment.spec.js", "exclude": []},
     {"file": "workspace-restore.spec.js", "requires": "e2e_hooks", "exclude": [
       {"title": "sessions over polling at", "reason": "no long polling in the Go server (ADR 0005)", "package": "FE1"},
-      {"title": "sessions over websocket at", "reason": "checks the command library, the session's files and diagnostics of the restored sessions (C-CMD first; then FS1 and HO1)", "package": "CM1"}
+      {"title": "sessions over websocket at", "reason": "the Go hook e2e.workspace_restore seeds no SFTP stand-in (workspace_restore.py fakes the probe, the home directory and the listing), so #sessionFilesMount stays empty; the command library of the restored sessions works", "package": "FS2"}
     ]},
     {"file": "settings-layout.spec.js", "exclude": [
       {"title": "settings sections share their content track and user actions remain reachable", "reason": "the preview toast of the 501 routes on the settings page (/admin/api/host-keys, /admin/api/backups/restore/status) covers the user action menu at 390 px once the preview notice lists fewer areas; it goes with the preview toast and banner", "package": "FE1"}
@@ -120,9 +107,7 @@
       {"title": "a hidden panel stops asking and an old tab gets disabled without a command on the host", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"},
       {"title": "a refused authentication leaves the integration off", "reason": "the Herdr switch is set on the administrator settings page (OP3); the e2e.herdr_sessions and e2e.herdr_exec_count hooks of the Go build are still open (HO1 report)", "package": "OP3"}
     ]},
-    {"file": "host-context.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "favorites navigate the bound SFTP source and assigned sets use the existing SSH input launcher", "reason": "needs the seeded command set in the command library (C-CMD, E27)", "package": "CM1"}
-    ]},
+    {"file": "host-context.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "profile-exchange.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "customer-workflows.spec.js", "serial": "e2e_admin", "exclude": [
       {"title": "recovery guidance names omitted credentials and current owned hosts on mobile", "reason": "GET /api/account/recovery-check is a preview answer without hosts until backup and restore are built (C-BAK)", "package": "OP1"}
@@ -137,27 +122,19 @@
     ]},
     {"file": "overview-maintenance-dismissal.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "host-inventory-diagnostic.spec.js", "exclude": []},
-    {"file": "product-data-truth.spec.js", "exclude": [
-      {"title": "system command arguments are explicitly library defaults, not discovered host values", "reason": "the command library (C-CMD) is not built yet; it answers 501", "package": "CM1"}
-    ]},
+    {"file": "product-data-truth.spec.js", "exclude": []},
     {"file": "host-move-overview.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "access-inspector.spec.js", "exclude": []},
     {"file": "access-scale.spec.js", "exclude": []},
-    {"file": "information-roles.spec.js", "exclude": [
-      {"title": "a command without parameters has one authoritative code display", "reason": "the command library (C-CMD) is not built yet; it answers 501", "package": "CM1"}
-    ]},
-    {"file": "compact-desktop.spec.js", "exclude": [
-      {"title": "compact command details reserve the view and return to the same searchable library", "reason": "the command library (C-CMD) is not built yet; it answers 501", "package": "CM1"}
-    ]},
+    {"file": "information-roles.spec.js", "exclude": []},
+    {"file": "compact-desktop.spec.js", "exclude": []},
     {"file": "werkbank-fidelity.spec.js", "exclude": []},
     {"file": "dashboard-localization.spec.js", "exclude": []},
     {"file": "current-network-workflow.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "start-page-map-persistence.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "task-context.spec.js", "exclude": []},
     {"file": "overview-clarity.spec.js", "serial": "e2e_admin", "exclude": []},
-    {"file": "overview-composition.spec.js", "serial": "e2e_admin", "exclude": [
-      {"title": "command code and description clicks open the matching right inspector without taking over action buttons", "reason": "the command library (C-CMD) is not built yet; it answers 501", "package": "CM1"}
-    ]},
+    {"file": "overview-composition.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-continue-panel.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-group-journey.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "overview-group-order.spec.js", "serial": "e2e_admin", "exclude": [
@@ -190,23 +167,16 @@
     {"file": "primary-workspace-navigation.spec.js", "exclude": []},
     {"file": "ux-refinements.spec.js", "exclude": []},
     {"file": "session-workspace.spec.js", "exclude": [
-      {"title": "command insertion reveals the terminal without executing", "reason": "uses the command library (C-CMD)", "package": "CM1"},
-      {"title": "command management stays compact without session actions at 360px", "reason": "uses the command library (C-CMD)", "package": "CM1"},
-      {"title": "single-session workspace keeps terminal primary with on-demand Files, Diagnostics, and Notes", "reason": "uses the command library (C-CMD)", "package": "CM1"},
-      {"title": "workspace tools resume after repeated transport interruptions", "reason": "uses the command library (C-CMD)", "package": "CM1"},
-      {"title": "narrow desktop tools contain German diagnostics and commands inside every surface", "reason": "uses the command library (C-CMD)", "package": "CM1"}
+      {"title": "single-session workspace keeps terminal primary with on-demand Files, Diagnostics, and Notes", "reason": "the Files tab of the seeded Linux session shows no session file panel against Go (no SFTP stand-in for seeded sessions); the commands part passes", "package": "FS2"}
     ]},
-    {"file": "product-captures.spec.js", "exclude": [
-      {"title": "captures the focused session workspace and operational context", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
-      {"title": "captures seeded command and connection option surfaces at Full HD scale", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
-      {"title": "captures the seeded key management surface at Full HD scale", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
-      {"title": "captures a populated dual-pane File Manager without remote file actions", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
-      {"title": "captures six current file preview and editing frames without remote actions", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
-      {"title": "captures six current Command Sets animation frames without remote actions", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
-      {"title": "captures a contained multi-session workspace and the current theme menu", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
-      {"title": "captures the current Hosts start surface without overflow", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
-      {"title": "captures WebSSH 3 dashboard and every supported theme", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"},
-      {"title": "captures dashboard arrangement and host discovery", "reason": "every capture checks the seeded catalog first (two seeded command sets, sanitizeSeededCatalog); the command library (C-CMD) is not built", "package": "CM1"}
-    ]}
+    {"file": "product-captures.spec.js", "exclude": []},
+    {"file": "commands-experience.spec.js", "exclude": []},
+    {"file": "command-parameters.spec.js", "exclude": []},
+    {"file": "command-builder-width.spec.js", "exclude": []},
+    {"file": "command-draft-unload.spec.js", "exclude": []},
+    {"file": "editor-dismissal-regression.spec.js", "exclude": []},
+    {"file": "workspace-layout-regressions.spec.js", "exclude": []},
+    {"file": "workspace-performance.spec.js", "exclude": []},
+    {"file": "palette-navigation.spec.js", "exclude": []}
   ]
 }
