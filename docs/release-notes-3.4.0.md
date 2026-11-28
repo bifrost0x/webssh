@@ -33,14 +33,14 @@ how to remove the 3.3 data later.
   image adds a BusyBox shell for troubleshooting (`U15`).
 - **One live connection.** The browser uses a single WebSocket at
   `<APPLICATION_ROOT>/ws` instead of Socket.IO; long polling is gone
-  (`U29`). Reverse proxies must forward WebSocket upgrades and the `Origin`
+  (`U31`). Reverse proxies must forward WebSocket upgrades and the `Origin`
   header for that path.
 - **Overview host cards.** The cards of a row line up with their status and
   actions at the bottom, and the host details open as a popover instead of
-  unfolding inside the card (`U103`). **Arrange** keeps your own order of
-  the hosts, saved to your account; favorites stay first (`U104`). Cards,
+  unfolding inside the card (`U114`). **Arrange** keeps your own order of
+  the hosts, saved to your account; favorites stay first (`U115`). Cards,
   the identity line and the classic overview name a host's apps instead of
-  showing small logo tiles (`U105`).
+  showing small logo tiles (`U116`).
 - **Command line.** `webssh <command>` replaces `flask --app start:app`.
   The 3.3 command forms and health checks of the shipped Compose files keep
   working until the next major release (`U16`, `U18`).
@@ -53,12 +53,12 @@ how to remove the 3.3 data later.
   an administrator's role ends the admin rights immediately.
 - Authentication and the access level are checked before a request body is
   read, and request bodies share a global budget with a per-account share,
-  so slow uploads of one account cannot block others (`U96`).
+  so slow uploads of one account cannot block others (`U119`).
 - Turning on the tailnet block closes open connections that the block now
   refuses, as 3.3 did.
 - Forwarded headers count only from the networks in the new
   `TRUSTED_PROXY_CIDRS` (`U24`). Requests from other sites are refused with
-  403 (`U33`).
+  403 (`U35`).
 - Saved passwords are only sent over HTTPS and only to the target the page
   confirmed, also on jump-host, SOCKS5 and gateway paths.
 - Secrets in the new database are sealed with a keyring derived from
@@ -82,7 +82,7 @@ how to remove the 3.3 data later.
    once (`U04`). After that, each account taken over from 3.3 sees a short
    notice once that explains the new server and links to
    [Upgrading to 3.4](wiki/Upgrading-to-3.4.md) and to the issue tracker
-   (`U102`).
+   (`U51`).
 
 Behaviour changes to check before upgrading, in short; the full list with
 what to do is in [Upgrading to 3.4](wiki/Upgrading-to-3.4.md#changes-you-can-notice):
@@ -94,23 +94,23 @@ what to do is in [Upgrading to 3.4](wiki/Upgrading-to-3.4.md#changes-you-can-not
 - Redis rate limiting is no longer supported; `RATELIMIT_STORAGE_URL`,
   `GUNICORN_THREADS` and `BACKGROUND_WORKERS` are ignored with a warning
   (`U25`).
-- Backups are tar archives; 3.4 backups cannot be restored with 3.3 (`U77`).
+- Backups are tar archives; 3.4 backups cannot be restored with 3.3 (`U97`).
 - RSA keys below 1024 bits, DSA keys and the algorithms aes192-cbc,
   aes256-cbc and hmac-md5 are not supported; the migration report names
-  affected keys (`U45`). Other legacy algorithms stay behind the legacy
-  setting (`U44`).
+  affected keys (`U56`). Other legacy algorithms stay behind the legacy
+  setting (`U55`).
 - DATA_DIR on a tmpfs counts against the container's memory limit during the
   first start (`U14`).
 - Server management now lists the first systemd service and the first Docker
-  container of a host, which 3.3 left out (`U99`).
+  container of a host, which 3.3 left out (`U77`).
 - Names of saved hosts, jump hosts, SOCKS5 proxies, SSH keys and saved
   passwords are unique per user, ignoring case; records 3.3 stored with
-  the same name are kept and stay editable (`U100`).
+  the same name are kept and stay editable (`U72`).
 - A host, jump host or SOCKS5 proxy with an existing saved password asks for
   the account confirmation before it is saved, new or edited, and is stored
-  with its assignment in one step; cancelling stores nothing (`U101`).
+  with its assignment in one step; cancelling stores nothing (`U87`).
 - Rail rows and session tabs no longer show service logos; the identity line
-  above a terminal names the services instead (`U105`).
+  above a terminal names the services instead (`U116`).
 
 Only Linux is supported: the image for `linux/amd64` and `linux/arm64` and a
 source build on Linux. Windows and macOS binaries and the systemd service of

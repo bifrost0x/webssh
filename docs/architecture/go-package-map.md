@@ -77,7 +77,7 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/cron` | foundation | Cron expressions and schedules (tier C) | – | B6 |
 | `internal/platform` | foundation | Data directory owner and mode, time zone check (Linux only) | – | B8 |
 | `internal/pyjson` | foundation | JSON text as the Python release reads and writes it: duplicate member names (last wins), escaped lone surrogates, exact number texts, `ensure_ascii` strings; shared by the legacy migration and the settings import | – | M1 |
-| `internal/naming` | foundation | Comparison form of the names users give saved hosts, jump hosts, SOCKS5 proxies, SSH keys and saved passwords (trimmed, case-folded); unique per user from 3.4 (U100) | – | M2 |
+| `internal/naming` | foundation | Comparison form of the names users give saved hosts, jump hosts, SOCKS5 proxies, SSH keys and saved passwords (trimmed, case-folded); unique per user from 3.4 (U72) | – | M2 |
 | `internal/session` | capability | Browser sessions: issue, validate, expire, revoke | – | B2 |
 | `internal/accounts` | capability | Users, administrators (`ADMIN_USERS`), roles and permissions (including host discovery), account lifecycle | `internal/session` | B2 |
 | `internal/auth` | capability | Sign-in flow, provider and factor registries, known devices, assurance, recovery, in-process rate limits, one way to turn off a second factor | `internal/session`, `internal/accounts` | B2 |

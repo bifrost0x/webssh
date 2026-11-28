@@ -98,7 +98,7 @@ test('saved passwords are on and one saved password exists', async ({browser}) =
 });
 
 test('a saved password name in use is refused at the name field', async ({browser}) => {
-    test.fail(kind === 'python', 'the Python release allows duplicate names (U100)');
+    test.fail(kind === 'python', 'the Python release allows duplicate names (U72)');
     const {context, page} = await signedIn(browser);
     const before = (await serverState(page)).credentials.map(item => item.id);
     try {

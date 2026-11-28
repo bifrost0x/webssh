@@ -115,7 +115,7 @@ var pythonStatus = map[fault.Code]int{
 	fault.AuthenticationNeeded: 401, fault.HTTPSRequired: 403, fault.StepUpRequired: 403, fault.Busy: 429,
 	fault.NotFound: 404, fault.InvalidIntent: 409, fault.PreviewChanged: 409, fault.VaultLocked: 423,
 	fault.Unavailable: 503, fault.CredentialsDisabled: 403, fault.CredentialInUse: 409,
-	fault.DuplicateName: 409, // new in 3.4: names are unique (U100)
+	fault.DuplicateName: 409, // new in 3.4: names are unique (U72)
 }
 
 type credentialError struct {
