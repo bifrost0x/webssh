@@ -996,7 +996,7 @@ window.i18n.registerLocales({
         'operations.details': "Details",
         'operations.configure': "Change capacity limits",
         'operations.configHint': "Set these environment variables in your deployment configuration, then restart WebSSH. Plan the restart: active browser connections and in-process transfers will be interrupted.",
-        'operations.configReserve': "Keep at least four HTTP threads above the socket limit and use exactly one Gunicorn worker. Capacity changes are validated at startup.",
+        'operations.configReserve': "Capacity changes are validated at startup.",
         'operations.connectionsHint': "Authenticated browser connections only. Disconnecting preserves SSH/tmux sessions but cancels associated transfers and may close temporary file sources. This does not revoke login access.",
         'operations.transfersHint': "Identify a transfer by user, reference, direction and age in seconds. Cancellation is cooperative; running writes may need time to stop. Paths and credentials are not shown.",
         'operations.jobsHint': "System tasks cannot be stopped here. Age includes queue time. Use transfer controls for copies and Backup and restore for backup operations.",

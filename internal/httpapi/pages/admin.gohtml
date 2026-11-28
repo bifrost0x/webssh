@@ -50,10 +50,9 @@
                 <summary data-i18n="operations.configure">Change capacity limits</summary>
                 <p data-i18n="operations.configHint">Set these environment variables in your deployment configuration, then restart WebSSH. Plan the restart: active browser connections and in-process transfers will be interrupted.</p>
                 <ul>
-                    <li><code>GUNICORN_THREADS</code>, <code>MAX_SOCKET_CONNECTIONS</code>, <code>MAX_SOCKET_CONNECTIONS_PER_USER</code></li>
-                    <li><code>BACKGROUND_WORKERS</code></li>
+                    <li><code>MAX_SOCKET_CONNECTIONS</code>, <code>MAX_SOCKET_CONNECTIONS_PER_USER</code></li>
                 </ul>
-                <p data-i18n="operations.configReserve">Keep at least four HTTP threads above the socket limit and use exactly one Gunicorn worker. Capacity changes are validated at startup.</p>
+                <p data-i18n="operations.configReserve">Capacity changes are validated at startup.</p>
             </details>
         </section>
         <section class="admin-panel hidden" id="tab-users">

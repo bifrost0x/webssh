@@ -991,7 +991,7 @@ window.i18n.registerLocales({
         'operations.details': "详情",
         'operations.configure': "更改容量限制",
         'operations.configHint': "在部署配置中设置这些环境变量，然后重启 WebSSH。重启会中断浏览器连接和正在进行的传输。",
-        'operations.configReserve': "Socket 上限之外至少预留四个 HTTP 线程，并只使用一个 Gunicorn worker。启动时会验证限制。",
+        'operations.configReserve': "启动时会验证限制。",
         'operations.connectionsHint': "仅显示已认证的浏览器连接。断开会保留 SSH/tmux 会话，但取消相关传输，并可能关闭临时文件源。不会撤销登录权限。",
         'operations.transfersHint': "通过用户、编号、方向和存续秒数识别传输。正在写入的操作可能需要时间停止。不显示路径和凭据。",
         'operations.jobsHint': "无法在此停止系统任务。存续时间包含排队时间。文件复制请使用传输管理，备份请使用备份管理。",

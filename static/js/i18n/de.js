@@ -996,7 +996,7 @@ window.i18n.registerLocales({
         'operations.details': "Details",
         'operations.configure': "Kapazitätsgrenzen ändern",
         'operations.configHint': "Diese Umgebungsvariablen in der Deployment-Konfiguration setzen und WebSSH neu starten. Den Neustart planen: Browser-Verbindungen und laufende Transfers werden unterbrochen.",
-        'operations.configReserve': "Mindestens vier HTTP-Threads über dem Socket-Limit freihalten und genau einen Gunicorn-Worker verwenden. Die Grenzen werden beim Start geprüft.",
+        'operations.configReserve': "Die Grenzen werden beim Start geprüft.",
         'operations.connectionsHint': "Nur authentifizierte Browser-Verbindungen. Trennen erhält SSH-/tmux-Sitzungen, bricht aber zugehörige Transfers ab und kann temporäre Dateiquellen schließen. Der Login-Zugang bleibt bestehen.",
         'operations.transfersHint': "Transfer anhand von Benutzer, Referenz, Richtung und Alter in Sekunden zuordnen. Laufende Schreibvorgänge können Zeit zum Abbrechen benötigen. Pfade und Zugangsdaten werden nicht angezeigt.",
         'operations.jobsHint': "Systemaufgaben lassen sich hier nicht stoppen. Das Alter enthält Wartezeit. Für Kopien die Transfer-Steuerung, für Backups die Sicherungsverwaltung verwenden.",

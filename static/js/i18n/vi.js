@@ -991,7 +991,7 @@ window.i18n.registerLocales({
         'operations.details': "Chi tiết",
         'operations.configure': "Đổi giới hạn dung lượng",
         'operations.configHint': "Đặt các biến môi trường này trong cấu hình triển khai rồi khởi động lại WebSSH. Kết nối trình duyệt và truyền tệp đang chạy sẽ bị gián đoạn.",
-        'operations.configReserve': "Dành ít nhất bốn luồng HTTP ngoài giới hạn socket và dùng đúng một worker Gunicorn. Giới hạn được kiểm tra khi khởi động.",
+        'operations.configReserve': "Giới hạn được kiểm tra khi khởi động.",
         'operations.connectionsHint': "Chỉ kết nối trình duyệt đã xác thực. Ngắt kết nối giữ SSH/tmux nhưng hủy truyền tệp liên quan và có thể đóng nguồn tệp tạm thời. Quyền đăng nhập vẫn còn.",
         'operations.transfersHint': "Nhận diện bằng người dùng, mã, hướng và tuổi tính bằng giây. Thao tác ghi có thể cần thời gian để dừng. Không hiển thị đường dẫn hay thông tin xác thực.",
         'operations.jobsHint': "Không thể dừng tác vụ hệ thống ở đây. Tuổi gồm thời gian chờ. Dùng quản lý truyền tệp cho sao chép và quản lý sao lưu cho bản sao lưu.",

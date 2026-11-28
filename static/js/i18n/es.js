@@ -992,7 +992,7 @@ window.i18n.registerLocales({
         'operations.details': "Detalles",
         'operations.configure': "Cambiar límites",
         'operations.configHint': "Configura estas variables en el despliegue y reinicia WebSSH. El reinicio interrumpe las conexiones del navegador y las transferencias en curso.",
-        'operations.configReserve': "Reserva al menos cuatro hilos HTTP sobre el límite de sockets y utiliza un solo worker Gunicorn. Los límites se validan al iniciar.",
+        'operations.configReserve': "Los límites se validan al iniciar.",
         'operations.connectionsHint': "Solo conexiones autenticadas. Desconectar conserva SSH/tmux, pero cancela transferencias asociadas y puede cerrar fuentes temporales. No revoca el acceso a la cuenta.",
         'operations.transfersHint': "Identifica cada transferencia por usuario, referencia, dirección y edad en segundos. Las escrituras pueden tardar en detenerse. No se muestran rutas ni credenciales.",
         'operations.jobsHint': "Las tareas del sistema no se pueden detener aquí. La edad incluye la espera. Usa los controles de transferencia para copias y la gestión de copias de seguridad para respaldos.",
