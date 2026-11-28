@@ -281,10 +281,25 @@ const ProfileManager = {
     requestKeys() {
         clearTimeout(this.keyLoadTimer);
         this.keyLoadTimer = null;
-        if (!window.socket) return;
+        const socket = window.socket;
+        if (!socket) return;
+        // The page asks for the keys while the realtime connection is still
+        // being set up. Socket.IO buffered such a request; the realtime
+        // client of 3.4 refuses it, which delayed the list until the first
+        // retry. The request waits for the connection instead.
+        if (socket.connected === false && typeof socket.once === 'function') {
+            if (!this.keysAwaitConnect) {
+                this.keysAwaitConnect = true;
+                socket.once('connect', () => {
+                    this.keysAwaitConnect = false;
+                    this.requestKeys();
+                });
+            }
+            return;
+        }
         // The list itself arrives as keys_list; the acknowledgement only
         // reports a refusal.
-        window.socket.emit('list_keys', acknowledgement => {
+        socket.emit('list_keys', acknowledgement => {
             if (acknowledgement?.success === false) this.keyListFailed(acknowledgement);
         });
     },

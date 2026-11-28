@@ -162,3 +162,25 @@ test('the step-up uses the account step-up client with the key action and target
     assert.equal(await manager.authorizeKeyChange('key.upload'), null);
     assert.deepEqual(notices, ['No supported authentication method is available.']);
 });
+
+test('the key list waits for the realtime connection instead of failing before it', () => {
+    const {manager, window, timers} = loadProfileManager();
+    const sent = [];
+    const listeners = [];
+    window.socket = {
+        connected: false,
+        emit(event, ack) { sent.push(event); manager.setKeys([]); ack(undefined); },
+        once(event, fn) { listeners.push({event, fn}); },
+    };
+    manager.loadKeys();
+    manager.loadKeys();
+    assert.deepEqual(sent, [], 'nothing is sent before the connection is up');
+    assert.equal(listeners.length, 1, 'repeated loads wait on one listener');
+    assert.equal(listeners[0].event, 'connect');
+    assert.equal(manager.keysLoadFailed, false);
+    assert.equal(timers.length, 0, 'no retry timer: the request is not refused');
+    window.socket.connected = true;
+    listeners[0].fn();
+    assert.deepEqual(sent, ['list_keys']);
+    assert.equal(manager.keysLoaded, true);
+});
