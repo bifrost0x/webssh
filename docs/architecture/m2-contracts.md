@@ -1762,7 +1762,9 @@ every request.
   safe-path rule: not writable by group or others without the sticky bit,
   owned by root or by `PermSource.LoginUID` (the owner of the login
   directory). Otherwise, or when the server reports no owner, the scan
-  stops with `UNSAFE_PATH` before any change.
+  stops with `UNSAFE_PATH` before any change. A single change
+  (`permissions.set`) checks the folders above its object the same way
+  before it is sent.
 - A single change (`permissions.set`) needs the metadata token of its
   inspection (`permissions.get`, 60 seconds, HMAC with a key held only
   in memory); a mismatch after the change is `MODE_MISMATCH` with

@@ -79,7 +79,7 @@ how to remove the 3.3 data later.
   removes that is no 3.3 data (`U111`).
 - Folder copies, downloads, recursive deletes and permission jobs on SFTP
   stop when a folder of the tree is swapped for a link while they run, and
-  permission jobs refuse trees below unsafe folders (`U88`, `U90`).
+  permission changes refuse objects below unsafe folders (`U88`, `U90`).
 - IPv6 zones and numeric IPv4 forms can no longer slip past the network
   policy or into `known_hosts` (`U75`, `U76`). LDAP identities use the full
   unique-ID value; the migration report names links that may need a relink

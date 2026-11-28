@@ -218,6 +218,9 @@ func (j *PermissionJobs) change(ctx context.Context, c PermCaller, sourceID, p s
 	if before.Mode == fmt.Sprintf("%03o", want) {
 		return reply(before), before.Mode, nil
 	}
+	if err := safeParents(ctx, src, p); err != nil {
+		return nil, before.Mode, err
+	}
 	if err := src.Chmod(ctx, p, want, e); err != nil {
 		if fault.CodeOf(err) == fault.ModeMismatch {
 			if e, err2 := src.Lstat(ctx, p); err2 == nil {
@@ -235,6 +238,28 @@ func (j *PermissionJobs) change(ctx context.Context, c PermCaller, sourceID, p s
 		return nil, before.Mode, modeMismatch(e.Mode)
 	}
 	return reply(after), before.Mode, nil
+}
+
+// safeParents applies the safe-path rule of the jobs (safeAncestor) to
+// every folder above p before a single change is sent.
+func safeParents(ctx context.Context, src PermSource, p string) error {
+	uid, err := src.LoginUID(ctx)
+	if err != nil {
+		return mutationFailure(err, false)
+	}
+	for _, parent := range parents(p) {
+		e, err := src.Lstat(ctx, parent)
+		if err != nil {
+			return mutationFailure(err, false)
+		}
+		if s, err := snapshotOf(e); err != nil || !s.Dir {
+			return fault.New(fault.MetadataChanged, "")
+		}
+		if !safeAncestor(e, uid) {
+			return fault.New(fault.UnsafePath, "")
+		}
+	}
+	return nil
 }
 
 // mutationFailure is mutation_failure: the definite file codes pass, a

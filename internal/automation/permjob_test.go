@@ -288,6 +288,46 @@ func TestPermissionJobRefusesUnsafeAncestors(t *testing.T) {
 	}
 }
 
+// A single change follows the same safe-path rule as a job: the folders
+// above the object are checked before the change is sent.
+func TestPermissionSingleChangeRefusesUnsafeAncestors(t *testing.T) {
+	t.Parallel()
+	for name, setup := range map[string]func(tr *permTree){
+		"group-writable ancestor":  func(tr *permTree) { tr.nodes["/work"] = 0o040775 },
+		"world-writable ancestor":  func(tr *permTree) { tr.nodes["/work"] = 0o040757 },
+		"ancestor of another user": func(tr *permTree) { tr.uids["/work"] = 2000 },
+		"root of another user":     func(tr *permTree) { tr.uids["/"] = 2000 },
+		"login user unknown":       func(tr *permTree) { tr.login = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			e := newPermEnv(t)
+			setup(e.tree)
+			ctx := context.Background()
+			got, err := e.j.Inspect(ctx, e.c, src, "/work/a.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = e.j.Change(ctx, e.c, src, "/work/a.txt", "640", jsonMember(got, "metadata_token"))
+			wantCode(t, err, fault.UnsafePath)
+			if len(e.tree.chmods) != 0 || e.tree.mode("/work/a.txt") != 0o600 {
+				t.Fatalf("changed: %v", e.tree.chmods)
+			}
+			if !slices.Contains(e.audit.events, "chmod UNSAFE_PATH /work/a.txt 600>640") {
+				t.Fatalf("audit %v", e.audit.events)
+			}
+		})
+	}
+	// A sticky world-writable folder (as /tmp) is safe.
+	e := newPermEnv(t)
+	e.tree.nodes["/work"] = 0o041777
+	ctx := context.Background()
+	got, _ := e.j.Inspect(ctx, e.c, src, "/work/a.txt")
+	if _, err := e.j.Change(ctx, e.c, src, "/work/a.txt", "640", jsonMember(got, "metadata_token")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPermissionJobAcceptsSafeAncestors(t *testing.T) {
 	t.Parallel()
 	for name, setup := range map[string]func(tr *permTree){
