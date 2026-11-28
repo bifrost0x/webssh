@@ -66,6 +66,17 @@ func splitPath(p string) ([]string, error) {
 	return parts, nil
 }
 
+// withinPathLength reports whether the share path of parts has at most
+// maxPathLength characters, the bound splitPath applies. Tree walks check
+// it per entry, so a deep share cannot grow the paths they keep.
+func withinPathLength(parts []string) bool {
+	n := len(parts)
+	for _, p := range parts {
+		n += utf8.RuneCountInString(p)
+	}
+	return n <= maxPathLength
+}
+
 // joinPath is the canonical share path of components.
 func joinPath(parts []string) string { return "/" + strings.Join(parts, "/") }
 

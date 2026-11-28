@@ -118,7 +118,7 @@ func (b *Backend) childNode(at node, st *smb2.FileStat) (node, error) {
 		return node{}, fail(fault.SMBIdentityUnavailable, PhaseFileOperation, "IdentityError", nil)
 	}
 	parts, err := child(at.parts, st.FileName)
-	if err != nil || st.EndOfFile < 0 {
+	if err != nil || st.EndOfFile < 0 || !withinPathLength(parts) {
 		return node{}, opFailed("UnsafeName")
 	}
 	o := object{Name: st.FileName, ID: st.FileId, Attributes: st.FileAttributes, Size: st.EndOfFile, ModTime: st.LastWriteTime}
