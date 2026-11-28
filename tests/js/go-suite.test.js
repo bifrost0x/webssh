@@ -57,27 +57,27 @@ test('go-suite.json lists every spec of the main suite', () => {
     assert.deepEqual(missing, []);
 });
 
-test('go_only specs name a reason and are left out of the Python run only', () => {
+test('the default run starts the Go server and leaves out only the tests dropped by a decision', () => {
     const goOnly = suite.specs.filter(spec => spec.go_only !== undefined);
     assert.deepEqual(goOnly.map(spec => spec.file).sort(), ['overview-host-order.spec.js', 'record-unique-names.spec.js']);
-    const load = env => {
-        const config = require.resolve('../../playwright.config.js');
-        const saved = process.env.WEBSSH_E2E_SERVER_COMMAND;
-        delete require.cache[config];
-        if (env === undefined) delete process.env.WEBSSH_E2E_SERVER_COMMAND;
-        else process.env.WEBSSH_E2E_SERVER_COMMAND = env;
-        try {
-            return require(config).testIgnore;
-        } finally {
-            delete require.cache[config];
-            if (saved === undefined) delete process.env.WEBSSH_E2E_SERVER_COMMAND;
-            else process.env.WEBSSH_E2E_SERVER_COMMAND = saved;
-        }
-    };
-    const python = load(undefined);
-    for (const spec of goOnly) assert.ok(python.includes(spec.file), spec.file);
-    const go = load('.test-run.tmp/webssh-e2e e2e');
-    for (const spec of goOnly) assert.ok(!go.includes(spec.file), spec.file);
+    const configPath = require.resolve('../../playwright.config.js');
+    const saved = process.env.WEBSSH_E2E_SERVER_COMMAND;
+    delete require.cache[configPath];
+    delete process.env.WEBSSH_E2E_SERVER_COMMAND;
+    let config;
+    try {
+        config = require(configPath);
+    } finally {
+        delete require.cache[configPath];
+        if (saved !== undefined) process.env.WEBSSH_E2E_SERVER_COMMAND = saved;
+    }
+    assert.equal(config.webServer.command, 'node tests/e2e/go-backend.js');
+    assert.deepEqual(config.testIgnore, ['m1/**', 'm2/**']);
+    const dropped = suite.specs.flatMap(spec => spec.exclude.filter(entry => entry.decision).map(entry => entry.title));
+    assert.ok(dropped.length > 0);
+    for (const title of dropped) assert.ok(config.grepInvert.test(title), title);
+    const kept = suite.specs.flatMap(spec => spec.exclude.filter(entry => !entry.decision).map(entry => entry.title));
+    for (const title of kept) assert.ok(!config.grepInvert.test(title), title);
     assert.throws(() => plan({requires: {}, specs: [{file: 'mfa.spec.js', go_only: ' ', exclude: []}]}, new Set(), exists), /go_only needs a reason/);
 });
 
