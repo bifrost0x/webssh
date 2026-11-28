@@ -93,8 +93,9 @@ no longer needed. `rotate-secret-key` is refused until then.
   archive from another host works. The previous key is kept for rollback.
 - While the 3.3 data of a migrated installation still exists (before
   `webssh legacy purge`), `DATA_DIR/secret_key` belongs to that data and is
-  never changed. An archive made with another key is then sealed again
-  under the active key and key material while it is staged, with the same
+  never changed, and neither is the key material. An archive made with
+  another key, or with the same key and other key material, is then sealed
+  again under the active key and key material while it is staged, with the same
   steps as `rotate-secret-key`. SSH keys, saved passwords, second factors
   and the GitHub client secret open as before, and 3.3 still starts on its
   own data. An interrupted restore changes nothing.
@@ -103,6 +104,12 @@ no longer needed. `rotate-secret-key` is refused until then.
   the `SECRET_KEY` the archive was made with.
 - An archive made with `--without-secret-key` needs the same `SECRET_KEY`
   on the target.
+- `migrate --replace` keeps the replaced data in `go/replaced-<UTC>/`
+  without `SECRET_KEY` or key material; it opens with the installation's
+  keys. A restore that installs other key material or another `SECRET_KEY`
+  first writes the previous ones beside that data as `keyring-material`
+  and `secret_key` (mode 0600). Keep them with the directory; remove the
+  directory when the replaced data is no longer needed.
 - A 3.3 archive is restored through the migration: the environment value
   wins, otherwise the archive's `data/secret_key`, and the restored secrets
   are sealed again with the installation's key material.
