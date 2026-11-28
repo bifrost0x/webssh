@@ -50,17 +50,20 @@ async function openProfile(page, host) {
     return details.locator('.od-host-profile');
 }
 
-test('host cards show the role, machine, system and service logos of each host', async ({page}) => {
+test('host cards show the role, machine, system and named apps of each host', async ({page}) => {
     await openOverview(page);
     await seed(page, [PROXMOX, PAPERLESS, {}, {...PAPERLESS, detected_container_access: 'denied'}, {...PROXMOX, detected_guests: 0}]);
 
     const proxmox = card(page, 0);
     await expect(proxmox).toHaveAttribute('data-role', 'hypervisor');
     await expect(proxmox.locator('.od-host-top > .od-role')).toHaveText(/Hypervisor/);
-    await expect(proxmox.locator('.od-host-logo .od-virt')).toHaveText('Bare Metal');
+    // The machine kind is text after the system, not a badge on the logo.
+    await expect(proxmox.locator('.od-host-system .od-virt')).toHaveText('Bare Metal');
+    await expect(proxmox.locator('.od-host-logo .od-virt')).toHaveCount(0);
+    await expect(proxmox.locator('.od-host-system')).toHaveText('Proxmox 8.2 · Bare Metal');
     await expect(proxmox.locator('.od-host-os')).toHaveText('Proxmox 8.2');
     await expect(proxmox.locator('.od-fact-chip[data-kind="guests"]')).toHaveText(/7 guests/);
-    await expect(proxmox.locator('.od-service-chip')).toHaveCount(0);
+    await expect(proxmox.locator('.od-app')).toHaveCount(0);
     await expect(card(page, 4).locator('.od-fact-chip')).toHaveCount(0);
 
     const paperless = card(page, 1);
@@ -68,14 +71,12 @@ test('host cards show the role, machine, system and service logos of each host',
     await expect(paperless.locator('.od-role')).toHaveText(/Documents/);
     await expect(paperless.locator('.od-virt')).toHaveText('VM');
     await expect(paperless.locator('.od-host-os')).toHaveText('Ubuntu 24.04');
-    const chips = paperless.locator('.od-service-chip');
-    await expect(chips).toHaveCount(3);
-    // The service that names the role leads.
-    expect(await chips.evaluateAll(nodes => nodes.map(node => [node.dataset.service, node.getAttribute('aria-label')])))
-        .toEqual([['paperless', 'Paperless'], ['postgresql', 'PostgreSQL'], ['redis', 'Redis']]);
+    // The app that names the role leads; databases follow in the quiet line.
+    const chips = paperless.getByRole('list', {name: 'Apps on identity-1'}).getByRole('listitem');
+    await expect(chips).toHaveText(['Paperless']);
+    expect(await chips.evaluateAll(nodes => nodes.map(node => node.dataset.service))).toEqual(['paperless']);
     await expect(chips.first().locator('.host-service-icon[aria-hidden="true"]')).toHaveCount(1);
-    await expect(paperless.getByRole('img', {name: 'Paperless', exact: true})).toHaveCount(1);
-    await expect(chips.first()).toHaveAttribute('title', /Paperless/);
+    await expect(paperless.locator('.od-host-runs')).toHaveText('Runs on PostgreSQL · Redis');
     await expect(paperless.locator('.od-fact-chip')).toHaveCount(0);
     await expect(paperless.locator('.od-hint-chip')).toHaveCount(0);
 
@@ -145,7 +146,7 @@ test('the host profile explains the role and the detection, and stays open acros
         ProfileManager.setProfiles(ProfileManager.profiles.map(item => item.id === 'identity-0'
             ? {...item, detected_services: [...item.detected_services, 'grafana']} : item));
     });
-    await expect(derived.locator('.od-service-chip')).toHaveCount(4);
+    await expect(derived.locator('.od-app')).toHaveText(['Paperless', 'Grafana']);
     await expect(profile.locator('dd').nth(2)).toContainText('Grafana');
     await expect(close).toBeFocused();
     await page.keyboard.press('Escape');
@@ -187,20 +188,25 @@ test('the host profile explains the role and the detection, and stays open acros
     expect(await sshAttempts(page)).toEqual([]);
 });
 
-test('more than five services fold into a counter and the card fits at 360px', async ({page}) => {
+test('many services fold into "+N" after two lines of apps and the card fits at 360px', async ({page}) => {
     await openOverview(page, 360);
     const services = await page.evaluate(() => Object.keys(HostPlatform.serviceLabels).slice(0, 24));
     expect(services).toHaveLength(24);
     await seed(page, [{...PAPERLESS, name: 'n'.repeat(80), detected_services: services, detected_container_access: 'denied',
         detected_os_id: 'omarchy', detected_os_version: null, detected_family: 'archlinux', detected_platform: 'archlinux', detected_virt: 'bare-metal'}]);
     const host = card(page, 0);
-    const chips = host.locator('.od-service-chip');
-    await expect(chips).toHaveCount(6);
-    await expect(chips.last()).toHaveText('+19');
-    await expect(chips.last()).toHaveAttribute('aria-label', /^\+19: \S/);
-    const rest = await page.evaluate(ids => HostPlatform.services({detected_services: ids}), services);
-    expect((await chips.last().getAttribute('title')).split(', ')).toHaveLength(rest.length - 5);
-    await expect(host.locator('.od-host-os')).toHaveText('Omarchy · Arch Linux-based');
+    const {apps, infrastructure} = await page.evaluate(ids => HostIdentity.services({detected_services: ids}), services);
+    const chips = host.locator('.od-app');
+    await expect(chips).toHaveCount(apps.length);
+    // Containers cannot be read: one line of apps and the hint.
+    const shown = await chips.evaluateAll(nodes => nodes.filter(node => !node.hidden).map(node => Math.round(node.getBoundingClientRect().top)));
+    expect(new Set(shown).size).toBe(1);
+    const more = host.locator('.od-app-more');
+    await expect(more).toHaveText(`+${apps.length - shown.length}`);
+    await expect(more).toHaveAccessibleName(new RegExp(`^${apps.length - shown.length} more apps: \\S`));
+    const labels = await page.evaluate(ids => ids.map(id => HostPlatform.serviceLabels[id]), infrastructure);
+    await expect(host.locator('.od-host-runs-names')).toHaveText(labels.join(' · '));
+    await expect(host.locator('.od-host-system')).toHaveText('Omarchy · Arch Linux-based · Bare Metal');
     await openProfile(page, host);
     // The details popover fits the phone screen as well.
     expect(await page.locator('#odHostDetails').evaluate(element => {
@@ -219,22 +225,27 @@ test('more than five services fold into a counter and the card fits at 360px', a
     expect(await page.locator('#connectionOverview').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
 });
 
-test('the machine badge keeps clear of the host text in every language and width', async ({page}) => {
+test('the machine kind reads as text in the system line in every language and width', async ({page}) => {
     await openOverview(page);
     await seed(page, ['bare-metal', 'vm', 'lxc', 'container', 'wsl'].map(virt => ({...PAPERLESS, detected_virt: virt})));
     for (const width of [360, 768, 1440]) {
         await page.setViewportSize({width, height: 900});
         for (const language of ['en', 'de', 'es', 'fr', 'vi', 'zh']) {
             await page.evaluate(language => window.i18n.setLanguage(language), language);
-            await expect(page.locator('#overviewHostList .od-virt')).toHaveCount(5);
+            await expect(page.locator('#overviewHostList .od-host-system .od-virt')).toHaveCount(5);
             await expect.poll(() => page.evaluate(() => window.i18n.getLanguage())).toBe(language);
             const clashes = await page.locator('#overviewHostList .od-host').evaluateAll(items => items.flatMap(item => {
-                const badge = item.querySelector('.od-virt').getBoundingClientRect();
-                const bounds = item.getBoundingClientRect();
-                const texts = [...item.querySelectorAll('.od-host-copy > *')].map(element => element.getBoundingClientRect());
-                const problems = texts.filter(text => text.left - badge.right < 6).map(text => `gap ${Math.round(text.left - badge.right)}`);
-                if (badge.left < bounds.left) problems.push('outside card');
-                return problems.map(problem => `${item.querySelector('.od-virt').textContent}: ${problem}`);
+                const virt = item.querySelector('.od-virt');
+                const line = item.querySelector('.od-host-system').getBoundingClientRect();
+                const box = virt.getBoundingClientRect();
+                const tile = item.querySelector('.od-host-logo').getBoundingClientRect();
+                const problems = [];
+                if (!virt.textContent.trim()) problems.push('empty');
+                // It stays on the system line, right of the logo and inside the card.
+                if (box.top < line.top - 0.5 || box.bottom > line.bottom + 0.5) problems.push('off the system line');
+                if (box.left < tile.right) problems.push('over the logo');
+                if (box.right > item.getBoundingClientRect().right) problems.push('outside card');
+                return problems.map(problem => `${virt.textContent}: ${problem}`);
             }));
             expect(clashes, `${language} at ${width}px`).toEqual([]);
         }
@@ -242,7 +253,7 @@ test('the machine badge keeps clear of the host text in every language and width
     await page.evaluate(() => window.i18n.setLanguage('en'));
 });
 
-test('role tints keep the card text, pill and tiles readable in every theme', async ({page}) => {
+test('role tints keep the card text, pill, tiles and app chips readable in every theme', async ({page}) => {
     await openOverview(page);
     const roles = await page.evaluate(() => HostIdentity.ROLES);
     await seed(page, roles.map(role => ({...PAPERLESS, detected_services: ['docker', 'immich'], role_override: role})));
@@ -290,7 +301,8 @@ test('role tints keep the card text, pill and tiles readable in every theme', as
                 const pillLayer = parse(getComputedStyle(pill).backgroundColor);
                 const tile = item.querySelector('.od-host-logo');
                 const virt = item.querySelector('.od-virt');
-                const service = item.querySelector('.od-service-chip');
+                const service = item.querySelector('.od-app');
+                const runs = item.querySelector('.od-host-runs');
                 const min = values => Math.min(...values);
                 return {
                     role: item.dataset.role,
@@ -299,8 +311,11 @@ test('role tints keep the card text, pill and tiles readable in every theme', as
                     name: min(surfaces.map(surface => ratio(ink(item.querySelector('.od-host-name')), surface))),
                     os: min(surfaces.map(surface => ratio(ink(item.querySelector('.od-host-os')), surface))),
                     tile: ratio(ink(tile.querySelector('.host-platform-icon')), behind(tile)),
-                    virt: ratio(ink(virt), behind(virt)),
+                    virt: min(surfaces.map(surface => ratio(ink(virt), surface))),
                     service: ratio(ink(service.querySelector('.host-service-icon')), behind(service)),
+                    app: ratio(ink(service.querySelector('span:last-child')), behind(service)),
+                    runsLabel: min(surfaces.map(surface => ratio(ink(runs.querySelector('.od-host-runs-label')), surface))),
+                    runsNames: min(surfaces.map(surface => ratio(ink(runs.querySelector('.od-host-runs-names')), surface))),
                 };
             });
         }, theme);
@@ -312,8 +327,11 @@ test('role tints keep the card text, pill and tiles readable in every theme', as
             expect.soft(result.name, `${label} name`).toBeGreaterThanOrEqual(4.5);
             expect.soft(result.os, `${label} system line`).toBeGreaterThanOrEqual(4.5);
             expect.soft(result.tile, `${label} platform icon`).toBeGreaterThanOrEqual(3);
-            expect.soft(result.virt, `${label} machine badge`).toBeGreaterThanOrEqual(4.5);
-            expect.soft(result.service, `${label} service logo`).toBeGreaterThanOrEqual(4.5);
+            expect.soft(result.virt, `${label} machine kind`).toBeGreaterThanOrEqual(4.5);
+            expect.soft(result.service, `${label} app logo`).toBeGreaterThanOrEqual(4.5);
+            expect.soft(result.app, `${label} app name`).toBeGreaterThanOrEqual(4.5);
+            expect.soft(result.runsLabel, `${label} runs on label`).toBeGreaterThanOrEqual(4.5);
+            expect.soft(result.runsNames, `${label} runs on names`).toBeGreaterThanOrEqual(4.5);
         }
     }
 });

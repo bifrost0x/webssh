@@ -121,7 +121,7 @@
     .connection-overview:not(.overview-graph) .overview-host-entry .overview-row { min-height: 88px; padding: 16px; }
 }
 
-/* Identity under the host name: virtualization, role pill and up to three service logos.
+/* Identity under the host name: virtualization, role pill and the names of its services.
    The meta row wraps below the name because midnight-ui.css lays host rows out as flex. */
 #connectionOverview .overview-host-entry .overview-row { flex-wrap: wrap; }
 .overview-row-meta { display: flex; flex: 0 0 100%; order: 1; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; padding-inline-start: 38px; box-sizing: border-box; }
@@ -140,6 +140,7 @@ body[data-theme="paper"] #connectionOverview .overview-host-entry .overview-row 
     white-space: nowrap;
 }
 .overview-row .host-role-pill { font-size: 11px; }
+.overview-row-apps { min-width: 0; overflow-wrap: anywhere; color: var(--ws2-text-secondary); font-size: 12px; line-height: 16px; }
 @media (forced-colors: active) {
     .overview-row-virt { background: Canvas; color: CanvasText; border-color: CanvasText; }
     #connectionOverview .overview-host-entry .overview-row > .host-platform-icon:first-child { color: CanvasText; }

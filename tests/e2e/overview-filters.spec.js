@@ -139,15 +139,14 @@ test('detected services show on host cards and filter the overview from the plat
             : profile.id === second ? {...profile, detected_services: ['grafana']} : profile));
     }, ids);
     const card = page.locator(`#overviewHostList .od-host[data-host-id="${ids[0]}"]`);
-    // Logos, not text: the service that names the role leads, five at most, the rest counted.
-    const chips = card.locator('.od-service-chip');
-    await expect(chips).toHaveCount(6);
-    expect(await chips.evaluateAll(nodes => nodes.slice(0, 5).map(node => [node.dataset.service, node.getAttribute('aria-label')])))
-        .toEqual([['nextcloud', 'Nextcloud'], ['grafana', 'Grafana'], ['mariadb', 'MariaDB'], ['nginx', 'nginx'], ['postgresql', 'PostgreSQL']]);
-    await expect(chips.first()).toHaveAttribute('title', /^Nextcloud · Detected when connecting$/);
+    // Apps by name, the one that names the role first; what the host runs on in one line.
+    const chips = card.locator('.od-app');
+    expect(await chips.evaluateAll(nodes => nodes.map(node => [node.dataset.service, node.textContent])))
+        .toEqual([['nextcloud', 'Nextcloud'], ['grafana', 'Grafana']]);
     await expect(chips.first().locator('.host-service-icon')).toHaveCount(1);
-    await expect(chips.last()).toHaveText('+1');
-    await expect(chips.last()).toHaveAttribute('title', 'Redis');
+    await expect(card.getByRole('list', {name: /^Apps on /})).toBeVisible();
+    await expect(card.locator('.od-host-runs')).toHaveText('Runs on MariaDB · nginx · PostgreSQL · Redis');
+    await expect(card.locator('.od-app-more')).toBeHidden();
     const grafana = page.locator('#odPlatforms .od-service[data-service="grafana"]');
     await expect(grafana.locator('.od-count')).toHaveText('2');
     await grafana.click();

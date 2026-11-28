@@ -3833,29 +3833,19 @@ async function seedIdentityTabs(page) {
     });
 }
 
-test('workspace tabs carry the role and main services of their saved host', async ({page}) => {
+test('workspace tabs carry the role of their saved host and no service tiles', async ({page}) => {
     await page.setViewportSize({width: 1440, height: 900});
     await login(page);
     await seedIdentityTabs(page);
     const tab = id => page.locator(`#tab-identity-${id}`);
-    const expected = {pve: ['hypervisor', []], paper: ['docs', ['paperless', 'postgresql']], cloud: ['cloud', ['nextcloud', 'apache']],
-        fw: ['network', ['unbound', 'wireguard']]};
-    for (const [id, [role, services]] of Object.entries(expected)) {
+    const expected = {pve: 'hypervisor', paper: 'docs', cloud: 'cloud', fw: 'network', archive: 'docs'};
+    for (const [id, role] of Object.entries(expected)) {
         await expect(tab(id)).toHaveAttribute('data-role', role);
-        await expect(tab(id).locator('.tab-service')).toHaveCount(services.length);
-        for (const [index, service] of services.entries()) {
-            await expect(tab(id).locator('.tab-service').nth(index)).toHaveAttribute('data-service', service);
-        }
     }
-    await expect(tab('paper').locator('.tab-service').first()).toHaveAccessibleName('Paperless');
-
-    // Names come first: tiles drop out whole while a name is cut, and hidden tiles leave
-    // the accessibility tree. A name is only cut once no tile is left to give way, or
-    // when it is longer than its own limit.
+    // The identity line names the services; a tab keeps its whole width for the name.
+    await expect(page.locator('.session-tab .tab-services, .session-tab .tab-service, .session-tab .host-service-icon')).toHaveCount(0);
     const layout = () => page.locator('.session-tab[data-role]').evaluateAll(tabs => tabs.map(element => {
         const label = element.querySelector('.tab-label');
-        const strip = element.querySelector('.tab-services');
-        const tiles = [...element.querySelectorAll('.tab-service')].filter(tile => tile.checkVisibility());
         const name = label.children[0];
         // Rounded widths miss text a fraction of a pixel too wide, which still draws an ellipsis.
         const textCut = part => {
@@ -3867,19 +3857,15 @@ test('workspace tabs carry the role and main services of their saved host', asyn
             return part.scrollWidth > part.clientWidth || range.getBoundingClientRect().width > inner + 0.01;
         };
         return {id: element.id, cut: label.scrollWidth > label.clientWidth || [...label.children].some(textCut),
-            capped: name.clientWidth >= parseFloat(getComputedStyle(name).maxWidth) - 0.5,
-            strip: strip?.checkVisibility() ? strip.getBoundingClientRect().width : 0, tiles: tiles.length};
+            capped: name.clientWidth >= parseFloat(getComputedStyle(name).maxWidth) - 0.5
+                || element.getBoundingClientRect().width >= parseFloat(getComputedStyle(element).maxWidth) - 0.5};
     }));
+    // A name is only cut when it is longer than its own limit or the tab's.
     for (const item of await layout()) {
-        expect([0, 18, 39], item.id).toContain(Math.round(item.strip));
-        expect(Math.round(item.strip), item.id).toBe([0, 18, 39][item.tiles]);
-        if (item.cut) expect(item.tiles === 0 || item.capped, item.id).toBe(true);
+        if (item.cut) expect(item.capped, item.id).toBe(true);
     }
     const byId = Object.fromEntries((await layout()).map(item => [item.id.replace('tab-identity-', ''), item]));
     for (const id of ['cloud', 'fw', 'paper', 'pve']) expect(byId[id].cut, id).toBe(false);
-    expect(byId.cloud.tiles).toBeGreaterThanOrEqual(1);
-    expect(byId.archive.tiles).toBe(0);
-    await expect(tab('archive').getByRole('img', {name: 'Paperless'})).toHaveCount(0);
     await expect(tab('paper').locator('.tab-role')).toHaveText('Documents');
     await expect(tab('other')).not.toHaveAttribute('data-role', /.*/);
     await expect(tab('other').locator('.tab-services, .tab-role')).toHaveCount(0);
@@ -3889,10 +3875,10 @@ test('workspace tabs carry the role and main services of their saved host', asyn
     await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'paper'
         ? {...profile, detected_services: ['jellyfin', 'plex']} : profile))));
     await expect(tab('paper')).toHaveAttribute('data-role', 'media');
-    await expect(tab('paper').locator('.tab-service')).toHaveCount(2);
+    await expect(tab('paper').locator('.tab-service')).toHaveCount(0);
     expect(await page.evaluate(() => document.getElementById('tab-identity-paper').__marker)).toBe(true);
 
-    // Logos never widen a tab beyond its limit, and the close button stays inside it.
+    // No tab grows beyond its limit, and the close button stays inside it.
     const bounds = await page.locator('.session-tab').evaluateAll(tabs => tabs.map(element => {
         const box = element.getBoundingClientRect();
         const close = element.querySelector('.tab-close').getBoundingClientRect();
@@ -3951,16 +3937,13 @@ test('the role edge of a workspace tab stays visible in every theme, active or n
                     const edge = parse(getComputedStyle(tab, '::after').backgroundColor);
                     const opacity = Number(style.opacity);
                     const shown = mix(mix(edge.channels, edge.alpha, surface), opacity, behind.channels);
-                    // The logo is drawn in the tile's ink on the role-tinted tile.
-                    const tile = getComputedStyle(tab.querySelector('.tab-service'));
-                    const tileFill = parse(tile.backgroundColor);
-                    const tileSurface = mix(tileFill.channels, tileFill.alpha, surface);
-                    const ink = parse(tile.color);
+                    // The tab name stays legible on the role-tinted tab.
+                    const name = parse(getComputedStyle(tab.querySelector('.tab-host-name')).color);
                     results.push({role, active: tab.classList.contains('active'), height: getComputedStyle(tab, '::after').height,
                         background: style.backgroundColor, marker: tab.classList.contains('active') ? style.boxShadow : '',
                         ratio: ratio(shown, mix(surface, opacity, behind.channels)),
-                        tile: ratio(mix(mix(ink.channels, ink.alpha, tileSurface), opacity, behind.channels),
-                            mix(tileSurface, opacity, behind.channels))});
+                        name: ratio(mix(mix(name.channels, name.alpha, surface), opacity, behind.channels),
+                            mix(surface, opacity, behind.channels))});
                 }
                 tab.dataset.role = saved;
             }
@@ -3972,7 +3955,7 @@ test('the role edge of a workspace tab stays visible in every theme, active or n
             expect(result.height).toBe('2px');
             const state = `${theme} ${result.role} ${result.active ? 'active' : 'inactive'} on ${result.background}`;
             expect.soft(result.ratio, `${state} edge`).toBeGreaterThanOrEqual(3);
-            expect.soft(result.tile, `${state} logo tile`).toBeGreaterThanOrEqual(3);
+            expect.soft(result.name, `${state} name`).toBeGreaterThanOrEqual(4.5);
             // The theme's own marker for the active tab is kept.
             if (result.active) expect(result.marker, state).toMatch(/inset/);
         }

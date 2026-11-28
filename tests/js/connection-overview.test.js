@@ -129,7 +129,7 @@ test('role grouping follows the catalog order, skips empty roles and ignores unk
 
 const Classic = require('../../static/js/connection-overview-classic');
 
-test('classic rows carry only platform, role, virtualization label and catalog service ids', () => {
+test('classic rows carry only platform, role, virtualization label, catalog service ids and their names', () => {
     globalThis.HostPlatform = HostPlatform;
     globalThis.HostIdentity = HostIdentity;
     try {
@@ -143,11 +143,14 @@ test('classic rows carry only platform, role, virtualization label and catalog s
         assert.deepEqual(one.role, {id: 'hypervisor', source: 'derived'});
         assert.equal(one.virt, 'Bare Metal');
         assert.deepEqual(one.services, HostIdentity.facts({detected_services: ['immich', 'docker']}).services);
+        // Apps first, then what the host runs on, by the rule every place shares.
+        assert.equal(one.serviceText, 'Immich, Docker');
+        assert.equal(two.serviceText, '');
         assert.deepEqual(two.role, {id: 'server', source: 'default'});
         assert.equal(two.platform.id, 'server');
         assert.equal(two.virt, '');
         assert.deepEqual(two.services, []);
-        assert.deepEqual(Object.keys(one).sort(), ['favorite', 'group', 'id', 'jump', 'name', 'order', 'platform', 'role', 'route', 'services', 'virt']);
+        assert.deepEqual(Object.keys(one).sort(), ['favorite', 'group', 'id', 'jump', 'name', 'order', 'platform', 'role', 'route', 'serviceText', 'services', 'virt']);
         assert.doesNotMatch(JSON.stringify(model), /secret|private-/);
     } finally {
         delete globalThis.HostPlatform;

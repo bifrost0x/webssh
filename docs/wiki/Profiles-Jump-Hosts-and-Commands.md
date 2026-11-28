@@ -200,13 +200,17 @@ that run nothing but infrastructure: Database allows only databases and web
 servers, Web only web servers. One more application and the host does not
 match them. VPN and overlay networks (WireGuard, Tailscale, ZeroTier,
 OpenVPN) say how a host is reached, not what it is: the rules ignore them,
-and their logos come after all other services. A host that boots into a
+and they come after all other services. A host that boots into a
 graphical target and matched nothing is a Workstation, also when it runs a
 VPN overlay; another host that runs nothing but VPN overlays is a Network
 host; anything else is a Server. A role chosen by hand always wins.
 
-On a Container host the applications come first among the logos and the
-runtime follows them.
+Wherever services are named, the apps come first and what the host runs on
+follows: databases and search stores, web servers and proxies, container
+runtimes and their managers, VPNs and resolvers. A line of text names at most
+three services and counts the rest ("Jellyfin, Bazarr, Overseerr +9"); the
+same rule applies to the identity line, the window title bar and the classic
+overview.
 
 Only a chosen platform, a detected one or a distribution family derived from
 detection (for example Debian-based) can name a role through the platform. A
@@ -220,11 +224,15 @@ the system colours.
 The overview shows, per host:
 
 - a role pill, a card edge and tint in the role colour, and the platform icon
-  on a role-tinted tile with a badge for the virtualization kind below it;
-- the system line (for example `Debian 12`, or the distribution and its
-  family for a derived one);
-- up to five service logos with `+n` for the rest, the role's own service
-  first; a name or hover text names each logo;
+  on a role-tinted tile;
+- the system line with the virtualization kind (for example
+  `Debian 12 · LXC`, or the distribution and its family for a derived one);
+- the apps as chips with their name, and their logo where WebSSH bundles one
+  (never a two-letter stand-in), the role's own app first; two lines at most,
+  the rest behind `+n`, which names them and opens the details. Hosts without
+  apps say "No apps detected", hosts not detected yet "Services are read on
+  the next connection.";
+- one quiet line "Runs on …" with what the host runs on;
 - a guest count on hypervisors and a hint when running containers could not be
   read because the SSH user may not use the Docker socket;
 - status and actions at the bottom of the card; the cards of a row have the
@@ -252,17 +260,17 @@ the rail and the classic overview keep their own order by group.
 
 Search in the overview also matches role, platform and service names. The
 classic overview layout keeps its compact rows: platform icon, virtualization
-badge, role pill and up to three service logos, without tint or profile.
+badge, role pill and the names of the services, without tint or profile.
 
-In the workspace, tabs carry the role colour as an edge with up to two service
-logos, dropping logos before a host name is cut. Above each terminal in the
-grid, an identity line names the role, the host and the system, with up to four
-service logos; in window mode the same information sits in the window's title
-bar. A saved host that is a plain Server with no known system, machine or
-service gets no identity line, and its terminal keeps the full pane. Rows in
-the host rail on the left have a role edge and up to four service logos, and a
-**Group / Role** switch groups the rail by role instead of by group. The choice
-is stored in the browser (`localStorage`), not on the server, and the switch
+In the workspace, tabs carry the role colour as an edge and no service logos,
+so the host name has the whole tab. Above each terminal in the grid, an
+identity line names the role, the host, the system and the services as text;
+the service names give way before the host name is cut. In window mode the
+same information sits in the window's title bar. A saved host that is a plain
+Server with no known system, machine or service gets no identity line, and
+its terminal keeps the full pane. Rows in the host rail on the left have a
+role edge and no service logos, and a **Group / Role** switch groups the rail
+by role instead of by group. The choice is stored in the browser (`localStorage`), not on the server, and the switch
 does not exist in the classic layout.
 
 All of this uses only what detection read while you were connected anyway.

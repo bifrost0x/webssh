@@ -484,7 +484,6 @@
             // The route has its own chip; the badge only states readiness.
             return host.state === 'unknown' ? tw('loading', 'Loading…') : stateLabel(host.state);
         }
-        const VISIBLE_SERVICES = 5;
         const formatDate = seconds => new Date(seconds * 1000).toLocaleDateString(win.i18n?.getLanguage?.() || undefined);
         const sentence = text => (text ? `${text.charAt(0).toLocaleUpperCase()}${text.slice(1)}` : text);
         /** Role, facts and the derived display texts of one host card. */
@@ -554,9 +553,90 @@
             if (host.reach) context.append(node('small', '', host.reach.via_socks ? t('connection.socksProxyProbeHint', 'Only the SOCKS5 proxy endpoint was checked, not the target.') : wf('tcpHint', 'TCP checks do not authenticate. For jump routes only the jump host is checked.')));
             return [hostProfile(host, identityOf(host)), context];
         }
+        /**
+         * What a host is for: its apps as named chips (a bundled logo where there
+         * is one, never a monogram), at most two lines, the rest behind "+N".
+         * Hypervisors show their guests; a host without apps says why.
+         */
+        function hostApps(host, identity) {
+            const {role, facts} = identity;
+            const Platform = win.HostPlatform;
+            const split = Platform?.serviceSummary?.(host.profile) || {apps: [], infrastructure: []};
+            const block = node('div', 'od-host-apps');
+            if (role.id === 'hypervisor' && facts?.guests > 0) {
+                const chip = node('span', 'od-chip od-fact-chip');
+                chip.dataset.kind = 'guests';
+                chip.append(icon('layers'), node('span', '', identity.guests));
+                block.append(chip);
+            } else if (split.apps.length) {
+                const list = node('ul', 'od-app-list');
+                list.setAttribute('aria-label', tw('appsOn', 'Apps on {name}', {name: host.name}));
+                split.apps.forEach(id => {
+                    const chip = node('li', 'od-app');
+                    chip.dataset.service = id;
+                    if (Platform.serviceAsset(id, doc)) {
+                        const mark = Platform.renderService(id, doc);
+                        // The chip names the service; its logo is decoration.
+                        ['title', 'role', 'aria-label'].forEach(name => mark.removeAttribute(name));
+                        mark.setAttribute('aria-hidden', 'true');
+                        chip.append(mark);
+                    }
+                    chip.append(node('span', '', Platform.serviceLabels[id]));
+                    list.append(chip);
+                });
+                const more = node('button', 'od-app-more');
+                more.type = 'button';
+                more.hidden = true;
+                more.dataset.key = `apps:${host.id}`;
+                more.setAttribute('aria-haspopup', 'dialog');
+                // A press on "+N" while the details are open dismisses them before the click arrives.
+                let wasOpen = false;
+                more.addEventListener('pointerdown', () => { wasOpen = Boolean(details?.isOpen(host.id)); });
+                more.addEventListener('click', () => {
+                    if (!wasOpen) details?.toggle(host.id, more.dataset.key);
+                    wasOpen = false;
+                });
+                list.append(more);
+                block.append(list);
+            } else {
+                const pending = facts?.state !== 'detected';
+                block.append(node('p', 'od-host-empty', pending
+                    ? tw('servicesPending', 'Services are read on the next connection.') : tw('appsNone', 'No apps detected')));
+            }
+            if (facts?.containerAccess === 'denied') {
+                const chip = node('span', 'od-chip od-hint-chip');
+                chip.dataset.kind = 'containers';
+                chip.title = tw('containersDeniedHint', 'The SSH user may not read the Docker socket, so running containers are unknown.');
+                chip.append(icon('warning_amber'), node('span', '', tw('chipContainersDenied', 'Containers not readable')));
+                block.append(chip);
+                block.dataset.lines = '1';
+            }
+            return {block, infrastructure: split.infrastructure};
+        }
+        /** Hides the app chips that do not fit their lines, last first, and counts them on "+N". */
+        function fitApps(list) {
+            const chips = [...list.querySelectorAll('.od-app')];
+            const more = list.querySelector('.od-app-more');
+            if (!chips.length || !more || !list.getClientRects().length) return;
+            const lines = list.closest('.od-host-apps')?.dataset.lines === '1' ? 1 : 2;
+            chips.forEach(chip => { chip.hidden = false; });
+            more.hidden = true;
+            const first = chips[0].getBoundingClientRect();
+            const gap = parseFloat(win.getComputedStyle(list).rowGap) || 0;
+            const limit = first.top + lines * first.height + (lines - 1) * gap + 1;
+            const fits = () => [...chips, more].every(item => item.hidden || item.getBoundingClientRect().bottom <= limit);
+            for (let index = chips.length - 1; index > 0 && !fits(); index -= 1) {
+                chips[index].hidden = true;
+                const hidden = chips.filter(chip => chip.hidden);
+                more.hidden = false;
+                more.textContent = `+${hidden.length}`;
+                more.setAttribute('aria-label', tw('appsMore', '{count} more apps: {names}', {count: hidden.length, names: hidden.map(chip => chip.textContent).join(', ')}));
+            }
+        }
+        const fitAllApps = () => hostList.querySelectorAll('.od-app-list').forEach(fitApps);
         function hostCard(host) {
             const identity = identityOf(host);
-            const {role, facts} = identity;
+            const {role} = identity;
             const item = node('li', 'od-host');
             item.dataset.hostId = host.id;
             item.dataset.state = host.state;
@@ -566,48 +646,23 @@
             rolePill.append(icon(win.HostIdentity?.ROLE_GLYPHS?.[role.id] || 'dns'), node('span', '', t(`role.${role.id}`, role.id)));
             const logo = node('span', 'od-host-logo');
             logo.append(win.HostPlatform?.render(host.profile, doc) || icon('dns'));
-            if (identity.virt) logo.append(node('span', 'od-virt', identity.virt));
             const copy = node('span', 'od-host-copy');
             copy.append(node('span', 'od-host-name', host.name), node('span', 'od-host-destination', host.destination));
-            if (identity.system) copy.append(node('span', 'od-host-os', identity.system));
-            // What runs on the host, as detected when connecting: logos, the role's service first.
-            const servicesRow = node('div', 'od-host-services');
-            const services = facts?.services || [];
-            const labels = services.map(id => win.HostPlatform.serviceLabels[id]);
-            const detectedHint = tw('servicesDetected', 'Detected when connecting');
-            services.slice(0, VISIBLE_SERVICES).forEach((id, index) => {
-                const logoNode = win.HostPlatform?.renderService?.(id, doc);
-                if (!logoNode) return;
-                // The chip carries the name; the logo inside is decoration.
-                ['title', 'role', 'aria-label'].forEach(name => logoNode.removeAttribute(name));
-                logoNode.setAttribute('aria-hidden', 'true');
-                const chip = node('span', 'od-chip od-service-chip');
-                chip.dataset.service = id;
-                chip.title = `${labels[index]} · ${detectedHint}`;
-                chip.setAttribute('role', 'img');
-                chip.setAttribute('aria-label', labels[index]);
-                chip.append(logoNode);
-                servicesRow.append(chip);
-            });
-            if (services.length > VISIBLE_SERVICES) {
-                const more = node('span', 'od-chip od-service-chip od-service-more', `+${services.length - VISIBLE_SERVICES}`);
-                more.title = labels.slice(VISIBLE_SERVICES).join(', ');
-                more.setAttribute('role', 'img');
-                more.setAttribute('aria-label', `+${services.length - VISIBLE_SERVICES}: ${more.title}`);
-                servicesRow.append(more);
+            // System and machine kind as one line of text; the kind is no badge on the logo.
+            if (identity.system || identity.virt) {
+                const system = node('span', 'od-host-system');
+                if (identity.system) system.append(node('span', 'od-host-os', identity.system));
+                if (identity.system && identity.virt) system.append(doc.createTextNode(' · '));
+                if (identity.virt) system.append(node('span', 'od-virt', identity.virt));
+                copy.append(system);
             }
-            if (role.id === 'hypervisor' && facts.guests > 0) {
-                const chip = node('span', 'od-chip od-fact-chip');
-                chip.dataset.kind = 'guests';
-                chip.append(icon('layers'), node('span', '', identity.guests));
-                servicesRow.append(chip);
-            }
-            if (facts?.containerAccess === 'denied') {
-                const chip = node('span', 'od-chip od-hint-chip');
-                chip.dataset.kind = 'containers';
-                chip.title = tw('containersDeniedHint', 'The SSH user may not read the Docker socket, so running containers are unknown.');
-                chip.append(icon('warning_amber'), node('span', '', tw('chipContainersDenied', 'Containers not readable')));
-                servicesRow.append(chip);
+            const apps = hostApps(host, identity);
+            const runs = node('p', 'od-host-runs');
+            if (apps.infrastructure.length) {
+                const names = apps.infrastructure.map(id => win.HostPlatform.serviceLabels[id]);
+                runs.append(node('span', 'od-host-runs-label', tw('runsOn', 'Runs on')), doc.createTextNode(' '),
+                    node('span', 'od-host-runs-names', names.join(' · ')));
+                runs.title = `${tw('runsOn', 'Runs on')} ${names.join(', ')}`;
             }
             const meta = node('div', 'od-host-meta');
             const route = node('span', 'od-chip');
@@ -687,8 +742,8 @@
             connectButton.append(icon(host.sessionId ? 'east' : 'terminal'), node('span', '', primary));
             bottom.append(badge, editButton, connectButton);
             // Details open in a popover from the card head, so every card keeps the height of its row.
-            item.append(top, ...(servicesRow.childElementCount ? [servicesRow] : []), meta, bottom);
-            if (arranging) [head, favorite, servicesRow, meta, bottom].forEach(part => { part.inert = true; });
+            item.append(top, apps.block, runs, meta, bottom);
+            if (arranging) [head, favorite, apps.block, runs, meta, bottom].forEach(part => { part.inert = true; });
             return item;
         }
         function identitySignature(host) {
@@ -721,6 +776,7 @@
             }
             visible.forEach(host => hostList.append(hostCard(host)));
             if (focusedKey) [...hostList.querySelectorAll('[data-key]')].find(item => item.dataset.key === focusedKey)?.focus({preventScroll: true});
+            fitAllApps();
             details?.refresh();
             arrange?.refresh();
         }
@@ -1319,6 +1375,9 @@
             win.addEventListener('primary-workspace-change', () => { schedule(); if (!view.hidden) { queueReadiness(); syncAutomatic(); } else win.clearInterval(state.automaticTimer); });
             ['connect', 'disconnect'].forEach(name => win.socket?.on?.(name, schedule));
             win.setInterval(() => { if (!view.hidden && !doc.hidden) schedule(); }, 60 * 1000);
+            // Chips are measured: refit them when the cards change width or the theme changes the type.
+            if (win.ResizeObserver) new win.ResizeObserver(() => win.requestAnimationFrame(fitAllApps)).observe(hostList);
+            new win.MutationObserver(() => win.requestAnimationFrame(fitAllApps)).observe(doc.body, {attributes: true, attributeFilter: ['data-theme']});
             if (win.ResizeObserver) {
                 new win.ResizeObserver(entries => {
                     // Layout is clean here, so reading the width costs nothing; renders reuse it.

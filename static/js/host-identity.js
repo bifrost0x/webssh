@@ -57,6 +57,17 @@
     // The container runtime does not lead the applications it runs.
     const PRIORITY = Object.freeze(RULES.filter(item => !item.only && item !== RUNTIME).flatMap(item => item.services)
         .filter((id, index, list) => list.indexOf(id) === index));
+    // What a host runs on rather than what it is for: databases and search
+    // stores, web servers and proxies, container runtimes and their managers,
+    // VPNs and resolvers. Everywhere services are named, apps come first and
+    // these follow as one quiet line.
+    const INFRASTRUCTURE = Object.freeze([...DATABASE, 'opensearch', ...WEB, 'docker', 'podman', 'k3s', 'portainer',
+        'watchtower', ...VPN, 'unbound', 'bind']);
+    /** The detected services of a host as apps and infrastructure, each in identity order. */
+    function services(profile) {
+        const ids = facts(profile).services;
+        return {apps: ids.filter(id => !INFRASTRUCTURE.includes(id)), infrastructure: ids.filter(id => INFRASTRUCTURE.includes(id))};
+    }
     // Only a verified or chosen platform names a role; a greeting or name hint does not.
     const TRUSTED_PLATFORM = new Set(['manual', 'detected', 'family']);
     const VIRT = new Set(['bare-metal', 'vm', 'lxc', 'container', 'wsl']);
@@ -162,5 +173,5 @@
         const virt = details.virt ? translate(`overviewWorkspace.${VIRT_LABELS[details.virt][0]}`, VIRT_LABELS[details.virt][1]) : '';
         return {role: current, facts: details, system, virt};
     }
-    return {ROLES, ROLE_GLYPHS, RULES, PRIORITY, VPN, role, facts, describe, format};
+    return {ROLES, ROLE_GLYPHS, RULES, PRIORITY, VPN, INFRASTRUCTURE, role, facts, services, describe, format};
 });

@@ -38,7 +38,9 @@ how to remove the 3.3 data later.
 - **Overview host cards.** The cards of a row line up with their status and
   actions at the bottom, and the host details open as a popover instead of
   unfolding inside the card (`U100`). **Arrange** keeps your own order of
-  the hosts, saved to your account; favorites stay first (`U101`).
+  the hosts, saved to your account; favorites stay first (`U101`). Cards,
+  the identity line and the classic overview name a host's apps instead of
+  showing small logo tiles (`U102`).
 - **Command line.** `webssh <command>` replaces `flask --app start:app`.
   The 3.3 command forms and health checks of the shipped Compose files keep
   working until the next major release (`U16`, `U18`).
@@ -98,6 +100,8 @@ what to do is in [Upgrading to 3.4](wiki/Upgrading-to-3.4.md#changes-you-can-not
   first start (`U14`).
 - Server management now lists the first systemd service and the first Docker
   container of a host, which 3.3 left out (`U99`).
+- Rail rows and session tabs no longer show service logos; the identity line
+  above a terminal names the services instead (`U102`).
 
 Only Linux is supported: the image for `linux/amd64` and `linux/arm64` and a
 source build on Linux. Windows and macOS binaries and the systemd service of

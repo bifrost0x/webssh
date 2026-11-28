@@ -12,6 +12,8 @@
      */
     function create({window: win, document: doc, list, panel, hosts, sections, tw}) {
         let hostId = null;
+        // The control that opened the details gets the focus back: the card head or "+N".
+        let opener = null;
         const node = (tag, className, text) => {
             const element = doc.createElement(tag);
             if (className) element.className = className;
@@ -65,25 +67,27 @@
             sheet.setAttribute('aria-labelledby', title.id);
             sheet.replaceChildren(head, ...sections(host));
         }
-        function show(id) {
+        const returnTo = () => (opener && list.querySelector(`[data-key="${CSS.escape(opener)}"]`)) || trigger(hostId);
+        function show(id, from) {
             const host = hostById(id);
             if (!host) return;
             hostId = id;
+            opener = from || `head:${id}`;
             fill(host);
             if (!isOpen()) sheet.showPopover();
             trigger(id)?.setAttribute('aria-expanded', 'true');
-            place(trigger(id));
+            place(returnTo());
             sheet.querySelector('.od-host-details-close').focus();
         }
         function hide(focus) {
             if (isOpen()) sheet.hidePopover();
-            if (focus && hostId) trigger(hostId)?.focus();
+            if (focus && hostId) returnTo()?.focus();
         }
         sheet.addEventListener('toggle', event => {
             if (event.newState === 'open') return;
             trigger(hostId)?.setAttribute('aria-expanded', 'false');
             // Escape and a click elsewhere close it; keyboard focus goes back to the card.
-            if (!doc.activeElement || doc.activeElement === doc.body || sheet.contains(doc.activeElement)) trigger(hostId)?.focus({preventScroll: true});
+            if (!doc.activeElement || doc.activeElement === doc.body || sheet.contains(doc.activeElement)) returnTo()?.focus({preventScroll: true});
             hostId = null;
         });
         sheet.addEventListener('keydown', event => {
@@ -100,20 +104,20 @@
             const focused = sheet.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
             fill(host);
             trigger(hostId)?.setAttribute('aria-expanded', 'true');
-            place(trigger(hostId));
+            place(returnTo());
             if (focused) sheet.querySelector(`[data-key="${CSS.escape(focused)}"]`)?.focus({preventScroll: true});
         }
         const view = panel.closest('#connectionOverview');
-        const follow = () => { if (isOpen()) place(trigger(hostId)); };
+        const follow = () => { if (isOpen()) place(returnTo()); };
         view?.addEventListener('scroll', follow, {capture: true, passive: true});
         win.addEventListener('resize', follow);
         // The popover sits in the top layer; leaving the overview must not leave it behind.
         win.addEventListener('primary-workspace-change', () => { if (view?.hidden) hide(false); });
 
-        /** Toggles the details of a host from its card. */
-        function toggle(id) {
+        /** Toggles the details of a host from a control of its card (its data-key). */
+        function toggle(id, from) {
             if (isOpen() && hostId === id) hide(true);
-            else show(id);
+            else show(id, from);
         }
         return {toggle, refresh, isOpen: id => isOpen() && hostId === id};
     }

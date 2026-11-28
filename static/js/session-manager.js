@@ -401,7 +401,6 @@ const SessionManager = {
         });
 
         document.getElementById('sessionTabs').appendChild(tab);
-        window.HostPlatform?.fitSessionTab?.(tab);
         this.scrollTabIntoView(sessionId);
     },
 
@@ -470,10 +469,7 @@ const SessionManager = {
         TerminalManager.destroyTerminal(sessionId);
 
         const tab = document.getElementById(`tab-${sessionId}`);
-        if (tab) {
-            window.HostPlatform?.releaseFits?.(tab);
-            tab.remove();
-        }
+        if (tab) tab.remove();
 
         const paneIndex = this.paneAssignments.findIndex(id => id === sessionId);
         if (paneIndex !== -1) {
@@ -1267,7 +1263,6 @@ const SessionManager = {
                 container.appendChild(child);
             }
         });
-        window.HostPlatform?.releaseFits?.(pane);
         pane.innerHTML = '';
 
         const sessionId = this.paneAssignments[paneIndex];
@@ -2585,13 +2580,8 @@ const SessionManager = {
             });
         }
         const identity = window.HostPlatform?.sessionIdentity?.(session, this.savedHostFor(session)) || null;
-        const known = identity ? [identity.label, identity.system, identity.virt] : [];
-        const frame = this.windowDesktop.frame?.(index);
-        // Status updates arrive often; unchanged logos keep their nodes.
-        const shown = [...(frame?.querySelectorAll('.ws-window-services > .session-identity-service') || [])];
-        const ids = identity?.services || [];
-        const services = shown.map(tile => tile.getAttribute('data-service')).join() === ids.join()
-            ? shown : (window.HostPlatform?.serviceTiles?.(ids, 'session-identity-service', document) || []);
+        // The title bar names the host's role, system, machine and services as text.
+        const known = identity ? [identity.label, identity.system, identity.virt, identity.services] : [];
         this.windowDesktop.setChrome(index, {
             title: this.getDisplayLabel(sessionId, session.username, session.host),
             subtitle: parts.join(' · '),
@@ -2599,17 +2589,8 @@ const SessionManager = {
             status,
             badges,
             role: identity?.role || null,
-            services,
             closeLabel: this.windowText('session.close', 'Close session'),
         });
-        // Logos give way before the host's identity text, and before the title once that is hidden.
-        const holder = frame?.querySelector('.ws-window-services');
-        if (holder) {
-            const subtitle = frame.querySelector('.ws-window-subtitle');
-            const lead = subtitle?.querySelector('.ws-window-identity');
-            window.HostPlatform?.keepTilesFitting?.(holder, lead && {lead, within: subtitle},
-                frame.querySelector('.ws-window-title'));
-        }
     },
 
     renderWindowDesktopEmpty(container) {
