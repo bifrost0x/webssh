@@ -28,6 +28,7 @@ env:
   GOSEC_VERSION: v2.30.0
   GOTOOLCHAIN: local
   GOFLAGS: -mod=readonly
+  GOWORK: "off"
 
 jobs:
   build:
