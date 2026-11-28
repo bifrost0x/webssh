@@ -258,3 +258,17 @@ func TestNoPosixRenameRefusesReplace(t *testing.T) {
 		t.Fatalf("requests %s: something was staged", got)
 	}
 }
+
+// A server that answers OPEN with STATUS OK sends no handle; pkg/sftp
+// returns neither a file nor an error for it.
+func TestOpenWithoutHandleFails(t *testing.T) {
+	b, _ := newFake(t, Options{}, func(typ byte, _ uint32, _ *decoder) (byte, []byte) {
+		if typ == fxpLstat {
+			return fxpAttrs, attrsBody(0o100644)
+		}
+		return fxpStatus, statusBody(fxOK)
+	})
+	if _, err := b.Open(context.Background(), "/file", files.Range{Length: -1}); err == nil {
+		t.Fatal("Open succeeded without a handle")
+	}
+}
