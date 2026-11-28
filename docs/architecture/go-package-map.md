@@ -99,11 +99,11 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/ssh/gateway` | capability | Connections through an SSH gateway such as Warpgate (WebSSH is the client): selector, authentication strategy, browser prompts and readiness probe as a variant of the shared dialer | `internal/ssh/client`, `internal/ssh/hostkey` | B3 |
 | `internal/ssh/tailscale` | capability | Tailscale SSH targets and shared-identity policy | `internal/ssh/client`, `internal/netpolicy` | B3 |
 | `internal/files` | capability | Protocol-neutral file workspace, editor, backend registry, one preview path with the editor's decoding rule for SFTP and SMB | – | B4 |
-| `internal/files/sftp` | capability | SFTP file backend | `internal/ssh/client` | B4 |
+| `internal/files/sftp` | capability | SFTP file backend | `internal/ssh/client`, `internal/ssh/remotecmd` | B4 |
 | `internal/files/smb` | capability | SMB file backend, pool and diagnostics | `internal/netpolicy` | B4 |
 | `internal/transfer` | capability | Uploads, downloads, progress, host-to-host copies | `internal/files` | B4 |
 | `internal/vault` | capability | Credentials, SSH keys, import of the legacy automation vault with the user's passphrase | – | B5 |
-| `internal/commands` | capability | Commands and command sets | – | B6 |
+| `internal/commands` | capability | Commands and command sets | `internal/ssh/remotecmd` | B6 |
 | `internal/automation` | capability | Automations and permission jobs | `internal/ssh/client`, `internal/ssh/remotecmd`, `internal/vault` | B6 |
 | `internal/settings` | capability | Application and user settings, terminal appearance, onboarding | – | B1 |
 | `internal/auth/authtest` | capability | Test doubles of the external identity contracts (redirect provider, identity links, revalidator); imported by test files only | – | M2 |

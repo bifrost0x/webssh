@@ -10,7 +10,7 @@ import (
 const MaxShellCommand = 8 << 10
 
 // maxShellLine bounds the line Shell builds: a command of MaxShellCommand
-// single quotes grows fivefold under shellQuote.
+// single quotes grows fivefold under Quote.
 const maxShellLine = 5*MaxShellCommand + len(sudoShellPrefix) + 2
 
 const sudoShellPrefix = "sudo -n -- sh -c "
@@ -34,21 +34,28 @@ func Shell(command string, sudo bool) (Command, error) {
 	}
 	line := command
 	if sudo {
-		line = sudoShellPrefix + shellQuote(command)
+		line = sudoShellPrefix + Quote(command)
 	}
 	return Command{Line: line, shell: true}, nil
 }
 
-// shellQuote is shlex.quote of Python: a word of only safe characters
-// stays as is, everything else is put in single quotes with each single
-// quote written as '"'"'.
-func shellQuote(s string) string {
+// Quote is shlex.quote of Python: a word of only safe characters stays
+// as is, everything else is put in single quotes with each single quote
+// written as '"'"'. It is the one quoting rule for text WebSSH places on a
+// remote command line.
+func Quote(s string) string {
 	if s == "" {
 		return "''"
 	}
 	if !strings.ContainsFunc(s, unsafeShellRune) {
 		return s
 	}
+	return SingleQuote(s)
+}
+
+// SingleQuote puts s in single quotes for a POSIX shell, safe characters
+// included, so that a program name can never be read as a keyword.
+func SingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
 }
 

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/bifrost0x/webssh/internal/ssh/remotecmd"
 )
 
 // FuzzChainSteps checks the chaining rules on arbitrary step text: no
@@ -50,7 +52,7 @@ func FuzzParameters(f *testing.F) {
 			return
 		}
 		quoted := strings.TrimPrefix(text, "'ls' ")
-		if quoted == text || (quoted != shellQuote(value)) {
+		if quoted == text || (quoted != remotecmd.Quote(value)) {
 			t.Fatalf("%q resolved to %q", value, text)
 		}
 		if strings.ContainsAny(value, " ;$`'\"|&") && !strings.HasPrefix(quoted, "'") {

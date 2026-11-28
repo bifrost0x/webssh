@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/bifrost0x/webssh/internal/ssh/remotecmd"
 )
 
 // The terminal directory probe (C-SFTP-10, app/session_directory.py):
@@ -66,30 +68,12 @@ directory_parent=$(ps -o ppid= -p "$$" | tr -d ' ')
 directory_pid=$(ps -o pid=,tty= --ppid "$directory_parent" | awk '$2 != "?" {print $1}')
 `
 
-// shellQuote quotes s for a POSIX shell (shlex.quote).
-func shellQuote(s string) string {
-	if s == "" {
-		return "''"
-	}
-	safe := true
-	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("@%+=:,./-_", r)) {
-			safe = false
-			break
-		}
-	}
-	if safe {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
-}
-
 // DirectoryCommand returns the probe for a session; tmuxSession is the
 // name of the persistent tmux session, "" for a plain shell.
 func DirectoryCommand(tmuxSession string) string {
 	sel := directShell
 	if tmuxSession != "" {
-		sel = "directory_pane=$(tmux display-message -p -t " + shellQuote("="+tmuxSession+":") +
+		sel = "directory_pane=$(tmux display-message -p -t " + remotecmd.Quote("="+tmuxSession+":") +
 			" '#{?pane_in_mode,0,#{?alternate_on,0,#{pane_pid}}}:#{bracket_paste_flag}:#{@webssh_sync_v1}') || exit 1\n" +
 			"directory_pid=${directory_pane%%:*}\n" +
 			"directory_rest=${directory_pane#*:}\n" +
@@ -98,7 +82,7 @@ func DirectoryCommand(tmuxSession string) string {
 			"case \"$directory_paste\" in 0|1) ;; \"\") unset directory_paste;; *) exit 1;; esac\n" +
 			"[ \"$directory_pid\" != 0 ] || exit 1"
 	}
-	return "exec sh -c " + shellQuote(strings.Replace(directoryProbe, "__DIRECTORY_SELECT__", sel, 1))
+	return "exec sh -c " + remotecmd.Quote(strings.Replace(directoryProbe, "__DIRECTORY_SELECT__", sel, 1))
 }
 
 // Directory is the answer of the probe.

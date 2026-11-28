@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/bifrost0x/webssh/internal/ssh/remotecmd"
 )
 
 // The rules of app/command_parameters.py: a parameterised set has only
@@ -18,8 +20,6 @@ var (
 	// code; a parameterised set may not start them.
 	interpreters = regexp.MustCompile(`(?i)^(?:sh|bash|dash|zsh|ksh|fish|csh|tcsh|eval|exec|source|\.|env|sudo|` +
 		`busybox|command|nohup|xargs|python[0-9.]*|perl|ruby|node|php|powershell|pwsh)$`)
-	// shellSafe is the set of characters shlex.quote leaves unquoted.
-	shellUnsafe = regexp.MustCompile(`[^A-Za-z0-9_@%+=:,./-]`)
 )
 
 // Python's "\Z" matches at the very end only, as Go's "$" does without
@@ -137,17 +137,6 @@ func validateParameterSet(params []rawParam, paramsList bool, steps []rawArgvSte
 	return ""
 }
 
-// shellQuote is shlex.quote.
-func shellQuote(s string) string {
-	if s == "" {
-		return "''"
-	}
-	if !shellUnsafe.MatchString(s) {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
-}
-
 // resolveArgv is resolve_parameters after the set passed
 // validateParameterSet: the steps with the values put in, each program
 // single-quoted so that it can never be a shell keyword, joined with
@@ -178,9 +167,9 @@ func resolveArgv(steps [][]string, declared []string, values map[string]any, val
 			}
 			args[j] = a
 		}
-		line := "'" + strings.ReplaceAll(args[0], "'", `'"'"'`) + "'"
+		line := remotecmd.SingleQuote(args[0])
 		for _, a := range args[1:] {
-			line += " " + shellQuote(a)
+			line += " " + remotecmd.Quote(a)
 		}
 		if sudo {
 			line = "sudo " + line
