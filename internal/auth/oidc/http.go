@@ -132,8 +132,11 @@ func (h *HTTP) active(r *http.Request) bool {
 // authorization URL; a failure drops the flight again. requestACR adds
 // acr_values to a step-up.
 func (h *HTTP) start(r *http.Request, f auth.Flight, requestACR bool) (string, error) {
-	binding := h.Binding(r)
-	if err := h.Flights.Put(binding, f); err != nil {
+	binding, address := h.Binding(r), ""
+	if h.Limits.ClientAddr != nil {
+		address = h.Limits.ClientAddr(r)
+	}
+	if err := h.Flights.Put(binding, address, f); err != nil {
 		return "", err
 	}
 	u, err := h.Provider.begin(r.Context(), f, requestACR)
