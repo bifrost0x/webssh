@@ -1835,7 +1835,7 @@ const ProfileManager = {
                 return {name, username: payload.username, password};
             })()
             : {credential_id: credentialChoice};
-        if (!payload.id && (credentialChoice === '__new' || (bindsSaved && window.NativeCredentials?.supports?.('assign_on_create')))) {
+        if (!payload.id && (credentialChoice === '__new' || (bindsSaved && window.NativeCredentials?.supports?.('save_with_assignment')))) {
             if (credentialChoice === '__new' && (!createWith.name || !createWith.password)) { window.showNotification?.(this.t('credentials.required', 'Enter a password name and password.'), 'error'); return; }
             // Host and password are stored in one step; the confirmation,
             // when the server asks for it, comes first.
@@ -1848,8 +1848,24 @@ const ProfileManager = {
             finally { releasePending(); this.setProfileSavePending(false); }
             return;
         }
-        // Replacing an assigned password is confirmed before the host
-        // changes, for the same reason.
+        // An edit that changes the password assignment: with the server's
+        // one-step save, the host and its assignment are stored in one
+        // request (a replacement and the step-up are confirmed first).
+        if (payload.id && needsAssignment && (credentialChoice || assigned) && window.NativeCredentials?.supports?.('save_with_assignment')) {
+            if (credentialChoice === '__new' && (!createWith.name || !createWith.password)) { window.showNotification?.(this.t('credentials.required', 'Enter a password name and password.'), 'error'); return; }
+            const target = {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id, socks_proxy_id: payload.socks_proxy_id, key_id: payload.key_id};
+            const change = credentialChoice === '__new' ? createWith : {credential_id: credentialChoice || null};
+            this.setProfileSavePending(true);
+            try {
+                const result = await window.NativeCredentials.mutate(credentialChoice === '__new' ? 'create' : 'assign', {...change, resource_id: payload.id, resource: payload, confirm_target: true, target}, null, current);
+                if (!current()) return;
+                completeSave({success: true, profile: result.resource});
+            } catch (error) { failCreate(error); }
+            finally { releasePending(); this.setProfileSavePending(false); }
+            return;
+        }
+        // Without it (the Python release): replacing an assigned password is
+        // confirmed before the host changes, for the same reason.
         const replacing = Boolean(payload.id) && needsAssignment && Boolean(credentialChoice);
         this.setProfileSavePending(true);
         try {

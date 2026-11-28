@@ -270,13 +270,15 @@ window.SocksProxyManager = {
                 ? 'spCredentialName' : 'spNameInput';
             window.ConnectionValidation?.fieldError(document.getElementById(input), this.t('common.nameTaken', 'This name is already in use. Choose another name.'));
         };
-        // A new SOCKS5 proxy and its password are stored in one request: both
-        // or neither.
-        const oneStep = window.NativeCredentials?.supports?.('assign_on_create');
-        if (!this.editingId && credential && (credential.password || oneStep)) {
+        // With the server's one-step save, a new SOCKS5 proxy or an edit and
+        // its password are stored in one request: both or neither.
+        const oneStep = window.NativeCredentials?.supports?.('save_with_assignment');
+        if (credential && (oneStep || (!this.editingId && credential.password))) {
             let taken = false;
             try {
-                const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind: 'socks', resource: payload, ...credential, ...(credential.password ? {username} : {}), confirm_target: true}, null, current);
+                const result = this.editingId
+                    ? await window.NativeCredentials.mutate(credential.password ? 'create' : 'assign', {...credential, ...(credential.password ? {username} : {}), resource_id: 'socks:' + this.editingId, resource: payload, confirm_target: true}, null, current)
+                    : await window.NativeCredentials.mutate('create_for_resource', {resource_kind: 'socks', resource: payload, ...credential, ...(credential.password ? {username} : {}), confirm_target: true}, null, current);
                 if (!current()) return;
                 this.upsertSocksProxy(result.resource);
                 this.resetEditor();
@@ -287,8 +289,8 @@ window.SocksProxyManager = {
             if (taken) nameTaken();
             return;
         }
-        // Otherwise replacing an assigned password and binding a saved one
-        // are confirmed before the record changes.
+        // Without it (the Python release): replacing an assigned password and
+        // binding a saved one are confirmed before the record changes.
         const replacing = Boolean(identity) && Boolean(credential) && credential.credential_id !== null;
         try {
             const approved = replacing ? await window.NativeCredentials?.confirmAssignmentChange?.('socks:' + identity, credential.credential_id || null, credential.name || null) : true;

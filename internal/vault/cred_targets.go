@@ -15,21 +15,16 @@ import (
 // CreateResource validates the payload as the resource's own save does,
 // stores the new record and runs within in the same transaction; an error
 // of within stores nothing. It returns the stored record.
+// UpdateResource saves the edited record recordID the same way.
 type ResourceWriter interface {
 	CreateResource(ctx context.Context, userID int64, kind ResourceKind, payload jsontext.Value, within Within) (jsontext.Value, error)
+	UpdateResource(ctx context.Context, userID int64, kind ResourceKind, recordID string, payload jsontext.Value, within Within) (jsontext.Value, error)
 }
 
-// Within runs in the transaction that stores a new resource. stored is the
-// new record; records are the user's resources as that transaction sees
-// them, the new one included.
+// Within runs in the transaction that stores a resource. stored is the
+// stored record; records are the user's resources as that transaction
+// sees them, this one included.
 type Within func(ctx context.Context, tx *store.Tx, stored jsontext.Value, records Records) error
-
-// createFields are the payload members create_for_resource passes on for a
-// jump host and a SOCKS proxy; saved hosts and SMB shares get the payload.
-var createFields = map[ResourceKind][]string{
-	ResourceJump:  {"name", "host", "port", "username", "auth_type", "key_id", "jump_host_id"},
-	ResourceSOCKS: {"name", "host", "port", "username", "auth_type"},
-}
 
 // createForResource saves a new resource and a password assigned to it
 // (create_for_resource): a new password from name and password, or, new
@@ -60,21 +55,7 @@ func (s *Service) createForResource(ctx context.Context, c *credentials, p princ
 	if auth, _ := field(payload, "auth_type"); kind != ResourceSMB && string(auth) != `"password"` {
 		return nil, fault.New(fault.InvalidTargets, "")
 	}
-	if names, ok := createFields[kind]; ok {
-		var members []pyjson.Member
-		for _, n := range names {
-			v, _ := field(payload, n)
-			members = append(members, pyjson.Member{Name: n, Value: v})
-		}
-		if kind == ResourceSOCKS {
-			dns, present := field(payload, "remote_dns")
-			if !present {
-				dns = jsonTrue
-			}
-			members = append(members, pyjson.Member{Name: "remote_dns", Value: dns})
-		}
-		payload = pyjson.Object(members)
-	}
+	payload = resourcePayload(kind, payload)
 	existing, saved := field(data, "credential_id")
 	if saved && existing.Kind() != 'n' {
 		_, hasName := field(data, "name")

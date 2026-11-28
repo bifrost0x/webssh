@@ -103,14 +103,19 @@ type credentialResources struct {
 	shares *smb.Shares
 }
 
-func (c credentialResources) CreateResource(ctx context.Context, userID int64, kind vault.ResourceKind, payload jsontext.Value, within vault.Within) (jsontext.Value, error) {
-	then := func(ctx context.Context, tx *store.Tx, saved jsontext.Value) error {
+// stored adapts the vault's hook to the stores' hook.
+func stored(userID int64, within vault.Within) func(context.Context, *store.Tx, jsontext.Value) error {
+	return func(ctx context.Context, tx *store.Tx, saved jsontext.Value) error {
 		records, err := credentialRecordsTx(ctx, tx, userID)
 		if err != nil {
 			return err
 		}
 		return within(ctx, tx, saved, records)
 	}
+}
+
+func (c credentialResources) CreateResource(ctx context.Context, userID int64, kind vault.ResourceKind, payload jsontext.Value, within vault.Within) (jsontext.Value, error) {
+	then := stored(userID, within)
 	switch kind {
 	case vault.ResourceSSH:
 		var req protocol.HostsProfileSave
@@ -162,4 +167,32 @@ func (c credentialAudit) CredentialChanged(_ context.Context, userID int64, acti
 	if c.log != nil {
 		c.log.Event(audit.Info, "CREDENTIAL_CHANGED", audit.F("user_id", userID), audit.F("action", action))
 	}
+}
+
+// UpdateResource saves an edited saved host, jump host or SOCKS proxy with
+// the vault's assignment in one transaction. SMB shares are edited without
+// it.
+func (c credentialResources) UpdateResource(ctx context.Context, userID int64, kind vault.ResourceKind, recordID string, payload jsontext.Value, within vault.Within) (jsontext.Value, error) {
+	then := stored(userID, within)
+	switch kind {
+	case vault.ResourceSSH:
+		var req protocol.HostsProfileSave
+		if err := json.Unmarshal(payload, &req); err != nil {
+			return nil, fault.New(fault.InvalidRequest, "")
+		}
+		return c.hosts.UpdateProfile(ctx, userID, recordID, req, then)
+	case vault.ResourceJump:
+		var req protocol.HostsJumpSave
+		if err := json.Unmarshal(payload, &req); err != nil {
+			return nil, fault.New(fault.InvalidRequest, "")
+		}
+		return c.hosts.UpdateJumpHost(ctx, userID, recordID, req, then)
+	case vault.ResourceSOCKS:
+		var req protocol.HostsSOCKSSave
+		if err := json.Unmarshal(payload, &req); err != nil {
+			return nil, fault.New(fault.InvalidRequest, "")
+		}
+		return c.hosts.UpdateSOCKSProxy(ctx, userID, recordID, req, then)
+	}
+	return nil, fault.New(fault.InvalidRequest, "")
 }

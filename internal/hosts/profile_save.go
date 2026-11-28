@@ -34,7 +34,7 @@ func (s *Service) SaveProfile(ctx context.Context, owner int64, req protocol.Hos
 // errDuplicateProfile, and leaves the Tailscale access check to the
 // launch, as the Python import route did. then, if set, runs in the
 // transaction after the host is written.
-func (s *Service) saveProfile(ctx context.Context, owner int64, req protocol.HostsProfileSave, importing bool, then Created) (jsontext.Value, error) {
+func (s *Service) saveProfile(ctx context.Context, owner int64, req protocol.HostsProfileSave, importing bool, then Stored) (jsontext.Value, error) {
 	p := profilePayload(req)
 	if s.Variants != nil && !importing {
 		// handle_save_profile checks Tailscale SSH access before the
@@ -140,7 +140,7 @@ func (s *Service) saveProfile(ctx context.Context, owner int64, req protocol.Hos
 		if err := replace(ctx, tx, profileTable, owner, next); err != nil {
 			return err
 		}
-		return runCreated(ctx, tx, then, saved)
+		return runStored(ctx, tx, then, saved)
 	})
 	if err != nil {
 		return nil, classify(err, "Failed to save profile")

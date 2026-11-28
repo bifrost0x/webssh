@@ -530,11 +530,27 @@ func ImportLegacyVaultTx(ctx, tx *store.Tx, userID int64, document []byte, versi
   in one transaction: `ResourceWriter.CreateResource` runs the vault's
   `Within` in the transaction that writes the record, so a failed
   assignment leaves no record (3.3 and the M2 build removed the record
-  again afterwards). A taken host name is `duplicate_name`; other
-  refusals of the resource stay `invalid_targets`. The state carries
-  `assign_on_create: true`, which tells the page to use this instead of
-  save-then-assign; without it (Python) the page confirms the step-up
-  first (`authorize_target`) and then saves and assigns.
+  again afterwards). A taken name is `duplicate_name`; other
+  refusals of the resource stay `invalid_targets`.
+- `assign` and `create` with `resource_id` (T4, new in 3.4) also take
+  `resource`, the edited record of a saved host, jump host or SOCKS proxy
+  (not an SMB share). `ResourceWriter.UpdateResource` stores the edit and
+  runs the assignment in the same transaction; the intent stays bound to
+  the resource as it was (`preview_changed`), a `target` the page sends
+  must be the edited record (`credential_target_changed`), replacements
+  need `replace_credential_id` as before, and binding a saved password
+  needs the step-up before anything is written. Refusals of the store keep
+  their code (`validation_error` and `duplicate_name` with their fixed
+  text, `not_found`). The result carries `resource`.
+- The state carries `save_with_assignment: true`, which tells the page to
+  use these instead of save-then-assign; without it (Python) the page
+  confirms the step-up first (`authorize_target`) and then saves and
+  assigns.
+- Names of saved passwords are unique per user (`internal/naming`,
+  `duplicate_name` 409) for create, rename and the new password of
+  `create_for_resource` and `create`. The legacy vault import (D-06) is
+  exempt: it restores names as 3.3 stored them and never fails on a
+  repeated name.
 - Legacy vault (D-06): the file stays byte for byte in
   `vault_legacy_automation`; `ImportLegacy` decrypts it with the user's
   passphrase (scrypt N=131072, r=8, p=1, AES-GCM, AAD

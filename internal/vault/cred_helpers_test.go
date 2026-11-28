@@ -27,6 +27,7 @@ type fakeStores struct {
 	db         *store.DB
 	refuse     error
 	rolledBack int
+	updated    int
 }
 
 func (f *fakeStores) Records(_ context.Context, userID int64) (Records, error) {
@@ -84,6 +85,46 @@ func (f *fakeStores) CreateResource(ctx context.Context, userID int64, kind Reso
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		*list = slices.DeleteFunc(*list, func(v jsontext.Value) bool { s, _ := stringMember(v, "id"); return s == id })
+		f.rolledBack++
+		return nil, err
+	}
+	return stored, nil
+}
+
+// UpdateResource replaces the record id with the payload, runs within in
+// a write transaction of db and puts the old record back when within
+// fails.
+func (f *fakeStores) UpdateResource(ctx context.Context, userID int64, kind ResourceKind, id string, payload jsontext.Value, within Within) (jsontext.Value, error) {
+	f.mu.Lock()
+	if f.refuse != nil {
+		f.mu.Unlock()
+		return nil, f.refuse
+	}
+	r := f.records[userID]
+	if r == nil {
+		f.mu.Unlock()
+		return nil, fault.New(fault.NotFound, "")
+	}
+	list := map[ResourceKind]*[]jsontext.Value{ResourceSSH: &r.Profiles, ResourceJump: &r.JumpHosts,
+		ResourceSOCKS: &r.SOCKSProxies, ResourceSMB: &r.SMBShares}[kind]
+	i := slices.IndexFunc(*list, func(v jsontext.Value) bool { s, _ := stringMember(v, "id"); return s == id })
+	if i < 0 {
+		f.mu.Unlock()
+		return nil, fault.New(fault.NotFound, "")
+	}
+	old := (*list)[i]
+	members, _ := pyjson.Members(payload)
+	members = pyjson.Delete(members, "id")
+	stored := pyjson.Object(append([]pyjson.Member{{Name: "id", Value: pyjson.String(id)}}, members...))
+	(*list)[i] = stored
+	f.updated++
+	snapshot := Records{Profiles: slices.Clone(r.Profiles), JumpHosts: slices.Clone(r.JumpHosts),
+		SOCKSProxies: slices.Clone(r.SOCKSProxies), SMBShares: slices.Clone(r.SMBShares), SMB: r.SMB}
+	f.mu.Unlock()
+	if err := f.db.Write(ctx, func(tx *store.Tx) error { return within(ctx, tx, stored, snapshot) }); err != nil {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		(*list)[i] = old
 		f.rolledBack++
 		return nil, err
 	}

@@ -140,8 +140,9 @@ func (h *CredentialsHTTP) fail(w http.ResponseWriter, r *http.Request, err error
 		logger.ErrorContext(r.Context(), "credential request failed", "code", code, "error", err)
 	}
 	text := "Credential request could not be completed."
-	if code == fault.DuplicateName {
-		// The fixed text of a taken name.
+	if code == fault.ValidationError || code == fault.DuplicateName {
+		// The fixed texts of the resource stores (an invalid host, a taken
+		// name) when a resource is saved with its password.
 		_, _, text = fault.Status(err)
 	}
 	writeCredentialJSON(w, status, credentialError{Error: text, Code: string(code)})

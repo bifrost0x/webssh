@@ -83,7 +83,10 @@
                 'credentials.failed',
                 'Passwords could not be saved. Check your authorization and try again.',
             ];
-            const error = new Error(t(message[0], message[1]));
+            // A resource saved with its password names what is wrong with it.
+            const text =
+                data.code === 'validation_error' && typeof data.error === 'string' ? data.error : t(message[0], message[1]);
+            const error = new Error(text);
             error.code = data.code;
             throw error;
         }
@@ -1445,8 +1448,9 @@
         const key = value => String(value || '').trim().toLowerCase().replaceAll('ß', 'ss');
         return (state?.credentials || []).some(item => key(item.name) === key(name));
     }
-    // Optional server features the last state announced (assign_on_create:
-    // a new resource is created with a saved password in one step).
+    // Optional server features the last state announced (save_with_assignment:
+    // a resource is created or edited together with its password in one
+    // request).
     function supports(feature) {
         return state?.[feature] === true;
     }

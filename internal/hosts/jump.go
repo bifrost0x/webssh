@@ -43,7 +43,7 @@ func (s *Service) SaveJumpHost(ctx context.Context, owner int64, req protocol.Ho
 	return s.saveJumpHost(ctx, owner, req, nil)
 }
 
-func (s *Service) saveJumpHost(ctx context.Context, owner int64, req protocol.HostsJumpSave, then Created) (jsontext.Value, error) {
+func (s *Service) saveJumpHost(ctx context.Context, owner int64, req protocol.HostsJumpSave, then Stored) (jsontext.Value, error) {
 	port := req.Port
 	if len(port) == 0 {
 		port = jsonInt(22) // the handler's default
@@ -135,7 +135,7 @@ func (s *Service) saveJumpHost(ctx context.Context, owner int64, req protocol.Ho
 		if err := replace(ctx, tx, jumpTable, owner, next); err != nil {
 			return err
 		}
-		return runCreated(ctx, tx, then, r)
+		return runStored(ctx, tx, then, r)
 	})
 	if err != nil {
 		return nil, classify(err, "Failed to save jump host")

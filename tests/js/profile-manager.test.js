@@ -569,13 +569,48 @@ test('a new host with a saved password is confirmed before anything is saved', a
     await new Promise(resolve => setImmediate(resolve));
     manager.editingProfileId = null;
     calls.length = 0;
-    win.NativeCredentials.supports = feature => feature === 'assign_on_create';
+    win.NativeCredentials.supports = feature => feature === 'save_with_assignment';
     win.NativeCredentials.mutate = async (method, payload) => {
         calls.push(['mutate', method, payload.credential_id, Object.hasOwn(payload, 'password')]);
         throw cancelled;
     };
     await manager.saveFromEditor();
     assert.deepEqual(calls, [['mutate', 'create_for_resource', 'saved-1', false]]);
+    assert.equal(manager.profileSavePending, false);
+});
+
+test('an edit that changes the saved password is one request with the one-step save of the server', async () => {
+    const fields = {};
+    const field = (value = '') => ({value, checked: false, dataset: {}, classList: {contains: () => false}});
+    for (const id of ['profileEditorPostConnectMode', 'profileEditorName', 'profileEditorGroup', 'profileEditorHost',
+        'profileEditorPort', 'profileEditorUsername', 'profileEditorAuthType', 'profileEditorKeySelect',
+        'profileEditorJumpHostSelect', 'profileEditorPlatformIcon', 'profileEditorRole', 'profileEditorView',
+        'profileEditorCredential']) fields[id] = field();
+    fields.profileEditorPostConnectMode.value = 'none';
+    fields.profileEditorAuthType.value = 'password';
+    fields.profileEditorName.value = 'Edited';
+    fields.profileEditorHost.value = 'moved.example';
+    fields.profileEditorUsername.value = 'u';
+    fields.profileEditorCredential.value = 'saved-2';
+    fields.profileEditorCredential.dataset.assigned = 'saved-1';
+    const calls = [];
+    const manager = loadProfileManager({document: {getElementById: id => fields[id] || null, querySelectorAll: () => []}});
+    const win = manager.__testWindow;
+    win.socket = {emit: event => calls.push(['emit', event])};
+    manager.editorSnapshot = () => 'snapshot';
+    manager.herdrEditorPayload = () => null;
+    manager.profiles = [{id: 'p1', name: 'Edited', host: 'old.example', port: 22, username: 'u', auth_type: 'password'}];
+    manager.editingProfileId = 'p1';
+    win.NativeCredentials = {
+        supports: feature => feature === 'save_with_assignment',
+        authorizeTarget: async () => calls.push(['authorize']),
+        mutate: async (method, payload) => {
+            calls.push(['mutate', method, payload.resource_id, payload.credential_id, payload.resource.host]);
+            throw Object.assign(new Error('Cancelled'), {name: 'AbortError'});
+        },
+    };
+    await manager.saveFromEditor();
+    assert.deepEqual(calls, [['mutate', 'assign', 'p1', 'saved-2', 'moved.example']]);
     assert.equal(manager.profileSavePending, false);
 });
 

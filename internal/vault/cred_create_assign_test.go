@@ -131,7 +131,7 @@ func TestStateAnnouncesAssignOnCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), `"assign_on_create":true`) {
+	if !strings.Contains(string(raw), `"save_with_assignment":true`) {
 		t.Errorf("state %s", raw)
 	}
 }

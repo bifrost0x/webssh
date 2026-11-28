@@ -253,3 +253,85 @@ func TestCreateForResourceIsAtomic(t *testing.T) {
 		t.Fatalf("taken name: %v", err)
 	}
 }
+
+// An edited host and its password assignment are stored together through
+// the real stores, or not at all.
+func TestEditWithPasswordIsAtomic(t *testing.T) {
+	sys, ts := openTestSystem(t, nil)
+	signUp(t, ts.URL, "admin1", "first-password-1")
+	enableCredentials(t, sys)
+	ctx := principal.With(t.Context(), principal.Principal{UserID: 1, SessionID: "s1"})
+	apply := func(method string, payload map[string]any) error {
+		mutation := map[string]any{"method": method}
+		maps.Copy(mutation, payload)
+		body, _ := json.Marshal(map[string]any{"operation": "native", "mutation": mutation})
+		out, err := sys.vault.Prepare(ctx, body)
+		if err != nil {
+			return err
+		}
+		var in struct {
+			Intent string `json:"intent"`
+		}
+		_ = json.Unmarshal(out, &in)
+		payload["intent"] = in.Intent
+		body, _ = json.Marshal(payload)
+		_, err = sys.vault.Apply(ctx, method, "", body, "")
+		return err
+	}
+	saved, err := sys.hosts.SaveProfile(ctx, 1, protocol.HostsProfileSave{Name: jsontext.Value(`"Box"`), Host: jsontext.Value(`"box.example"`),
+		Username: jsontext.Value(`"root"`), AuthType: jsontext.Value(`"password"`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(saved, &rec)
+	host := func() string {
+		profiles, err := sys.hosts.Profiles(t.Context(), 1)
+		if err != nil || len(profiles) != 1 {
+			t.Fatalf("profiles %v %v", profiles, err)
+		}
+		var p struct {
+			Host string `json:"host"`
+		}
+		_ = json.Unmarshal(profiles[0], &p)
+		return p.Host
+	}
+	if err := apply(vault.MethodCreate, map[string]any{"name": "Shared", "password": "shared-secret"}); err != nil {
+		t.Fatal(err)
+	}
+	state, _ := sys.vault.State(ctx)
+	var view struct {
+		Credentials []struct {
+			ID string `json:"id"`
+		} `json:"credentials"`
+	}
+	_ = json.Unmarshal(state, &view)
+	edit := map[string]any{"id": rec.ID, "name": "Box", "host": "moved.example", "port": 22, "username": "root", "auth_type": "password"}
+	if err := apply(vault.MethodAssign, map[string]any{"resource_id": rec.ID, "credential_id": view.Credentials[0].ID,
+		"confirm_target": true, "resource": edit}); fault.CodeOf(err) != fault.StepUpRequired {
+		t.Fatalf("edit binding a saved password without step-up: %v", err)
+	}
+	if h := host(); h != "box.example" {
+		t.Fatalf("host %q changed before the step-up", h)
+	}
+	if err := apply(vault.MethodCreate, map[string]any{"resource_id": rec.ID, "name": "shared", "password": "x",
+		"confirm_target": true, "resource": edit}); fault.CodeOf(err) != fault.DuplicateName {
+		t.Fatalf("edit with a taken password name: %v", err)
+	}
+	if h := host(); h != "box.example" {
+		t.Fatalf("host %q changed although the password was refused", h)
+	}
+	if err := apply(vault.MethodCreate, map[string]any{"resource_id": rec.ID, "name": "Fresh", "password": "fresh-secret",
+		"confirm_target": true, "resource": edit}); err != nil {
+		t.Fatal(err)
+	}
+	if h := host(); h != "moved.example" {
+		t.Fatalf("host %q after the edit", h)
+	}
+	secure := principal.With(t.Context(), principal.Principal{UserID: 1, SessionID: "s1", Secure: true})
+	if pw, err := (savedPasswords{sys.vault}).Password(secure, 1, rec.ID); err != nil || pw != "fresh-secret" {
+		t.Fatalf("password of the edited host: %q %v", pw, err)
+	}
+}

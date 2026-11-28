@@ -14,6 +14,7 @@ const ui = require('../m1/ui');
 
 const admin = {username: 'm2order', password: 'M2-order-admin-password-7'};
 const shared = 'Shared lab password';
+const second = 'Second lab password';
 
 let backend;
 let proxy;
@@ -90,9 +91,36 @@ test('saved passwords are on and one saved password exists', async ({browser}) =
     await ui.dismissTour(page);
     // A new password without a destination binds nothing and needs no
     // confirmation.
-    await page.evaluate(name => window.NativeCredentials.mutate('create', {name, username: 'lab', password: 'synthetic-lab-pw'}), shared);
-    expect((await serverState(page)).credentials.map(item => item.name)).toEqual([shared]);
+    await page.evaluate(names => Promise.all(names.map(name =>
+        window.NativeCredentials.mutate('create', {name, username: 'lab', password: 'synthetic-lab-pw'}))), [shared, second]);
+    expect((await serverState(page)).credentials.map(item => item.name).sort()).toEqual([second, shared].sort());
     await context.close();
+});
+
+test('a saved password name in use is refused at the name field', async ({browser}) => {
+    test.fail(kind === 'python', 'the Python release allows duplicate names (U100)');
+    const {context, page} = await signedIn(browser);
+    const before = (await serverState(page)).credentials.map(item => item.id);
+    try {
+        await page.evaluate(() => window.openConnectionAssetManager('passwords'));
+        await page.locator('[data-credential-new]').click();
+        const detail = page.locator('[data-credential-detail]');
+        await detail.locator('[name=name]').fill(`  ${shared.toUpperCase()} `);
+        await detail.locator('[name=password]').fill('another-synthetic-pw');
+        await detail.getByRole('button', {name: 'Save', exact: true}).click();
+        await expect(detail.locator('.form-error')).toHaveText('This name is already in use. Choose another name.');
+        await expect(detail.locator('[name=name]')).toBeFocused();
+        expect((await serverState(page)).credentials).toHaveLength(2);
+    } finally {
+        // What a backend without the rule stored must not reach the next tests.
+        await page.evaluate(async keep => {
+            const state = await window.NativeCredentials.api('/api/credentials/state');
+            for (const item of state.credentials.filter(entry => !keep.includes(entry.id))) {
+                await window.NativeCredentials.mutate('delete', {}, item.id);
+            }
+        }, before);
+        await context.close();
+    }
 });
 
 for (const button of ['Save', 'Save & connect']) {
@@ -184,3 +212,100 @@ for (const route of routes) {
         await context.close();
     });
 }
+
+// Answers the dialogs a save opens: confirmations of the target or of a
+// replaced password are accepted; the account confirmation (step-up) is
+// cancelled or answered. Returns once the step-up was handled.
+async function throughConfirmations(page, stepUp) {
+    for (let i = 0; i < 4; i++) {
+        const dialog = stepUpDialog(page);
+        await expect(dialog).toBeVisible();
+        if (await dialog.locator('input[type="password"]').isVisible()) {
+            if (stepUp === 'cancel') await cancelStepUp(page);
+            else expect(await ui.answerStepUp(page, admin.password)).toBe(true);
+            return;
+        }
+        // The next confirmation may open at once, so wait for this one.
+        const current = await dialog.elementHandle();
+        await dialog.locator('button.btn-primary').click();
+        await current.waitForElementState('hidden');
+    }
+    throw new Error('no account confirmation');
+}
+
+async function stored(page, name) {
+    const state = await serverState(page);
+    const byId = Object.fromEntries(state.credentials.map(item => [item.id, item.name]));
+    return state.profiles.filter(resource => resource.name === name)
+        .map(resource => ({host: resource.host, password: byId[resource.credential_id] || null}));
+}
+
+// T4 for edits: changing the destination and the assigned password of a
+// record is one change. Cancelling the confirmation changes nothing;
+// confirming it stores both.
+const edits = [
+    {kind: 'ssh', name: 'Order host confirmed', from: 'order.example.test', to: 'edited.example.test',
+        open: async page => {
+            await ui.openHosts(page);
+            await ui.hostRow(page, 'Order host confirmed').click();
+            await expect(page.locator('#profileEditorView')).toBeVisible();
+        },
+        host: '#profileEditorHost', choose: page => page.locator('#profileEditorCredential').selectOption({label: second}),
+        save: page => page.locator('#profileEditorForm').getByRole('button', {name: 'Save', exact: true}).click(),
+        done: page => expect(page.locator('#profileEditorView')).toBeHidden()},
+    ...routes.map(route => ({kind: route.kind, name: route.name, from: route.kind === 'jump' ? 'bastion.example.test' : 'proxy.example.test',
+        to: `edited-${route.kind}.example.test`,
+        open: async page => {
+            await ui.openHosts(page);
+            await page.locator(`#profileManagementModal .connection-asset-nav [data-connection-asset="${route.asset}"]`).click();
+            await page.locator(`${route.list} .key-item`).filter({hasText: route.name}).getByRole('button', {name: 'Edit', exact: true}).click();
+            await expect(page.locator(`#${route.prefix}NameInput`)).toHaveValue(route.name);
+        },
+        host: `#${route.prefix}HostInput`, choose: page => page.locator(`#${route.prefix}CredentialExisting`).selectOption({label: second}),
+        save: page => page.locator(`${route.form} button[type="submit"]`).click(),
+        done: page => expect(page.locator(`#${route.prefix}NameInput`)).not.toHaveValue(route.name)})),
+];
+
+for (const edit of edits) {
+    test(`${edit.kind}: an edit and its password change are stored together or not at all`, async ({browser}) => {
+        test.fail(kind === 'python' && edit.kind === 'socks', 'Python fails the SOCKS5 assignment itself');
+        const {context, page} = await signedIn(browser);
+        expect(await stored(page, edit.name)).toEqual([{host: edit.from, password: shared}]);
+        await edit.open(page);
+        await page.locator(edit.host).fill(edit.to);
+        await edit.choose(page);
+        await edit.save(page);
+        await throughConfirmations(page, 'cancel');
+        expect(await stored(page, edit.name)).toEqual([{host: edit.from, password: shared}]);
+        await expect(page.locator(edit.host)).toHaveValue(edit.to);
+
+        await edit.save(page);
+        await throughConfirmations(page, 'answer');
+        await edit.done(page);
+        await expect.poll(() => stored(page, edit.name), {timeout: 10_000}).toEqual([{host: edit.to, password: second}]);
+        await context.close();
+    });
+}
+
+// One request carries the edit and the assignment: when it fails, the
+// host keeps its destination as well as its password. The request is cut
+// off in the browser; the transaction on the server is covered by the Go
+// tests.
+test('ssh: an edit whose assignment request fails changes nothing', async ({browser}) => {
+    test.fail(kind === 'python', 'the Python release saves the host before the assignment');
+    const {context, page} = await signedIn(browser);
+    const name = 'Order host confirmed';
+    const before = await stored(page, name);
+    expect(before).toEqual([{host: 'edited.example.test', password: second}]);
+    await page.route('**/api/credentials/assign', route => route.abort());
+    await ui.openHosts(page);
+    await ui.hostRow(page, name).click();
+    await page.locator('#profileEditorHost').fill('third.example.test');
+    await page.locator('#profileEditorCredential').selectOption('');
+    await page.locator('#profileEditorForm').getByRole('button', {name: 'Save', exact: true}).click();
+    await expect(page.locator('#notificationContainer [role="alert"]').first()).toBeVisible();
+    await page.unroute('**/api/credentials/assign');
+    expect(await stored(page, name)).toEqual(before);
+    await expect(page.locator('#profileEditorView')).toBeVisible();
+    await context.close();
+});

@@ -18,7 +18,7 @@ func (s *Service) SaveSOCKSProxy(ctx context.Context, owner int64, req protocol.
 	return s.saveSOCKSProxy(ctx, owner, req, nil)
 }
 
-func (s *Service) saveSOCKSProxy(ctx context.Context, owner int64, req protocol.HostsSOCKSSave, then Created) (jsontext.Value, error) {
+func (s *Service) saveSOCKSProxy(ctx context.Context, owner int64, req protocol.HostsSOCKSSave, then Stored) (jsontext.Value, error) {
 	// The handler's defaults for absent members.
 	def := func(v, d jsontext.Value) jsontext.Value {
 		if len(v) == 0 {
@@ -106,7 +106,7 @@ func (s *Service) saveSOCKSProxy(ctx context.Context, owner int64, req protocol.
 		if err := replace(ctx, tx, socksTable, owner, next); err != nil {
 			return err
 		}
-		return runCreated(ctx, tx, then, r)
+		return runStored(ctx, tx, then, r)
 	})
 	if err != nil {
 		return nil, classify(err, "Failed to save SOCKS proxy")
