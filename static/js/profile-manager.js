@@ -1839,29 +1839,63 @@ const ProfileManager = {
             if (connect) this.connect(saved.id);
             else back?.(saved.id);
         };
-        if (credentialChoice === '__new' && !payload.id) {
-            const {name,password} = credentialDraft;
-            if (!name || !password) { window.showNotification?.(this.t('credentials.required', 'Enter a password name and password.'), 'error'); return; }
+        const failCreate = error => {
+            if (error.name === 'AbortError') return;
+            if (error.code === 'duplicate_name') completeSave({success: false, code: error.code});
+            else window.showNotification?.(error.message, 'error');
+        };
+        // Binding an existing saved password needs the account confirmation
+        // (step-up). It comes before anything is saved, so cancelling it
+        // leaves no host and keeps the form as it is.
+        const bindsSaved = needsAssignment && Boolean(credentialChoice) && credentialChoice !== '__new';
+        const createWith = credentialChoice === '__new'
+            ? (() => {
+                const {name, password} = credentialDraft;
+                return {name, username: payload.username, password};
+            })()
+            : {credential_id: credentialChoice};
+        if (!payload.id && (credentialChoice === '__new' || (bindsSaved && window.NativeCredentials?.supports?.('assign_on_create')))) {
+            if (credentialChoice === '__new' && (!createWith.name || !createWith.password)) { window.showNotification?.(this.t('credentials.required', 'Enter a password name and password.'), 'error'); return; }
+            // Host and password are stored in one step; the confirmation,
+            // when the server asks for it, comes first.
             this.setProfileSavePending(true);
             try {
-                const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind: 'ssh', resource: payload, name, username: payload.username, password, confirm_target: true}, null, current);
+                const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind: 'ssh', resource: payload, ...createWith, confirm_target: true}, null, current);
                 if (!current()) return;
                 completeSave({success: true, profile: result.resource});
-            } catch (error) { if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error'); }
+            } catch (error) { failCreate(error); }
             finally { releasePending(); this.setProfileSavePending(false); }
             return;
         }
+        // Replacing an assigned password is confirmed before the host
+        // changes, for the same reason.
+        const replacing = Boolean(payload.id) && needsAssignment && Boolean(credentialChoice);
         this.setProfileSavePending(true);
+        try {
+            const approved = replacing ? await window.NativeCredentials?.confirmAssignmentChange?.(payload.id,
+                credentialChoice === '__new' ? null : credentialChoice, credentialChoice === '__new' ? credentialDraft.name : null) : true;
+            if (approved === false || (replacing && !current())) throw Object.assign(new Error('Cancelled'), {name: 'AbortError'});
+            if (bindsSaved) {
+                const target = {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id};
+                if (payload.socks_proxy_id) target.socks_proxy_id = payload.socks_proxy_id;
+                await window.NativeCredentials.authorizeTarget(credentialChoice, target, current);
+            }
+        } catch (error) {
+            releasePending();
+            this.setProfileSavePending(false);
+            if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error');
+            return;
+        }
         window.socket.emit('save_profile', payload, async acknowledgement => {
             try {
                 if (!current()) { releasePending(); adoptCreated(acknowledgement); return; }
                 if (!acknowledgement?.success || !needsAssignment) { completeSave(acknowledgement); return; }
                 try {
                     if (credentialChoice === '__new') {
-                        await window.NativeCredentials.mutate('create', {...credentialDraft, username: payload.username, resource_id: acknowledgement.profile.id, confirm_target: true, target: {host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id,jump_host_id:payload.jump_host_id,socks_proxy_id:payload.socks_proxy_id}}, null, current);
+                        await window.NativeCredentials.mutate('create', {...credentialDraft, username: payload.username, resource_id: acknowledgement.profile.id, confirm_target: true, target: {host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id,jump_host_id:payload.jump_host_id,socks_proxy_id:payload.socks_proxy_id}}, null, current, replacing);
                         if (!current()) return;
                     } else {
-                        await window.NativeCredentials.mutate('assign', {resource_id: acknowledgement.profile.id, credential_id: credentialChoice || null, confirm_target: true, target: {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id, socks_proxy_id: payload.socks_proxy_id, key_id: payload.key_id}}, null, current);
+                        await window.NativeCredentials.mutate('assign', {resource_id: acknowledgement.profile.id, credential_id: credentialChoice || null, confirm_target: true, target: {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id, socks_proxy_id: payload.socks_proxy_id, key_id: payload.key_id}}, null, current, replacing);
                     }
                     if (!current()) return;
                     completeSave(acknowledgement);

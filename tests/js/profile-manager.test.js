@@ -526,6 +526,59 @@ test('the host editor sends one save at a time and adopts a host created while t
     assert.equal(sent[1][1].id, 'created-1');
 });
 
+test('a new host with a saved password is confirmed before anything is saved', async () => {
+    const fields = {};
+    const field = (value = '') => ({value, checked: false, dataset: {}, classList: {contains: () => false}});
+    for (const id of ['profileEditorPostConnectMode', 'profileEditorName', 'profileEditorGroup', 'profileEditorHost',
+        'profileEditorPort', 'profileEditorUsername', 'profileEditorAuthType', 'profileEditorKeySelect',
+        'profileEditorJumpHostSelect', 'profileEditorPlatformIcon', 'profileEditorRole', 'profileEditorView',
+        'profileEditorCredential']) fields[id] = field();
+    fields.profileEditorPostConnectMode.value = 'none';
+    fields.profileEditorAuthType.value = 'password';
+    fields.profileEditorName.value = 'Bound';
+    fields.profileEditorHost.value = 'bound.example';
+    fields.profileEditorUsername.value = 'u';
+    fields.profileEditorCredential.value = 'saved-1';
+    const calls = [];
+    const manager = loadProfileManager({document: {getElementById: id => fields[id] || null, querySelectorAll: () => []}});
+    const win = manager.__testWindow;
+    win.socket = {emit: (event, payload, ack) => { calls.push(['emit', event]); ack?.({success: true, profile: {id: 'p1'}}); }};
+    manager.editorSnapshot = () => 'snapshot';
+    manager.herdrEditorPayload = () => null;
+    manager.profiles = [];
+    manager.editingProfileId = null;
+    const cancelled = Object.assign(new Error('Cancelled'), {name: 'AbortError'});
+
+    // Without the one-step create (Python): the confirmation comes first,
+    // and cancelling it saves nothing.
+    win.NativeCredentials = {
+        supports: () => false,
+        authorizeTarget: async id => { calls.push(['authorize', id]); throw cancelled; },
+        mutate: async method => { calls.push(['mutate', method]); return {}; },
+    };
+    await manager.saveFromEditor();
+    assert.deepEqual(calls, [['authorize', 'saved-1']]);
+    assert.equal(manager.profileSavePending, false);
+
+    calls.length = 0;
+    win.NativeCredentials.authorizeTarget = async id => { calls.push(['authorize', id]); };
+    await manager.saveFromEditor();
+    assert.deepEqual(calls.slice(0, 2), [['authorize', 'saved-1'], ['emit', 'save_profile']]);
+
+    // With it (Go): host and assignment in one request; no save_profile.
+    await new Promise(resolve => setImmediate(resolve));
+    manager.editingProfileId = null;
+    calls.length = 0;
+    win.NativeCredentials.supports = feature => feature === 'assign_on_create';
+    win.NativeCredentials.mutate = async (method, payload) => {
+        calls.push(['mutate', method, payload.credential_id, Object.hasOwn(payload, 'password')]);
+        throw cancelled;
+    };
+    await manager.saveFromEditor();
+    assert.deepEqual(calls, [['mutate', 'create_for_resource', 'saved-1', false]]);
+    assert.equal(manager.profileSavePending, false);
+});
+
 test('the host editor loads and saves the role override', async () => {
     const fields = {};
     const field = (value = '') => ({value, checked: false, dataset: {}, classList: {contains: () => false}});

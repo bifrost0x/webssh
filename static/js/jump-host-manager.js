@@ -231,12 +231,30 @@ window.JumpHostManager = {
         this.pending = true;
         this.renderEditorState();
         this.renderList();
-        if (credential?.password && !this.editingId) {
+        // A new jump host and its password are stored in one step; binding a
+        // saved password asks for the account confirmation first, so
+        // cancelling it stores nothing.
+        const bindsSaved = Boolean(credential?.credential_id);
+        if (!this.editingId && (credential?.password || (bindsSaved && window.NativeCredentials?.supports?.('assign_on_create')))) {
             try {
-                const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind:'jump', resource:payload, ...credential, username, confirm_target:true}, null, current);
+                const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind:'jump', resource:payload, ...credential, ...(credential.password ? {username} : {}), confirm_target:true}, null, current);
                 if (!current()) return;this.upsertJumpHost(result.resource);this.resetEditor();
             } catch (error) { if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error'); }
             finally { this.pending=false;this.renderEditorState();this.renderList(); }
+            return;
+        }
+        // Replacing an assigned password and binding a saved one are
+        // confirmed before the record changes.
+        const replacing = Boolean(identity) && Boolean(credential) && credential.credential_id !== null;
+        try {
+            const approved = replacing ? await window.NativeCredentials?.confirmAssignmentChange?.('jump:' + identity, credential.credential_id || null, credential.name || null) : true;
+            if (approved === false || (replacing && !current())) throw Object.assign(new Error('Cancelled'), {name: 'AbortError'});
+            if (bindsSaved) await window.NativeCredentials.authorizeTarget(credential.credential_id, {host: payload.host, port: payload.port, username: payload.username, auth_type: 'password'}, current);
+        } catch (error) {
+            this.pending = false;
+            this.renderEditorState();
+            this.renderList();
+            if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error');
             return;
         }
         window.socket.timeout(15000).emit('save_jump_host', payload, async (error, result) => {
@@ -251,7 +269,7 @@ window.JumpHostManager = {
                 if (!current()) return;
                 this.upsertJumpHost(result.jump_host);
                 if (credential) {
-                    try { await window.NativeCredentials.mutate(Object.hasOwn(credential,'credential_id')?'assign':'create',{...credential,username,resource_id:'jump:'+result.jump_host.id,confirm_target:true,target:{host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id}}, null, current); }
+                    try { await window.NativeCredentials.mutate(Object.hasOwn(credential,'credential_id')?'assign':'create',{...credential,username,resource_id:'jump:'+result.jump_host.id,confirm_target:true,target:{host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id}}, null, current, replacing); }
                     catch (error) { if(error.name==='AbortError')return;window.showNotification?.(this.t('credentials.assignmentFailed','Host saved, but password assignment failed. Your password draft is preserved. Review the saved target and try again.'),'error');this.editingId=result.jump_host.id;this.renderEditorState();this.renderList();return; }
                 }
                 if (!current()) return;

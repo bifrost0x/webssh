@@ -1418,7 +1418,31 @@
             )) === true
         );
     }
+    // Asks before a save whether the password assigned to a saved resource
+    // may be replaced, so that the question never comes after the resource
+    // was already changed. True when nothing would be replaced.
+    async function confirmAssignmentChange(resourceId, credentialId, newName) {
+        const resource = state?.profiles?.find(item => item.id === resourceId);
+        const oldId = resource?.credential_id;
+        if (!oldId || (credentialId && credentialId === oldId)) return true;
+        return confirmReplacements([
+            {
+                resource,
+                oldName:
+                    state?.credentials?.find(item => item.id === oldId)?.name ||
+                    t('credentials.unavailableAssignment', 'Assigned password unavailable'),
+                newName: newName || state?.credentials?.find(item => item.id === credentialId)?.name || credentialId,
+            },
+        ]);
+    }
+    // Optional server features the last state announced (assign_on_create:
+    // a new resource is created with a saved password in one step).
+    function supports(feature) {
+        return state?.[feature] === true;
+    }
     window.NativeCredentials = {
+        supports,
+        confirmAssignmentChange,
         assignmentReady,
         reviewAssignment,
         api,

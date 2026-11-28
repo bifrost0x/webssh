@@ -199,6 +199,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 
 | # | Change | Kind | What to do |
 |---|---|---|---|
+| U101 | A saved host, jump host or SOCKS5 proxy that uses an existing saved password asks for the account confirmation before it is saved, and a new record is stored together with its password assignment (3.3 saved the record first and asked afterwards, so a cancelled confirmation left a record without its password). Cancelling stores nothing and keeps the form with its input. Replacing the assigned password of an existing record is confirmed before the record changes, too. | fix | Nothing. |
 | U70 | The old passphrase-protected automation vault (before 3.0) is kept unchanged and can only be imported. The import button is shown until the vault has been imported. Entries for hosts behind a jump host or SOCKS5 proxy show as changed after the import. | decided | Import the vault with its passphrase, then confirm the changed entries. |
 | U71 | Runbooks use saved passwords only; the password prompt of a run is a step-up confirmation. Runs are refused with `unsupported_target` for hosts behind an SSH gateway, Tailscale SSH, a SOCKS5 proxy or more than one jump host, and for usernames with `:`. Every hop needs a trusted host key. | fix | Move such hosts out of runbooks or connect them directly. |
 | U72 | When the first check of a run fails, its targets are `skipped` and the run is `failed` (3.3: `unknown`). | fix | Nothing. |
