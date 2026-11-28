@@ -48,13 +48,28 @@ def _container_excludes_documentation(repo: Path, sha: str) -> bool:
         content = _git(repo, 'show', f'{sha}:.dockerignore').decode('utf-8')
     except (*_GIT_ERRORS, UnicodeError):
         return False
-    patterns = {
+    lines = [
         line.strip() for line in content.splitlines()
         if line.strip() and not line.lstrip().startswith('#')
-    }
+    ]
+    if lines and lines[0] == '*':
+        # An allowlist: everything is excluded unless a later pattern names
+        # it. Only literal re-includes outside the documentation are safe.
+        return all(
+            _literal_non_documentation(pattern[1:])
+            for pattern in lines if pattern.startswith('!')
+        )
+    patterns = set(lines)
     return {'README.md', 'docs/'} <= patterns and not any(
         pattern.startswith('!') for pattern in patterns
     )
+
+
+def _literal_non_documentation(pattern: str) -> bool:
+    path = pattern.strip().strip('/')
+    if not path or any(char in path for char in '*?[\\'):
+        return False
+    return path.split('/')[0] not in {'docs', 'README.md', '.', '..'}
 
 
 def classify_changes(

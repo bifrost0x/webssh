@@ -224,6 +224,19 @@ def test_uncertain_container_exclusions_require_full_ci(repo, dockerignore):
     assert classify(repo)['mode'] == 'full'
 
 
+def test_allowlist_without_documentation_allows_documentation_ci(repo):
+    commit(repo, {'.dockerignore': '# context\n*\n!go.mod\n!cmd/\n!scripts/stage-webassets.sh\n**/testdata/\n'})
+    commit(repo, {'README.md': 'Updated\n'})
+    assert classify(repo)['mode'] == 'docs'
+
+
+@pytest.mark.parametrize('reinclude', ['!docs/guide.md', '!README.md', '!*.md', '!docs', '!**', '!./docs/'])
+def test_allowlist_that_may_reinclude_documentation_requires_full_ci(repo, reinclude):
+    commit(repo, {'.dockerignore': f'*\n!go.mod\n{reinclude}\n'})
+    commit(repo, {'README.md': 'Updated\n'})
+    assert classify(repo)['mode'] == 'full'
+
+
 def test_dockerfile_specific_ignore_requires_full_ci(repo):
     commit(repo, {'Dockerfile.dockerignore': 'node_modules/\n'})
     commit(repo, {'README.md': 'Updated\n'})

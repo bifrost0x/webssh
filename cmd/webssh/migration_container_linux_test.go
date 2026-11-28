@@ -4,7 +4,7 @@
 // the container. The image must be the debug target (it has cat for the
 // cgroup files):
 //
-//	docker build -f deploy/docker/Dockerfile --target debug -t webssh:local-debug .
+//	docker build --target debug -t webssh:local-debug .
 //	WEBSSH_CONTAINER_IMAGE=webssh:local-debug go test -tags container -run TestContainerMigrationMemory -timeout 30m ./cmd/webssh
 //
 // DOCKER_CONTEXT selects the daemon (rootless in the lab). The data

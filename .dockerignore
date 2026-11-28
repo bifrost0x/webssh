@@ -1,178 +1,31 @@
-# Git
-.git/
-.github/
-.gitignore
+# Build context of the Dockerfile (repository root). Only the Go
+# module with the SMB client fork, the frontend assets, their staging script and the license files
+# are sent; everything else, including .git,
+# data directories, virtual environments, node_modules and the Python
+# application, stays out.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
+!static/
+!third_party/go-smb2/
+!scripts/stage-webassets.sh
+!LICENSE
+!NOTICE
+!THIRD-PARTY-NOTICES
 
-# Virtual environment
-venv/
-env/
-ENV/
-.venv*/
-.uv-cache*/
-.uv-python*/
-.task*/
-.test-tmp/
-.e2e-tmp/
-.tmp-e2e*/
-.runtime-*/
-.test-run.tmp/
-.worktrees/
+# Tests and their fixtures are not part of the build.
+**/*_test.go
+**/testdata/
+internal/httpapi/webassets/
 
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.pytest_cache/
-test-results/
-.coverage
-htmlcov/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Environment and secrets - CRITICAL
-.env
-.env.local
-.env.production
-# Match at every depth; gitignore does not protect Docker build contexts.
+# Stray files that must never reach an image.
 **/.env
 **/.env.*
-**/secrets
-**/.ssh
-**/secret_key
-**/known_hosts
-**/id_rsa
-**/id_dsa
-**/id_ecdsa
-**/id_ed25519
+**/*.db
+**/*.sqlite*
 **/*.pem
 **/*.key
-**/*.p12
-**/*.pfx
-**/*.db
-**/*.db-*
-**/*.sqlite
-**/*.sqlite-*
-**/*.sqlite3
-**/*.sqlite3-*
-**/*.log
-**/*.bak
-**/*.backup
-**/*.orig
-**/*.tmp
-**/__pycache__
-**/*.py[cod]
-**/.git
-**/data
-**/instance
-
-# User data directory - contains sensitive data
-data/
-
-# Local planning files and internal docs (must never enter the public image)
-AGENTS.md
-CODEX.md
-GEMINI.md
-JULES.md
-QWEN.md
-COPILOT.md
-AI_INSTRUCTIONS.md
-agent-instructions.md
-.agent/
-.agents/
-.ai/
-.amazonq/
-.codex/
-CLAUDE.md
-.claude/
-.cursor/
-.continue/
-.gemini/
-.junie/
-.roo/
-.windsurf/
-.aider*
-.clinerules
-.roorules
-.windsurfrules
-.superpowers/
-plans/
-design-qa.md
-reviews/
-review-artifacts/
-qa-artifacts/
-*-review.md
-review-*.md
-*-review-*.md
-*-qa.md
-qa-*.md
-*-qa-*.md
-
-# Knowledge graph (dev artifact; the public Pages graph is rebuilt in CI)
-graphify-out/
-
-# Logs
-*.log
-logs/
-
-# Node / frontend tooling (vendored assets live in static/vendor/ and are
-# already committed; node_modules is only needed to regenerate them).
-node_modules/
-package*.json
-playwright.config.js
-eslint.config.js
-
-# Repository-only build, test, and release inputs. requirements.txt remains
-# available because it is the reviewed runtime lock installed by Dockerfile.
-requirements.in
-requirements-test.*
-requirements-graph.*
-scripts/
-.trivyignore.yaml
-.gitleaks.toml
-ruff.toml
-.graphifyignore
-.env.example
-docker-compose*.yml
-# Unraid Community Apps metadata and template
-ca_profile.xml
-unraid/
-
-# Distribution / packaging
-build/
-dist/
-*.egg-info/
-
-# Documentation (not needed in container)
-README.md
-docs/
-site/
-assets/
-**/*.md
-# Font redistribution notices are runtime assets, including Markdown licenses.
-!static/vendor/terminal-fonts/README.md
-!static/vendor/terminal-fonts/licenses/**/*.md
-# Retain editable image sources in Git, but ship only the WebP derivatives.
-static/images/theme-backgrounds/*.png
-
-# Test files
-tests/
-test_*.py
-*_test.py
-
-# Backup files
-*.bak
-*.backup
-*.orig
-
-.impeccable/
+**/.DS_Store
+**/__pycache__/

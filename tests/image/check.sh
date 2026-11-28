@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Container checks for the Go image (deploy/docker/Dockerfile).
+# Container checks for the image of the root Dockerfile.
 #
 #   tests/image/check.sh            build both targets, then check
 #   BUILD=0 tests/image/check.sh    check existing webssh:local and :local-debug
@@ -59,8 +59,8 @@ cleanup
 
 if [ "${BUILD:-1}" = 1 ]; then
   rev=$(git rev-parse HEAD)
-  docker build -q -f deploy/docker/Dockerfile --target release --build-arg VERSION="$VERSION" --build-arg VCS_REF="$rev" -t "$IMG" . >/dev/null || exit 1
-  docker build -q -f deploy/docker/Dockerfile --target debug --build-arg VERSION="$VERSION" --build-arg VCS_REF="$rev" -t "$DEBUG_IMG" . >/dev/null || exit 1
+  docker build -q --target release --build-arg VERSION="$VERSION" --build-arg VCS_REF="$rev" -t "$IMG" . >/dev/null || exit 1
+  docker build -q --target debug --build-arg VERSION="$VERSION" --build-arg VCS_REF="$rev" -t "$DEBUG_IMG" . >/dev/null || exit 1
 fi
 
 wait_healthy() {
