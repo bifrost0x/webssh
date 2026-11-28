@@ -294,8 +294,14 @@ func prepareStaged(ctx context.Context, in *Installation, path string, reseal *k
 	if err != nil {
 		return fmt.Errorf("%w: database: %w", ErrInvalid, err)
 	}
+	if err := checkStructure(ctx, db); err != nil {
+		return errors.Join(err, db.Close())
+	}
 	if err := db.ApplyAll(ctx, in.Schemas...); err != nil {
 		return errors.Join(fmt.Errorf("%w: %w", ErrIncompatible, err), db.Close())
+	}
+	if err := matchReference(ctx, db, in.Schemas, filepath.Dir(path)); err != nil {
+		return errors.Join(err, db.Close())
 	}
 	if in.Prepare != nil || reseal != nil {
 		err := db.Write(ctx, func(tx *store.Tx) error {

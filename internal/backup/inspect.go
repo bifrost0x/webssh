@@ -65,16 +65,28 @@ func Inspect(ctx context.Context, in *Installation, archive string) (Summary, er
 	for _, f := range v.Manifest.Files {
 		s.TotalUncompressedSize += f.Size
 	}
-	if err := applySchemas(ctx, db, in.Schemas); err != nil {
+	compatible, err := applySchemas(ctx, db, in.Schemas, tmp)
+	if err != nil {
+		return Summary{}, err
+	}
+	if !compatible {
 		s.Compatible, s.CompatibilityReason = false, ReasonNewer
 	}
 	return s, nil
 }
 
-func applySchemas(ctx context.Context, path string, schemas []store.Schema) error {
+// applySchemas brings the database at path to schemas, as a restore
+// would, and compares the result with this build's schema. It reports
+// false when the schemas cannot be applied (a newer release wrote the
+// archive) and an error when the archive holds a schema this build never
+// creates.
+func applySchemas(ctx context.Context, path string, schemas []store.Schema, dir string) (bool, error) {
 	db, err := store.Open(ctx, path, store.Options{})
 	if err != nil {
-		return err
+		return false, fmt.Errorf("%w: database: %w", ErrInvalid, err)
 	}
-	return errors.Join(db.ApplyAll(ctx, schemas...), db.Close())
+	if err := db.ApplyAll(ctx, schemas...); err != nil {
+		return false, db.Close()
+	}
+	return true, errors.Join(matchReference(ctx, db, schemas, dir), db.Close())
 }

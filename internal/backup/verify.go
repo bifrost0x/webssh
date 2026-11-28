@@ -300,6 +300,9 @@ func checkDatabase(ctx context.Context, path string, ring *keyring.Ring, probes 
 	if err := db.IntegrityCheck(ctx); err != nil {
 		return false, errors.Join(fmt.Errorf("%w: database: %w", ErrInvalid, err), db.Close())
 	}
+	if err := checkStructure(ctx, db); err != nil {
+		return false, errors.Join(err, db.Close())
+	}
 	checked := false
 	err = db.Read(ctx, func(tx *store.Tx) error {
 		for _, p := range probes {
