@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"unicode/utf8"
 )
 
@@ -34,9 +33,9 @@ func newestFirst(path string, fn lineFunc) (stopped bool, err error) {
 	// Without following a link, and checked on the opened file, so no
 	// link can be swapped in after the check; O_NONBLOCK keeps a FIFO
 	// from blocking the open.
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0) // #nosec G304 -- path is a file of the audit log directory
+	f, err := os.OpenFile(path, os.O_RDONLY|openNoFollow, 0) // #nosec G304 -- path is a file of the audit log directory
 	if err != nil {
-		if errors.Is(err, syscall.ELOOP) {
+		if isLink(err) {
 			return false, errNotRegular
 		}
 		return false, err

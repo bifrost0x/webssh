@@ -28,6 +28,8 @@ var syscallAllowed = map[string]bool{
 	// backup operation locks (F_GETLK, flock), free space (statfs) and the
 	// inode for the legacy digest (migration specification 5.2, 5.3).
 	"internal/migrate/legacy/host_linux.go": true,
+	// O_NOFOLLOW and O_NONBLOCK for the audit log; os has no name for them.
+	"internal/audit/nofollow.go": true,
 }
 
 // exceptions are the reviewed exception lists the import rules consult.
