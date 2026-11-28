@@ -1,17 +1,19 @@
 """Record how app/editor_text.py encodes editor text (FS1 oracle).
 
-Run from the repository root with the project venv:
+Run from the repository root with the venv in $WEBSSH_PYTHON_ROOT:
     $WEBSSH_PYTHON_ROOT/.venv/bin/python internal/files/testdata/oracle_editor.py > internal/files/testdata/encode-vectors.json
 """
 
 import base64
 import importlib.util
 import json
+import os
 import pathlib
 import random
 import sys
 
-root = pathlib.Path(__file__).resolve().parents[3]
+# The Python release, a worktree of it (scripts/record-python-oracles.sh).
+root = pathlib.Path(os.environ['WEBSSH_PYTHON_ROOT'])
 spec = importlib.util.spec_from_file_location('editor_text', root / 'app' / 'editor_text.py')
 editor_text = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(editor_text)

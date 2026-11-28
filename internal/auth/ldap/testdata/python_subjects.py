@@ -5,7 +5,7 @@ is emulated in Python; _canonical_subject is loaded from app/ldap_service.py.
 Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
     $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/auth/ldap/testdata/python_subjects.py \
-        app/ldap_service.py internal/auth/ldap/testdata/python_subjects.json
+        "$WEBSSH_PYTHON_ROOT"/app/ldap_service.py internal/auth/ldap/testdata/python_subjects.json
 """
 import importlib.util
 import json
