@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"regexp"
 	"strings"
 
+	"github.com/bifrost0x/webssh/internal/auth"
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/store"
 )
@@ -63,16 +65,30 @@ func randomHex3() string {
 	return hex.EncodeToString(b[:])
 }
 
-var errProvisionFailed = fault.New(fault.Conflict, "GitHub account could not be provisioned")
+var (
+	errProvisionFailed = fault.New(fault.Conflict, "GitHub account could not be provisioned")
+	errFirstAccount    = fault.New(fault.Forbidden, auth.MsgFirstAccountHost)
+)
 
 // provision creates a GitHub-managed account with its identity in one
 // transaction (_auto_provision). The account is never an administrator
 // and has no local password. A taken name moves on to the next candidate;
 // a candidate the account rules refuse (for example a login of one or two
 // characters) does too, where the Python release failed the sign-in.
-func (s *Service) provision(ctx context.Context, p Profile) (Identity, error) {
+// notFirst refuses the account when it would be the first one
+// (errFirstAccount), atomically with the check.
+func (s *Service) provision(ctx context.Context, p Profile, notFirst bool) (Identity, error) {
 	var out Identity
 	err := s.DB.Write(ctx, func(tx *store.Tx) error {
+		if notFirst {
+			has, err := s.Accounts.HasAccountsTx(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if !has {
+				return errFirstAccount
+			}
+		}
 		if _, found, err := byGitHubTx(ctx, tx, p.UserID); err != nil || found {
 			if found {
 				return errProvisionFailed
@@ -94,6 +110,9 @@ func (s *Service) provision(ctx context.Context, p Profile) (Identity, error) {
 		return errProvisionFailed
 	})
 	if err != nil {
+		if errors.Is(err, errFirstAccount) {
+			return Identity{}, errFirstAccount
+		}
 		if fault.Is(err, fault.Conflict) {
 			return Identity{}, errProvisionFailed
 		}

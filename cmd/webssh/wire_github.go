@@ -34,7 +34,8 @@ func githubArea() extension {
 			}
 			svc = &github.Service{DB: sys.db, Ring: sys.ring, Accounts: githubAccounts{sys.accounts},
 				Admins: sys.accounts.Admins, Client: github.Client{HTTP: client}, Binding: httpapi.BrowserBinding,
-				Root: sys.cfg.ApplicationRoot, Production: sys.cfg.Profile == config.ProfileProduction,
+				FirstAccountHost: httpapi.FirstAccountHost(sys.cfg.Origins.AllowedHosts),
+				Root:             sys.cfg.ApplicationRoot, Production: sys.cfg.Profile == config.ProfileProduction,
 				Audit: authAudit{sys.audit}, Logger: sys.log}
 			sys.optional.githubActive = svc.Active
 			sys.optional.githubIdentity = githubCredential(svc)
@@ -86,6 +87,10 @@ func (a githubAccounts) AccountTx(ctx context.Context, tx *store.Tx, userID int6
 
 func (a githubAccounts) ProvisionTx(ctx context.Context, tx *store.Tx, username, manager string) (int64, error) {
 	return a.s.ProvisionTx(ctx, tx, username, manager)
+}
+
+func (a githubAccounts) HasAccountsTx(ctx context.Context, tx *store.Tx) (bool, error) {
+	return a.s.HasAccountsTx(ctx, tx)
 }
 
 func (a githubAccounts) ReleaseTx(ctx context.Context, tx *store.Tx, userID int64, passwordHash string) error {

@@ -196,6 +196,12 @@ func (a *fakeAccounts) ProvisionTx(_ context.Context, _ *store.Tx, name, manager
 	return a.next, nil
 }
 
+func (a *fakeAccounts) HasAccountsTx(context.Context, *store.Tx) (bool, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.accounts) > 0, nil
+}
+
 func (a *fakeAccounts) ReleaseTx(_ context.Context, _ *store.Tx, id int64, _ string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()

@@ -50,11 +50,13 @@ type Account struct {
 // Accounts reads and creates accounts (internal/accounts). ProvisionTx
 // creates an account managed by "github" without a local password; a
 // taken name is fault.Conflict, a name the account rules refuse
-// fault.InvalidValue. ReleaseTx makes a provisioned account local again
+// fault.InvalidValue. HasAccountsTx reports whether any account exists.
+// ReleaseTx makes a provisioned account local again
 // when its identity is removed; an empty hash keeps it without password.
 type Accounts interface {
 	AccountTx(ctx context.Context, tx *store.Tx, userID int64) (Account, error)
 	ProvisionTx(ctx context.Context, tx *store.Tx, username, manager string) (userID int64, err error)
+	HasAccountsTx(ctx context.Context, tx *store.Tx) (bool, error)
 	ReleaseTx(ctx context.Context, tx *store.Tx, userID int64, passwordHash string) error
 }
 

@@ -105,7 +105,13 @@ func (s *Service) completeLogin(w http.ResponseWriter, r *http.Request, f auth.F
 			writeError(w, http.StatusForbidden, msgNotLinked)
 			return
 		}
-		i, err := s.provision(ctx, p)
+		// The first account follows the rule of the bootstrap registration.
+		i, err := s.provision(ctx, p, s.FirstAccountHost != nil && !s.FirstAccountHost(r))
+		if errors.Is(err, errFirstAccount) {
+			s.audit().Security(ctx, slog.LevelWarn, "GITHUB_LOGIN_FAILED", "github_user_id", p.UserID, "reason", "first_account_host")
+			writeError(w, http.StatusForbidden, auth.MsgFirstAccountHost)
+			return
+		}
 		if fault.Is(err, fault.Conflict) {
 			writeError(w, http.StatusConflict, msgProvision)
 			return

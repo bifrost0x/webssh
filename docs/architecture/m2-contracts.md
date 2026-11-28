@@ -1040,7 +1040,11 @@ in their `contract.go`.
   provider's policy (`LDAP_AUTO_PROVISION`; GitHub `auto_provision` with the
   organisation allowlist, which production requires) and is `forbidden`
   otherwise; OIDC never provisions. Link, unlink and provision run after
-  the consumer consumed the step-up grant.
+  the consumer consumed the step-up grant. A GitHub sign-in provisions the
+  first account only through a host `httpapi.FirstAccountHost` trusts,
+  checked in the provisioning transaction (`HasAccountsTx`); LDAP
+  provisioning needs a local break-glass administrator, so it never
+  creates the first account.
 - **Managed accounts.** `accounts.Manager` stays `""`, `ldap` or
   `github` (E01). An LDAP identity makes the account LDAP-managed; a
   GitHub identity only when it provisioned the account

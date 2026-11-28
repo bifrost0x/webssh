@@ -24,6 +24,10 @@ type Service struct {
 	// Binding is the browser binding of the HTTP edge
 	// (httpapi.BrowserBinding); flights are tied to it.
 	Binding BindingFunc
+	// FirstAccountHost reports whether the host of a request may create
+	// the first account (httpapi.FirstAccountHost), as for the bootstrap
+	// registration; nil allows every host.
+	FirstAccountHost HostFunc
 	// Limits rates the sign-in routes ("5 per minute" per client).
 	Limits auth.FactorLimits
 	// Root is APPLICATION_ROOT; the callback path of redirect_uri lies

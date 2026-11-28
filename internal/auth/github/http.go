@@ -38,6 +38,10 @@ type SignIn interface {
 	RenewAfter(w http.ResponseWriter, r *http.Request, reason principal.Reason, change func(ctx context.Context, tx *store.Tx) error) error
 }
 
+// HostFunc reports whether the host of a request may create the first
+// account (httpapi.FirstAccountHost).
+type HostFunc func(*http.Request) bool
+
 // BindingFunc returns the browser binding of a request
 // (httpapi.BrowserBinding).
 type BindingFunc func(*http.Request) string

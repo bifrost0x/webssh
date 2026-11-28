@@ -164,7 +164,7 @@ func (s *Service) Provision(ctx context.Context, id auth.Identity) (int64, error
 	if !cfg.AutoProvision || s.unrestricted(cfg.AutoProvision, cfg.AllowedOrgs) {
 		return 0, fault.New(fault.Forbidden, "")
 	}
-	acc, err := s.provision(ctx, profileOf(id))
+	acc, err := s.provision(ctx, profileOf(id), false)
 	return acc.UserID, err
 }
 

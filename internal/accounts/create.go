@@ -155,11 +155,19 @@ func (s *Service) createTx(ctx context.Context, tx *store.Tx, req CreateRequest,
 // HasAccounts reports whether any account exists; the browser bootstrap
 // is available only while it is false (is_bootstrap_registration_available).
 func (s *Service) HasAccounts(ctx context.Context) (bool, error) {
-	var n int
+	var has bool
 	err := s.DB.Read(ctx, func(tx *store.Tx) error {
-		return tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM accounts_users LIMIT 1)`).Scan(&n)
+		var err error
+		has, err = s.HasAccountsTx(ctx, tx)
+		return err
 	})
-	if err != nil {
+	return has, err
+}
+
+// HasAccountsTx is HasAccounts inside the caller's transaction.
+func (s *Service) HasAccountsTx(ctx context.Context, tx *store.Tx) (bool, error) {
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM accounts_users LIMIT 1)`).Scan(&n); err != nil {
 		return false, fault.Wrap(fault.StorageError, err, "")
 	}
 	return n > 0, nil

@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// msgFirstAccountHost is shown when the first account is registered
-// through a host name that may not create it.
-const msgFirstAccountHost = "The first account can only be created when WebSSH is opened by its IP address or localhost, " +
+// MsgFirstAccountHost is shown when the first account is registered or
+// provisioned through a host name that may not create it.
+const MsgFirstAccountHost = "The first account can only be created when WebSSH is opened by its IP address or localhost, " +
 	"or by a name listed in ALLOWED_HOSTS. The administrator can also be created on the server with webssh create-admin."
 
 // untrustedHost reports a request whose host may not register the first
@@ -45,7 +45,7 @@ func (f *Flow) refuseFirstAccount(w http.ResponseWriter, r *http.Request, bootst
 	if username != "" && f.Audit != nil {
 		f.Audit.Registration(username, false, f.clientIP(r))
 	}
-	f.Pages.Register(w, r, http.StatusForbidden, FormView{Flashes: []Flash{{"error", msgFirstAccountHost}}})
+	f.Pages.Register(w, r, http.StatusForbidden, FormView{Flashes: []Flash{{"error", MsgFirstAccountHost}}})
 	return true
 }
 

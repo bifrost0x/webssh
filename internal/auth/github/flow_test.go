@@ -3,6 +3,7 @@ package github
 import (
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -144,6 +145,36 @@ func TestUnlinkedIdentityAndProvisioning(t *testing.T) {
 	// A second sign-in uses the same account.
 	if code, _ := login("octo-carol"); code != http.StatusFound || e.signIn.signed[1] != id {
 		t.Fatalf("second sign-in: %d %v", code, e.signIn.signed)
+	}
+}
+
+// Provisioning the first account follows the rule of the bootstrap
+// registration: only through a host FirstAccountHost trusts (finding #68).
+func TestFirstProvisionedAccountNeedsATrustedHost(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.configure(map[string]any{"auto_provision": true})
+	var trusted atomic.Bool
+	e.svc.FirstAccountHost = func(*http.Request) bool { return trusted.Load() }
+	login := func(user string) (int, string) {
+		cb := e.authorize(e.do("GET", "/auth/github/login", "b1", none, nil, ""), user)
+		rec := e.do("GET", cb, "b1", none, nil, "")
+		return rec.Code, rec.Body.String()
+	}
+	if code, body := login("octo-carol"); code != http.StatusForbidden || !strings.Contains(body, auth.MsgFirstAccountHost) {
+		t.Fatalf("untrusted host: %d %s", code, body)
+	}
+	if n := len(e.accounts.accounts); n != 0 {
+		t.Fatalf("%d accounts after a refused provisioning", n)
+	}
+	trusted.Store(true)
+	if code, body := login("octo-carol"); code != http.StatusFound {
+		t.Fatalf("trusted host: %d %s", code, body)
+	}
+	// Later accounts are provisioned through any host.
+	trusted.Store(false)
+	if code, body := login("octo-alice"); code != http.StatusFound {
+		t.Fatalf("second account: %d %s", code, body)
 	}
 }
 
