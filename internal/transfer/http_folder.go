@@ -36,7 +36,7 @@ func (m *Manager) FolderHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	defer release()
-	entries, total, err := m.planArchive(ctx, b, r)
+	src, entries, total, err := m.planArchive(ctx, b, r)
 	if err != nil {
 		f := endedBy(ctx, err, opFolder)
 		m.auditOp(r, p.Username, "folder_download", string(f.Code), 0)
@@ -46,7 +46,7 @@ func (m *Manager) FolderHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	attachment(w, folderName(r.path)+".zip", "application/zip")
 	w.WriteHeader(http.StatusOK)
-	n, err := m.writeArchive(ctx, w, b, r, entries, total)
+	n, err := m.writeArchive(ctx, w, b, r, src, entries, total)
 	m.closeDownload(ctx, r, p.Username, "folder_download", n, err)
 }
 
@@ -57,24 +57,28 @@ func (m *Manager) archiveLimit() int64 {
 	return min(m.o.Limits.MaxArchive, m.o.Limits.TempBytesPerUse)
 }
 
-// planArchive checks the folder and its tree. It returns the entries
-// below the folder and their declared size.
-func (m *Manager) planArchive(ctx context.Context, b files.Backend, r *record) ([]files.Entry, int64, error) {
+// planArchive checks the folder and its tree. It returns the pinned
+// folder (pin), the entries below it and their declared size.
+func (m *Manager) planArchive(ctx context.Context, b files.Backend, r *record) (pin, []files.Entry, int64, error) {
+	src, err := pinRoot(ctx, b, r.path)
+	if err != nil {
+		return pin{}, nil, 0, err
+	}
 	st, err := b.Stat(ctx, r.path, false)
 	if err != nil {
-		return nil, 0, err
+		return pin{}, nil, 0, err
 	}
 	if !st.IsDir || st.IsSymlink {
-		return nil, 0, fault.New(fault.FileNotFound, "")
+		return pin{}, nil, 0, fault.New(fault.FileNotFound, "")
 	}
 	limit := m.archiveLimit()
 	if limit < 1 {
-		return nil, 0, errLimit
+		return pin{}, nil, 0, errLimit
 	}
 	bud := &budget{maxBytes: limit, maxMembers: m.o.Limits.MaxMembers, maxDepth: m.o.Limits.MaxDepth}
 	entries, err := bud.tree(ctx, b, r.path)
 	if err != nil {
-		return nil, 0, err
+		return pin{}, nil, 0, err
 	}
 	var total int64
 	for _, e := range entries {
@@ -82,7 +86,7 @@ func (m *Manager) planArchive(ctx context.Context, b files.Backend, r *record) (
 			total += e.Size
 		}
 	}
-	return entries, total, nil
+	return src, entries, total, nil
 }
 
 // folderName is the top directory of the archive.
@@ -117,7 +121,7 @@ func (c *counter) Write(p []byte) (int, error) {
 
 // writeArchive writes the archive (deflate, as the Python release did)
 // and returns the bytes of file content it read.
-func (m *Manager) writeArchive(ctx context.Context, w http.ResponseWriter, b files.Backend, r *record, entries []files.Entry, total int64) (int64, error) {
+func (m *Manager) writeArchive(ctx context.Context, w http.ResponseWriter, b files.Backend, r *record, src pin, entries []files.Entry, total int64) (int64, error) {
 	limit := m.archiveLimit()
 	out := &counter{w: w, c: m.conn(w), limit: limit}
 	zw := zip.NewWriter(out)
@@ -138,6 +142,9 @@ func (m *Manager) writeArchive(ctx context.Context, w http.ResponseWriter, b fil
 				return read, err
 			}
 			continue
+		}
+		if err := src.check(ctx, path.Dir(e.Path)); err != nil {
+			return read, err
 		}
 		n, err := m.archiveFile(ctx, zw, b, e, name, buf, limit-read, func(k int64) { pg.update(read+k, -1, "") })
 		read += n
