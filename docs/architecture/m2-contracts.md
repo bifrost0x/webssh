@@ -846,6 +846,7 @@ apart from the M1 catalog.
 | `OPERATION_FAILED` | 502 | The file operation failed. |
 | `OUTCOME_UNKNOWN` | 502 | The outcome of the operation is unknown. Reload to check. |
 | `MODE_MISMATCH` | 409 | The permissions were not applied as requested. |
+| `UNSAFE_PATH` | 409 | A folder on this path can be changed by another user. Permissions are not changed. |
 | `EXPIRED` | 409 | The preview has expired. Start again. |
 | `EDIT_CONFLICT` | 409 | The file changed since it was opened. |
 | `EDIT_ENCODING_UNSUPPORTED` | 400 | The text cannot be saved in the file's encoding. |
@@ -1757,6 +1758,11 @@ every request.
   deepest up, within 300 seconds; it stops at the first object or parent
   whose state differs (`METADATA_CHANGED`), keeps what was changed and is
   never retried. A reopened source is `METADATA_CHANGED`.
+- Every folder above a planned object, inside the tree too, follows the
+  safe-path rule: not writable by group or others without the sticky bit,
+  owned by root or by `PermSource.LoginUID` (the owner of the login
+  directory). Otherwise, or when the server reports no owner, the scan
+  stops with `UNSAFE_PATH` before any change.
 - A single change (`permissions.set`) needs the metadata token of its
   inspection (`permissions.get`, 60 seconds, HMAC with a key held only
   in memory); a mismatch after the change is `MODE_MISMATCH` with

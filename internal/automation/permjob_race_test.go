@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 	"io/fs"
 	"net"
@@ -35,6 +36,18 @@ func (p raceSource) Lstat(ctx context.Context, path string) (PermEntry, error) {
 		out.UID, out.GID = &uid, &gid
 	}
 	return out, nil
+}
+
+func (p raceSource) LoginUID(ctx context.Context) (uint32, error) {
+	home, err := p.b.Home(ctx)
+	if err != nil {
+		return 0, err
+	}
+	e, err := p.b.Stat(ctx, home, false)
+	if err != nil || e.Owner == nil {
+		return 0, errors.Join(errors.New("no owner"), err)
+	}
+	return e.Owner.UID, nil
 }
 
 func (p raceSource) Children(ctx context.Context, dir string, fn func(string) error) error {
@@ -274,5 +287,65 @@ func TestPermissionJobDoesNotFollowSwappedParent(t *testing.T) {
 				t.Errorf("the job changed /etc/shadow outside the tree to %o", fi.Mode().Perm())
 			}
 		})
+	}
+}
+
+// Over a real SFTP server, a group-writable folder above the tree stops
+// the scan with UNSAFE_PATH and nothing changes (finding #45).
+func TestPermissionJobRefusesGroupWritableParentOverSFTP(t *testing.T) {
+	dir, err := os.MkdirTemp(".", ".permsafe-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	root, err := filepath.Abs(dir)
+	if err == nil {
+		root, err = filepath.EvalSymlinks(root)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root+"/srv/up", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(root+"/srv/up/f", []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(root+"/srv", 0o775); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	b, err := sftp.Open(ctx, chmodProxy(t, func(string, string) {}), sftp.Options{ChmodEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	j, err := NewPermissionJobs(PermOptions{Sources: raceSources{b}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = j.Shutdown(context.Background()) }()
+	c := PermCaller{P: principaltest.User(5), Peer: 1}
+	const sid = "sftp-quick:hx"
+	st, err := j.Prepare(ctx, c, PermRequest{SourceID: sid, Paths: []string{root + "/srv/up"}, Recursive: true, FileMode: "644", DirMode: "755"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := jsonMember(st, "job_id")
+	for range 500 {
+		if st, err = j.Get(ctx, c, sid, id); err != nil {
+			t.Fatal(err)
+		}
+		if s := jsonMember(st, "state"); s != permScanning {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if jsonMember(st, "state") != permFailed || jsonMember(st, "code") != "UNSAFE_PATH" {
+		t.Fatalf("job %s", st)
+	}
+	if fi, err := os.Stat(root + "/srv/up/f"); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("the file changed: %v %v", fi.Mode(), err)
 	}
 }

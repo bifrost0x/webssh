@@ -252,3 +252,59 @@ func TestPermissionSingleChangeNeedsTheInspectedState(t *testing.T) {
 		t.Fatalf("audit %v", e.audit.events)
 	}
 }
+
+// A permission job runs only below folders nobody else can rename: every
+// folder above a planned object must not be group- or world-writable
+// without the sticky bit and must belong to root or the account the
+// source signed in as (the safe-path rule of sudo and OpenSSH, finding
+// #45). Otherwise another local user could swap a folder for a link
+// between the check and the change.
+func TestPermissionJobRefusesUnsafeAncestors(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		target string
+		setup  func(tr *permTree)
+	}{
+		{"group-writable ancestor", "/work/sub", func(tr *permTree) { tr.nodes["/work"] = 0o040775 }},
+		{"world-writable ancestor", "/work/sub", func(tr *permTree) { tr.nodes["/work"] = 0o040757 }},
+		{"ancestor of another user", "/work/sub", func(tr *permTree) { tr.uids["/work"] = 2000 }},
+		{"group-writable folder inside the tree", "/work/sub", func(tr *permTree) { tr.nodes["/work/sub"] = 0o040770 }},
+		{"root of another user", "/work/sub", func(tr *permTree) { tr.uids["/"] = 2000 }},
+		{"login user unknown", "/work/sub", func(tr *permTree) { tr.login = nil }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newPermEnv(t)
+			c.setup(e.tree)
+			id := e.prepare(t, true, c.target)
+			st := e.wait(t, id, permReady, permFailed)
+			if jsonMember(st, "state") != permFailed || jsonMember(st, "code") != string(fault.UnsafePath) ||
+				!strings.Contains(jsonMember(st, "error"), "another user") || len(e.tree.chmods) != 0 {
+				t.Fatalf("%s", st)
+			}
+		})
+	}
+}
+
+func TestPermissionJobAcceptsSafeAncestors(t *testing.T) {
+	t.Parallel()
+	for name, setup := range map[string]func(tr *permTree){
+		"sticky world-writable ancestor": func(tr *permTree) { tr.nodes["/work"] = 0o041777 },
+		"ancestor of root":               func(tr *permTree) { tr.uids["/work"] = 0 },
+		// A writable folder that holds nothing of the plan only has its
+		// own mode changed, through its unchanged parents.
+		"empty world-writable target": func(tr *permTree) {
+			tr.nodes["/work/sub"] = 0o040777
+			delete(tr.nodes, "/work/sub/c.txt")
+		},
+	} {
+		e := newPermEnv(t)
+		setup(e.tree)
+		id := e.prepare(t, true, "/work/sub")
+		if st := e.wait(t, id, permReady, permFailed); jsonMember(st, "state") != permReady {
+			t.Fatalf("%s: %s", name, st)
+		}
+	}
+}

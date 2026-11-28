@@ -83,6 +83,7 @@ type permJob struct {
 	currentDirs          map[string]int
 	plan                 []planItem
 	guards               map[string]permSnapshot
+	loginUID             uint32             // PermSource.LoginUID at the scan
 	cancel               context.CancelFunc // of the running scan or apply
 	cancelled            bool
 }
