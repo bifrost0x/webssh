@@ -28,8 +28,17 @@
     const PANELS = DEFAULTS.map(item => item.id);
 
     const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
-    // Match 14px at 60fps, without slowing down on busy renderers or jumping after a pause.
-    const dragScrollDistance = elapsedMs => 840 * clamp(elapsedMs, 0, 100) / 1000;
+    // 14px per 60fps frame for the first 400ms at the edge, then the speed grows by that much every
+    // 500ms up to six times, so a board of many hosts stays quick to cross. The distance integrates
+    // the speed over the frame, independent of the frame rate; a stalled frame counts as 100ms.
+    const dragScrollTravel = heldMs => {
+        const ramp = clamp(heldMs - 400, 0, 2500);
+        return .84 * (Math.min(heldMs, 400) + ramp + ramp * ramp / 1000 + 6 * Math.max(0, heldMs - 2900));
+    };
+    const dragScrollDistance = (elapsedMs, heldMs = 0) => {
+        const held = Math.max(0, heldMs);
+        return dragScrollTravel(held + clamp(elapsedMs, 0, 100)) - dragScrollTravel(held);
+    };
     const defaults = () => DEFAULTS.map(item => ({...item}));
 
     /** Accept a stored layout, drop what is unknown and append new panels. */
@@ -287,15 +296,17 @@
             let pointerY = event.clientY;
             let scrolling = 0;
             let previousFrame = win.performance.now();
+            let heldAtEdge = 0;
             // Near the top or bottom edge the overview scrolls, so a panel can travel the whole board.
             const scroller = board.closest('#connectionOverview') || doc.scrollingElement;
             const autoScroll = timestamp => {
-                const distance = dragScrollDistance(timestamp - previousFrame);
+                const elapsed = timestamp - previousFrame;
                 previousFrame = timestamp;
                 const frame = scroller.getBoundingClientRect();
                 const edge = 70;
-                const speed = pointerY < frame.top + edge ? -distance : pointerY > frame.bottom - edge ? distance : 0;
-                if (speed) { scroller.scrollTop += speed; place(pointerX, pointerY); }
+                const direction = pointerY < frame.top + edge ? -1 : pointerY > frame.bottom - edge ? 1 : 0;
+                if (direction) { scroller.scrollTop += direction * dragScrollDistance(elapsed, heldAtEdge); place(pointerX, pointerY); }
+                heldAtEdge = direction ? heldAtEdge + clamp(elapsed, 0, 100) : 0;
                 scrolling = win.requestAnimationFrame(autoScroll);
             };
             scrolling = win.requestAnimationFrame(autoScroll);
