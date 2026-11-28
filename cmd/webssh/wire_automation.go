@@ -93,15 +93,12 @@ var (
 )
 
 // automationKeys binds a run to the public key of each stored key it
-// signs in with: replacing the key changes it.
+// signs in with: replacing the key changes it. The vault opens each
+// sealed key once for this, not on every approval check.
 type automationKeys struct{ vault *vault.Service }
 
 func (k automationKeys) PublicKey(ctx context.Context, owner int64, keyID string) ([]byte, error) {
-	s, err := k.vault.Signer(ctx, owner, keyID)
-	if err != nil {
-		return nil, err
-	}
-	return s.PublicKey().Marshal(), nil
+	return k.vault.PublicKey(ctx, owner, keyID)
 }
 
 // automationTrust is has_trusted_key: a key that is not revoked applies

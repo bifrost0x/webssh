@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json/jsontext"
+	"errors"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/store"
@@ -59,7 +60,9 @@ func (s *Schedules) Tick(ctx context.Context) error {
 func (s *Schedules) dispatch(ctx context.Context, r scheduleRow) {
 	now := s.o.Now()
 	if err := s.validateApproval(ctx, r.UserID, r.Approval); err != nil {
-		s.needsReview(ctx, r, r.Revision, 1)
+		if !transientFailure(ctx, err) {
+			s.needsReview(ctx, r, r.Revision, 1)
+		}
 		return
 	}
 	future, err := NextDue(r.Cron, r.Zone, now)
@@ -132,6 +135,19 @@ func (s *Schedules) dispatch(ctx context.Context, r scheduleRow) {
 		}
 		return err
 	})
+}
+
+// transientFailure reports a failed approval check that says nothing
+// about the approval: the tick ran out of time, or storage failed. The
+// slot stays due and a later tick checks it again.
+func transientFailure(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return true
+	}
+	if _, ok := errors.AsType[*storageError](err); ok {
+		return true
+	}
+	return fault.Is(err, fault.StorageError)
 }
 
 // needsReview pauses a schedule whose approval failed.

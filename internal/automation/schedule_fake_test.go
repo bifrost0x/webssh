@@ -26,6 +26,8 @@ type fakeWorkflows struct {
 	started  []ScheduledRun
 	startErr error
 	manual   []func(context.Context) error
+	// current, when set, answers Current instead of the comparison.
+	current func(context.Context) error
 }
 
 func newFakeWorkflows() *fakeWorkflows {
@@ -48,9 +50,12 @@ func (f *fakeWorkflows) Review(_ context.Context, _ principal.Principal, rq json
 	return Snapshot{Book: f.book, Targets: slices.Clone(f.targets), KeyDigests: f.keys}, nil
 }
 
-func (f *fakeWorkflows) Current(_ context.Context, _ int64, s Snapshot) error {
+func (f *fakeWorkflows) Current(ctx context.Context, _ int64, s Snapshot) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.current != nil {
+		return f.current(ctx)
+	}
 	if !sameJSON(s.Book, f.book) || len(s.Targets) != len(f.targets) {
 		return fault.New(fault.PreviewChanged, "")
 	}
