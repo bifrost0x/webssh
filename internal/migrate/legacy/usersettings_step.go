@@ -16,6 +16,10 @@ import (
 // without a file. Defaults that depend on settings_default_generation are
 // written explicitly (D-01). The notepad (A05) and the workspace presets
 // (A06) have their own steps.
+//
+// Version 2 also grants every account the one-time upgrade notice
+// (settings.NoticeUpgrade) in settings_notices; the stored settings stay
+// exactly those of settings.json.
 type userSettingsStep struct {
 	users []userSettings
 }
@@ -30,7 +34,7 @@ type userSettings struct {
 
 func (*userSettingsStep) Entity() string { return "E25" }
 
-func (*userSettingsStep) Version() int { return 1 }
+func (*userSettingsStep) Version() int { return 2 }
 
 func (*userSettingsStep) accountScoped() bool { return true }
 
@@ -91,6 +95,9 @@ func (s *userSettingsStep) Write(ctx context.Context, tx *store.Tx, _ Sealer) er
 		if u.result, err = settings.ImportUser(ctx, tx, u.id, u.doc, u.generation); err != nil {
 			return &StepError{UserID: u.id, Record: "settings.json", Err: err}
 		}
+		if err := settings.GrantNotice(ctx, tx, u.id, settings.NoticeUpgrade); err != nil {
+			return &StepError{UserID: u.id, Err: err}
+		}
 	}
 	return nil
 }
@@ -100,12 +107,15 @@ func (s *userSettingsStep) Verify(ctx context.Context, tx *store.Tx, _ Opener) e
 		if err := settings.VerifyUser(ctx, tx, u.id, u.doc, u.generation); err != nil {
 			return &StepError{UserID: u.id, Record: "settings.json", Err: err}
 		}
+		if err := settings.VerifyNotice(ctx, tx, u.id, settings.NoticeUpgrade); err != nil {
+			return &StepError{UserID: u.id, Err: err}
+		}
 	}
 	return nil
 }
 
 func (s *userSettingsStep) Report() StepReport {
-	r := StepReport{Entity: "E25", Version: 1}
+	r := StepReport{Entity: "E25", Version: 2}
 	for _, u := range s.users {
 		if u.doc != nil {
 			r.Read++
