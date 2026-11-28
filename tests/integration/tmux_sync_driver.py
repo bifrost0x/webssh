@@ -1,12 +1,40 @@
 import re, tempfile, hashlib
-import ast, base64, json, os, pty, select, shlex, subprocess, sys, time, uuid
+import base64, json, os, pty, select, shlex, subprocess, sys, time, uuid
 from pathlib import Path
 root = Path(__file__).resolve().parents[2]
-tree = ast.parse((root / 'app/session_directory.py').read_text())
-nodes = [n for n in tree.body if isinstance(n, ast.Assign) or
-         isinstance(n, ast.FunctionDef) and n.name in ('probe_command', 'parse_directory')]
-ns = {'shlex': shlex, 're': re}
-exec(compile(ast.Module(body=nodes, type_ignores=[]), 'directory-probe', 'exec'), ns)
+# The directory probe of the server (internal/files/sftp/directory.go),
+# read from its source so the test follows the server's own script.
+_go = (root / 'internal/files/sftp/directory.go').read_text()
+_PROBE = re.search(r'(?s)const directoryProbe = `(.*?)`', _go)[1]
+_TMUX = re.search(r'(?s)const tmuxShell = `(.*?)`', _go)[1]
+
+
+def probe_command(session):
+    select = _TMUX.replace('__TMUX_TARGET__', shlex.quote('=' + session['tmux_session_name'] + ':'), 1)
+    return 'exec sh -c ' + shlex.quote(_PROBE.replace('__DIRECTORY_SELECT__', select, 1))
+
+
+def parse_directory(payload):
+    """The fields of the answer, as ParseDirectory reads them."""
+    parts = payload.decode('utf-8', errors='strict').split('\0')
+    if len(parts) not in {6, 7, 8} or parts[0] != 'webssh-directory' or parts[-1]:
+        raise ValueError('Invalid directory response')
+    pid, ready, shell, path = parts[1:5]
+    if not pid.isdigit() or ready not in {'0', '1'} or not path.startswith('/'):
+        raise ValueError('Unsupported directory')
+    result = {'path': path, 'shell_ready': ready == '1', 'shell_id': pid, 'shell': shell}
+    if len(parts) >= 7 and parts[5]:
+        result['bracketed_paste'] = parts[5] == '1'
+    if len(parts) == 8 and shell == 'bash':
+        marker = re.fullmatch(r'([0-9]+):([1-9][0-9]{0,14}):([pcb])', parts[6])
+        if parts[6] and not marker:
+            raise ValueError('Invalid prompt marker')
+        if marker and marker[1] == pid:
+            result['prompt'] = {'generation': int(marker[2]), 'phase': marker[3]}
+    return result
+
+
+ns = {'probe_command': probe_command, 'parse_directory': parse_directory}
 # Unsupported/protected configurations must be rejected before contacting tmux.
 activation = shlex.quote(str(root / 'static/shell/tmux-sync.bash'))
 for protection in ('readonly PS1', 'export PS1', 'shopt -u promptvars',

@@ -68,19 +68,22 @@ directory_parent=$(ps -o ppid= -p "$$" | tr -d ' ')
 directory_pid=$(ps -o pid=,tty= --ppid "$directory_parent" | awk '$2 != "?" {print $1}')
 `
 
+// tmuxShell selects the active pane of the persistent tmux session
+// __TMUX_TARGET__ (tests/integration/tmux_sync_driver.py reads it too).
+const tmuxShell = `directory_pane=$(tmux display-message -p -t __TMUX_TARGET__ '#{?pane_in_mode,0,#{?alternate_on,0,#{pane_pid}}}:#{bracket_paste_flag}:#{@webssh_sync_v1}') || exit 1
+directory_pid=${directory_pane%%:*}
+directory_rest=${directory_pane#*:}
+directory_marker=${directory_rest#*:}
+directory_paste=${directory_rest%%:*}
+case "$directory_paste" in 0|1) ;; "") unset directory_paste;; *) exit 1;; esac
+[ "$directory_pid" != 0 ] || exit 1`
+
 // DirectoryCommand returns the probe for a session; tmuxSession is the
 // name of the persistent tmux session, "" for a plain shell.
 func DirectoryCommand(tmuxSession string) string {
 	sel := directShell
 	if tmuxSession != "" {
-		sel = "directory_pane=$(tmux display-message -p -t " + remotecmd.Quote("="+tmuxSession+":") +
-			" '#{?pane_in_mode,0,#{?alternate_on,0,#{pane_pid}}}:#{bracket_paste_flag}:#{@webssh_sync_v1}') || exit 1\n" +
-			"directory_pid=${directory_pane%%:*}\n" +
-			"directory_rest=${directory_pane#*:}\n" +
-			"directory_marker=${directory_rest#*:}\n" +
-			"directory_paste=${directory_rest%%:*}\n" +
-			"case \"$directory_paste\" in 0|1) ;; \"\") unset directory_paste;; *) exit 1;; esac\n" +
-			"[ \"$directory_pid\" != 0 ] || exit 1"
+		sel = strings.Replace(tmuxShell, "__TMUX_TARGET__", remotecmd.Quote("="+tmuxSession+":"), 1)
 	}
 	return "exec sh -c " + remotecmd.Quote(strings.Replace(directoryProbe, "__DIRECTORY_SELECT__", sel, 1))
 }
