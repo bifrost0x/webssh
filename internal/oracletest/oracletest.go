@@ -110,7 +110,7 @@ func release(t testing.TB) Release {
 	}
 	abs, err := filepath.Abs(python)
 	if err == nil {
-		_, err = os.Stat(abs)
+		_, err = os.Stat(abs) // #nosec G703 -- the developer's own interpreter setting, in tests only
 	}
 	if err != nil {
 		t.Fatalf("oracletest: %s=%s needs the Python release (%s): %v", ModeEnv, CurrentMode(t), PythonEnv, err)
@@ -121,7 +121,7 @@ func release(t testing.TB) Release {
 			t.Fatalf("oracletest: %s: %v", RootEnv, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(root, "app", "__init__.py")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "app", "__init__.py")); err != nil { // #nosec G703 -- the developer's own checkout setting, in tests only
 		t.Fatalf("oracletest: no Python release in %s (%s): %v", root, RootEnv, err)
 	}
 	return Release{Python: abs, Root: root}
