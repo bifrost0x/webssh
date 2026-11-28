@@ -116,9 +116,10 @@ func (s *Service) freeze(ctx context.Context, c *credentials, p principal.Princi
 
 // bindsSavedSecret reports the mutations that let the server send an
 // existing saved secret to a destination chosen in this request; they need
-// a step-up, as reading the secret would.
+// a step-up, as reading the secret would. A new resource created with a
+// saved password (new in 3.4) is one of them.
 func bindsSavedSecret(method string, data jsontext.Value) bool {
-	if method == MethodAssign {
+	if method == MethodAssign || method == MethodCreateForResource {
 		v, _ := field(data, "credential_id")
 		return truthy(v)
 	}
@@ -184,6 +185,8 @@ func (s *Service) Apply(ctx context.Context, method, rid string, data jsontext.V
 			c.audit(ctx, p.UserID, method)
 		}
 		return out, err
+	case (method == MethodCreate || method == MethodAssign) && truthy(resID) && withResource(body):
+		result, err = s.applyWithResource(ctx, c, p, revision, token, mutation)
 	case (method == MethodCreate || method == MethodAssign) && truthy(resID):
 		err = s.applyAssignment(ctx, c, p, revision, token, mutation)
 	default:
@@ -278,38 +281,44 @@ func (s *Service) applyAssignment(ctx context.Context, c *credentials, p princip
 	if _, err := c.intents.lookup(p, revision, token, true); err != nil {
 		return err
 	}
-	method, _ := field(mutation, "method")
 	return s.mutate(ctx, p.UserID, func(_ *store.Tx, d *credDoc) error {
-		previous, ok := d.assignment(r.ID)
-		if !ok {
-			previous = nil
-		}
-		if !sameJSON(assignmentJSON(previous), assignmentJSON(in.prior)) {
-			return fault.New(fault.PreviewChanged, "")
-		}
-		credID, _ := field(mutation, "credential_id")
-		if string(method) == `"create"` {
-			rec, err := s.createNamed(p.UserID, d, mutation)
-			if err != nil {
-				return err
-			}
-			credID = pyjson.String(rec.ID)
-		}
-		if credID.Kind() == 'n' {
-			d.unassign(r.ID)
-			return nil
-		}
-		if confirm, _ := field(mutation, "confirm_target"); confirm.Kind() != 't' || !r.Password {
-			return fault.New(fault.ConfirmationRequired, "")
-		}
-		rec, err := record(d, credID)
+		return s.assignTo(p, d, r, mutation, in.prior)
+	})
+}
+
+// assignTo applies an assign or create mutation to the resource r in d:
+// the stored assignment must still be prior, the one the intent saw.
+func (s *Service) assignTo(p principal.Principal, d *credDoc, r Resource, mutation jsontext.Value, prior *Assignment) error {
+	previous, ok := d.assignment(r.ID)
+	if !ok {
+		previous = nil
+	}
+	if !sameJSON(assignmentJSON(previous), assignmentJSON(prior)) {
+		return fault.New(fault.PreviewChanged, "")
+	}
+	method, _ := field(mutation, "method")
+	credID, _ := field(mutation, "credential_id")
+	if string(method) == `"create"` {
+		rec, err := s.createNamed(p.UserID, d, mutation)
 		if err != nil {
 			return err
 		}
-		if previous != nil && previous.CredentialID == rec.ID && previous.Fingerprint == r.Fingerprint {
-			return nil
-		}
-		d.assign(Assignment{ResourceID: r.ID, CredentialID: rec.ID, Fingerprint: r.Fingerprint, Generation: randomHex(32)})
+		credID = pyjson.String(rec.ID)
+	}
+	if credID.Kind() == 'n' {
+		d.unassign(r.ID)
 		return nil
-	})
+	}
+	if confirm, _ := field(mutation, "confirm_target"); confirm.Kind() != 't' || !r.Password {
+		return fault.New(fault.ConfirmationRequired, "")
+	}
+	rec, err := record(d, credID)
+	if err != nil {
+		return err
+	}
+	if previous != nil && previous.CredentialID == rec.ID && previous.Fingerprint == r.Fingerprint {
+		return nil
+	}
+	d.assign(Assignment{ResourceID: r.ID, CredentialID: rec.ID, Fingerprint: r.Fingerprint, Generation: randomHex(32)})
+	return nil
 }

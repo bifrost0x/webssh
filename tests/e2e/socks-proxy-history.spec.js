@@ -4,7 +4,7 @@ const {login, openWorkspace, installSshConnectTrap}=require('./helpers');
 async function rememberProxyConnection(page,authType='none') {
     const proxy=await page.evaluate(async authType=>{
         const result=await new Promise(resolve=>window.socket.emit('save_socks_proxy',{
-            name:'History proxy '+authType,host:'history-proxy.example',port:1080,
+            name:'History proxy '+authType+' '+crypto.randomUUID().slice(0,8),host:'history-proxy.example',port:1080,
             auth_type:authType,username:authType==='password'?'proxy-user':'',remote_dns:true,
         },resolve));
         if (!result.success) throw new Error(result.error);

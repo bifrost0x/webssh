@@ -491,6 +491,129 @@ test('compact profile inspector retains persistence while advanced options start
     }
 });
 
+test('the host editor sends one save at a time and adopts a host created while the form changed', async () => {
+    const fields = {};
+    const field = (value = '') => ({value, checked: false, dataset: {}, classList: {contains: () => false}});
+    for (const id of ['profileEditorPostConnectMode', 'profileEditorName', 'profileEditorGroup', 'profileEditorHost',
+        'profileEditorPort', 'profileEditorUsername', 'profileEditorAuthType', 'profileEditorKeySelect',
+        'profileEditorJumpHostSelect', 'profileEditorPlatformIcon', 'profileEditorRole', 'profileEditorView']) fields[id] = field();
+    fields.profileEditorPostConnectMode.value = 'none';
+    fields.profileEditorAuthType.value = 'password';
+    fields.profileEditorName.value = 'Once';
+    const buttons = [{disabled: false, setAttribute() {}, removeAttribute() {}}, {disabled: false, setAttribute() {}, removeAttribute() {}}];
+    const sent = [];
+    const manager = loadProfileManager({document: {getElementById: id => fields[id] || null, querySelectorAll: () => buttons}});
+    manager.__testWindow.socket = {emit: (event, payload, ack) => sent.push([event, payload, ack])};
+    let snapshot = 'before';
+    manager.editorSnapshot = () => snapshot;
+    manager.herdrEditorPayload = () => null;
+    manager.profiles = [];
+    manager.editingProfileId = null;
+
+    await manager.saveFromEditor();
+    await manager.saveFromEditor({connect: true});
+    assert.equal(sent.length, 1, 'a second click while the save is on its way sends nothing');
+    assert.deepEqual(buttons.map(button => button.disabled), [true, true]);
+
+    // Another render changed the form before the answer arrived: the
+    // editor stays open, but the next save updates the created host.
+    snapshot = 'after';
+    await sent[0][2]({success: true, profile: {id: 'created-1', name: 'Once'}});
+    assert.deepEqual(buttons.map(button => button.disabled), [false, false]);
+    assert.equal(manager.editingProfileId, 'created-1');
+    await manager.saveFromEditor();
+    assert.equal(sent.length, 2);
+    assert.equal(sent[1][1].id, 'created-1');
+});
+
+test('a new host with a saved password is confirmed before anything is saved', async () => {
+    const fields = {};
+    const field = (value = '') => ({value, checked: false, dataset: {}, classList: {contains: () => false}});
+    for (const id of ['profileEditorPostConnectMode', 'profileEditorName', 'profileEditorGroup', 'profileEditorHost',
+        'profileEditorPort', 'profileEditorUsername', 'profileEditorAuthType', 'profileEditorKeySelect',
+        'profileEditorJumpHostSelect', 'profileEditorPlatformIcon', 'profileEditorRole', 'profileEditorView',
+        'profileEditorCredential']) fields[id] = field();
+    fields.profileEditorPostConnectMode.value = 'none';
+    fields.profileEditorAuthType.value = 'password';
+    fields.profileEditorName.value = 'Bound';
+    fields.profileEditorHost.value = 'bound.example';
+    fields.profileEditorUsername.value = 'u';
+    fields.profileEditorCredential.value = 'saved-1';
+    const calls = [];
+    const manager = loadProfileManager({document: {getElementById: id => fields[id] || null, querySelectorAll: () => []}});
+    const win = manager.__testWindow;
+    win.socket = {emit: (event, payload, ack) => { calls.push(['emit', event]); ack?.({success: true, profile: {id: 'p1'}}); }};
+    manager.editorSnapshot = () => 'snapshot';
+    manager.herdrEditorPayload = () => null;
+    manager.profiles = [];
+    manager.editingProfileId = null;
+    const cancelled = Object.assign(new Error('Cancelled'), {name: 'AbortError'});
+
+    // Without the one-step create (Python): the confirmation comes first,
+    // and cancelling it saves nothing.
+    win.NativeCredentials = {
+        supports: () => false,
+        authorizeTarget: async id => { calls.push(['authorize', id]); throw cancelled; },
+        mutate: async method => { calls.push(['mutate', method]); return {}; },
+    };
+    await manager.saveFromEditor();
+    assert.deepEqual(calls, [['authorize', 'saved-1']]);
+    assert.equal(manager.profileSavePending, false);
+
+    calls.length = 0;
+    win.NativeCredentials.authorizeTarget = async id => { calls.push(['authorize', id]); };
+    await manager.saveFromEditor();
+    assert.deepEqual(calls.slice(0, 2), [['authorize', 'saved-1'], ['emit', 'save_profile']]);
+
+    // With it (Go): host and assignment in one request; no save_profile.
+    await new Promise(resolve => setImmediate(resolve));
+    manager.editingProfileId = null;
+    calls.length = 0;
+    win.NativeCredentials.supports = feature => feature === 'save_with_assignment';
+    win.NativeCredentials.mutate = async (method, payload) => {
+        calls.push(['mutate', method, payload.credential_id, Object.hasOwn(payload, 'password')]);
+        throw cancelled;
+    };
+    await manager.saveFromEditor();
+    assert.deepEqual(calls, [['mutate', 'create_for_resource', 'saved-1', false]]);
+    assert.equal(manager.profileSavePending, false);
+});
+
+test('an edit that changes the saved password is one request with the one-step save of the server', async () => {
+    const fields = {};
+    const field = (value = '') => ({value, checked: false, dataset: {}, classList: {contains: () => false}});
+    for (const id of ['profileEditorPostConnectMode', 'profileEditorName', 'profileEditorGroup', 'profileEditorHost',
+        'profileEditorPort', 'profileEditorUsername', 'profileEditorAuthType', 'profileEditorKeySelect',
+        'profileEditorJumpHostSelect', 'profileEditorPlatformIcon', 'profileEditorRole', 'profileEditorView',
+        'profileEditorCredential']) fields[id] = field();
+    fields.profileEditorPostConnectMode.value = 'none';
+    fields.profileEditorAuthType.value = 'password';
+    fields.profileEditorName.value = 'Edited';
+    fields.profileEditorHost.value = 'moved.example';
+    fields.profileEditorUsername.value = 'u';
+    fields.profileEditorCredential.value = 'saved-2';
+    fields.profileEditorCredential.dataset.assigned = 'saved-1';
+    const calls = [];
+    const manager = loadProfileManager({document: {getElementById: id => fields[id] || null, querySelectorAll: () => []}});
+    const win = manager.__testWindow;
+    win.socket = {emit: event => calls.push(['emit', event])};
+    manager.editorSnapshot = () => 'snapshot';
+    manager.herdrEditorPayload = () => null;
+    manager.profiles = [{id: 'p1', name: 'Edited', host: 'old.example', port: 22, username: 'u', auth_type: 'password'}];
+    manager.editingProfileId = 'p1';
+    win.NativeCredentials = {
+        supports: feature => feature === 'save_with_assignment',
+        authorizeTarget: async () => calls.push(['authorize']),
+        mutate: async (method, payload) => {
+            calls.push(['mutate', method, payload.resource_id, payload.credential_id, payload.resource.host]);
+            throw Object.assign(new Error('Cancelled'), {name: 'AbortError'});
+        },
+    };
+    await manager.saveFromEditor();
+    assert.deepEqual(calls, [['mutate', 'assign', 'p1', 'saved-2', 'moved.example']]);
+    assert.equal(manager.profileSavePending, false);
+});
+
 test('the host editor loads and saves the role override', async () => {
     const fields = {};
     const field = (value = '') => ({value, checked: false, dataset: {}, classList: {contains: () => false}});
@@ -508,7 +631,11 @@ test('the host editor loads and saves the role override', async () => {
     };
     const sent = [];
     const manager = loadProfileManager({document: {getElementById: id => fields[id] || null}});
-    manager.__testWindow.socket = {emit: (event, payload) => sent.push([event, payload])};
+    // Answered at once: a save still on its way locks the next one.
+    manager.__testWindow.socket = {emit: (event, payload, ack) => {
+        sent.push([event, payload]);
+        ack?.({success: false, error: 'not stored in this test'});
+    }};
     manager.editorSnapshot = () => 'snapshot';
     manager.herdrEditorPayload = () => null;
     manager.profiles = [];

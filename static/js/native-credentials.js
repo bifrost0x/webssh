@@ -73,6 +73,7 @@
                     'Your sign-in session expired. Sign in again before saving.',
                 ],
                 credentials_disabled: ['credentials.disabled', 'Password storage is disabled by the administrator.'],
+                duplicate_name: ['common.nameTaken', 'This name is already in use. Choose another name.'],
                 step_up_required: [
                     'credentials.identityFailed',
                     'Identity verification failed. Check your WebSSH account password or verification code and try again.',
@@ -82,7 +83,10 @@
                 'credentials.failed',
                 'Passwords could not be saved. Check your authorization and try again.',
             ];
-            const error = new Error(t(message[0], message[1]));
+            // A resource saved with its password names what is wrong with it.
+            const text =
+                data.code === 'validation_error' && typeof data.error === 'string' ? data.error : t(message[0], message[1]);
+            const error = new Error(text);
             error.code = data.code;
             throw error;
         }
@@ -591,6 +595,7 @@
             }
             save.disabled = true;
             Object.values(fields).forEach(input => (input.disabled = true));
+            let taken = false;
             const payload = { name: fields.name.value.trim(), username: fields.username.value.trim() };
             if (fields.password.value) payload.password = fields.password.value;
             try {
@@ -599,11 +604,13 @@
                 fields.password.value = '';
                 if (active()) onSaved(item.id || result.credentials?.find(record => !knownIds.has(record.id))?.id);
             } catch (error) {
-                if (error.name !== 'AbortError') status.textContent = error.message;
+                if (error.code === 'duplicate_name') taken = true;
+                else if (error.name !== 'AbortError') status.textContent = error.message;
             } finally {
                 save.disabled = false;
                 Object.values(fields).forEach(input => (input.disabled = false));
             }
+            if (taken) window.ConnectionValidation?.fieldError(fields.name, t('common.nameTaken', 'This name is already in use. Choose another name.'));
         };
         container.append(form);
         form.dataset.initial = JSON.stringify(
@@ -1418,7 +1425,39 @@
             )) === true
         );
     }
+    // Asks before a save whether the password assigned to a saved resource
+    // may be replaced, so that the question never comes after the resource
+    // was already changed. True when nothing would be replaced.
+    async function confirmAssignmentChange(resourceId, credentialId, newName) {
+        const resource = state?.profiles?.find(item => item.id === resourceId);
+        const oldId = resource?.credential_id;
+        if (!oldId || (credentialId && credentialId === oldId)) return true;
+        return confirmReplacements([
+            {
+                resource,
+                oldName:
+                    state?.credentials?.find(item => item.id === oldId)?.name ||
+                    t('credentials.unavailableAssignment', 'Assigned password unavailable'),
+                newName: newName || state?.credentials?.find(item => item.id === credentialId)?.name || credentialId,
+            },
+        ]);
+    }
+    // Whether a saved password of the last state has this name (trimmed,
+    // ignoring case), to tell which name a duplicate_name refusal means.
+    function passwordNameTaken(name) {
+        const key = value => String(value || '').trim().toLowerCase().replaceAll('ß', 'ss');
+        return (state?.credentials || []).some(item => key(item.name) === key(name));
+    }
+    // Optional server features the last state announced (save_with_assignment:
+    // a resource is created or edited together with its password in one
+    // request).
+    function supports(feature) {
+        return state?.[feature] === true;
+    }
     window.NativeCredentials = {
+        supports,
+        passwordNameTaken,
+        confirmAssignmentChange,
         assignmentReady,
         reviewAssignment,
         api,

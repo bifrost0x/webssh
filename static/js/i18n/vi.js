@@ -1345,6 +1345,8 @@ window.i18n.registerLocales({
         'profiles.groupRemovalHint': 'Việc di chuyển sẽ xóa nhóm trống. Bản thân kết nối không bị xóa.',
         'profiles.moveAndRemoveGroup': 'Di chuyển kết nối',
         'profiles.saveFailed': 'Không thể lưu kết nối.',
+        'profiles.duplicateName': 'Đã có một máy chủ được lưu với tên này. Hãy chọn tên khác.',
+        'common.nameTaken': 'Tên này đã được sử dụng. Hãy chọn tên khác.',
         'commandSets.none': 'Không dùng',
         'commandSets.create': 'Tạo bộ lệnh',
         'commandSets.edit': 'Sửa bộ lệnh',

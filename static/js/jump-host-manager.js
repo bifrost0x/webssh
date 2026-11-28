@@ -231,27 +231,63 @@ window.JumpHostManager = {
         this.pending = true;
         this.renderEditorState();
         this.renderList();
-        if (credential?.password && !this.editingId) {
+        // Binding a saved password asks for the account confirmation
+        // before anything is stored; cancelling it stores nothing.
+        const bindsSaved = Boolean(credential?.credential_id);
+        const nameTaken = () => {
+            const input = credential?.password && window.NativeCredentials?.passwordNameTaken?.(credential.name)
+                ? 'jhCredentialName' : 'jhNameInput';
+            window.ConnectionValidation?.fieldError(document.getElementById(input), this.t('common.nameTaken', 'This name is already in use. Choose another name.'));
+        };
+        // With the server's one-step save, a new jump host or an edit and
+        // its password are stored in one request: both or neither.
+        const oneStep = window.NativeCredentials?.supports?.('save_with_assignment');
+        if (credential && (oneStep || (!this.editingId && credential.password))) {
+            let taken = false;
             try {
-                const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind:'jump', resource:payload, ...credential, username, confirm_target:true}, null, current);
-                if (!current()) return;this.upsertJumpHost(result.resource);this.resetEditor();
-            } catch (error) { if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error'); }
-            finally { this.pending=false;this.renderEditorState();this.renderList(); }
+                const result = this.editingId
+                    ? await window.NativeCredentials.mutate(credential.password ? 'create' : 'assign', {...credential, ...(credential.password ? {username} : {}), resource_id: 'jump:' + this.editingId, resource: payload, confirm_target: true}, null, current)
+                    : await window.NativeCredentials.mutate('create_for_resource', {resource_kind: 'jump', resource: payload, ...credential, ...(credential.password ? {username} : {}), confirm_target: true}, null, current);
+                if (!current()) return;
+                this.upsertJumpHost(result.resource);
+                this.resetEditor();
+            } catch (error) {
+                if (error.code === 'duplicate_name') taken = true;
+                else if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error');
+            } finally { this.pending = false; this.renderEditorState(); this.renderList(); }
+            if (taken) nameTaken();
+            return;
+        }
+        // Without it (the Python release): replacing an assigned password and
+        // binding a saved one are confirmed before the record changes.
+        const replacing = Boolean(identity) && Boolean(credential) && credential.credential_id !== null;
+        try {
+            const approved = replacing ? await window.NativeCredentials?.confirmAssignmentChange?.('jump:' + identity, credential.credential_id || null, credential.name || null) : true;
+            if (approved === false || (replacing && !current())) throw Object.assign(new Error('Cancelled'), {name: 'AbortError'});
+            if (bindsSaved) await window.NativeCredentials.authorizeTarget(credential.credential_id, {host: payload.host, port: payload.port, username: payload.username, auth_type: 'password'}, current);
+        } catch (error) {
+            this.pending = false;
+            this.renderEditorState();
+            this.renderList();
+            if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error');
             return;
         }
         window.socket.timeout(15000).emit('save_jump_host', payload, async (error, result) => {
             this.pending = false;
+            let taken = false;
             // A closed or edited form must still leave its disabled pending state.
             try {
             if (error) {
                 this.unknownOutcome = true;
                 window.showNotification?.(this.t('common.saveUnknownTitle', 'Save outcome unknown'), 'error');
                 this.load();
+            } else if (result?.code === 'duplicate_name') {
+                taken = true;
             } else if (result?.success) {
                 if (!current()) return;
                 this.upsertJumpHost(result.jump_host);
                 if (credential) {
-                    try { await window.NativeCredentials.mutate(Object.hasOwn(credential,'credential_id')?'assign':'create',{...credential,username,resource_id:'jump:'+result.jump_host.id,confirm_target:true,target:{host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id}}, null, current); }
+                    try { await window.NativeCredentials.mutate(Object.hasOwn(credential,'credential_id')?'assign':'create',{...credential,username,resource_id:'jump:'+result.jump_host.id,confirm_target:true,target:{host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id}}, null, current, replacing); }
                     catch (error) { if(error.name==='AbortError')return;window.showNotification?.(this.t('credentials.assignmentFailed','Host saved, but password assignment failed. Your password draft is preserved. Review the saved target and try again.'),'error');this.editingId=result.jump_host.id;this.renderEditorState();this.renderList();return; }
                 }
                 if (!current()) return;
@@ -261,6 +297,7 @@ window.JumpHostManager = {
                 this.renderEditorState();
                 this.renderList();
             }
+            if (taken) nameTaken();
         });
     },
 

@@ -10,25 +10,28 @@ import (
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
-// ResourceWriter creates a resource together with its password and removes
-// it again when storing the password fails (provided in cmd/webssh over
-// internal/hosts and internal/files/smb). CreateResource validates the
-// payload as the resource's own save does and returns the stored record.
+// ResourceWriter creates a resource together with its password (provided
+// in cmd/webssh over internal/hosts and internal/files/smb).
+// CreateResource validates the payload as the resource's own save does,
+// stores the new record and runs within in the same transaction; an error
+// of within stores nothing. It returns the stored record.
+// UpdateResource saves the edited record recordID the same way.
 type ResourceWriter interface {
-	CreateResource(ctx context.Context, userID int64, kind ResourceKind, payload jsontext.Value) (jsontext.Value, error)
-	DeleteResource(ctx context.Context, userID int64, kind ResourceKind, recordID string) error
+	CreateResource(ctx context.Context, userID int64, kind ResourceKind, payload jsontext.Value, within Within) (jsontext.Value, error)
+	UpdateResource(ctx context.Context, userID int64, kind ResourceKind, recordID string, payload jsontext.Value, within Within) (jsontext.Value, error)
 }
 
-// createFields are the payload members create_for_resource passes on for a
-// jump host and a SOCKS proxy; saved hosts and SMB shares get the payload.
-var createFields = map[ResourceKind][]string{
-	ResourceJump:  {"name", "host", "port", "username", "auth_type", "key_id", "jump_host_id"},
-	ResourceSOCKS: {"name", "host", "port", "username", "auth_type"},
-}
+// Within runs in the transaction that stores a resource. stored is the
+// stored record; records are the user's resources as that transaction
+// sees them, this one included.
+type Within func(ctx context.Context, tx *store.Tx, stored jsontext.Value, records Records) error
 
-// createForResource saves a new resource and a new password assigned to it
-// (create_for_resource). If the password cannot be stored the resource is
-// removed again.
+// createForResource saves a new resource and a password assigned to it
+// (create_for_resource): a new password from name and password, or, new
+// in 3.4, the saved password credential_id. Resource and assignment are
+// stored in one transaction, so a failed assignment leaves no resource.
+// Binding a saved password needs the step-up, which Apply checks before
+// anything is written.
 func (s *Service) createForResource(ctx context.Context, c *credentials, p principal.Principal, data jsontext.Value) ([]pyjson.Member, error) {
 	if _, _, err := c.policy(ctx, false); err != nil {
 		return nil, err
@@ -52,61 +55,68 @@ func (s *Service) createForResource(ctx context.Context, c *credentials, p princ
 	if auth, _ := field(payload, "auth_type"); kind != ResourceSMB && string(auth) != `"password"` {
 		return nil, fault.New(fault.InvalidTargets, "")
 	}
-	if names, ok := createFields[kind]; ok {
-		var members []pyjson.Member
-		for _, n := range names {
-			v, _ := field(payload, n)
-			members = append(members, pyjson.Member{Name: n, Value: v})
+	payload = resourcePayload(kind, payload)
+	existing, saved := field(data, "credential_id")
+	if saved && existing.Kind() != 'n' {
+		_, hasName := field(data, "name")
+		_, hasPassword := field(data, "password")
+		if hasName || hasPassword {
+			return nil, fault.New(fault.InvalidRequest, "")
 		}
-		if kind == ResourceSOCKS {
-			dns, present := field(payload, "remote_dns")
-			if !present {
-				dns = jsonTrue
-			}
-			members = append(members, pyjson.Member{Name: "remote_dns", Value: dns})
-		}
-		payload = pyjson.Object(members)
+	} else {
+		saved = false
 	}
 	if c.Writer == nil {
 		return nil, fault.New(fault.NotAvailableInPreview, "")
 	}
-	stored, err := c.Writer.CreateResource(ctx, p.UserID, kind, payload)
-	if err != nil {
-		return nil, fault.New(fault.InvalidTargets, "")
-	}
-	recordID, ok := stringMember(stored, "id")
-	if !ok {
-		return nil, fault.New(fault.InvalidTargets, "")
-	}
 	var credential jsontext.Value
-	err = s.storeForResource(ctx, c, p, kind, recordID, data, &credential)
-	if err != nil {
-		if derr := c.Writer.DeleteResource(context.WithoutCancel(ctx), p.UserID, kind, recordID); derr != nil {
-			return nil, fault.Wrap(fault.StorageError, derr, "")
-		}
+	var assignErr error
+	stored, err := c.Writer.CreateResource(ctx, p.UserID, kind, payload, func(ctx context.Context, tx *store.Tx, stored jsontext.Value, records Records) error {
+		assignErr = s.assignNew(ctx, tx, p, kind, stored, records, data, saved, &credential)
+		return assignErr
+	})
+	switch {
+	case assignErr != nil:
+		return nil, assignErr
+	case fault.Is(err, fault.DuplicateName):
 		return nil, err
+	case err != nil:
+		return nil, fault.New(fault.InvalidTargets, "")
 	}
 	return []pyjson.Member{{Name: "resource", Value: stored}, {Name: "credential", Value: credential}}, nil
 }
 
-func (s *Service) storeForResource(ctx context.Context, c *credentials, p principal.Principal, kind ResourceKind, recordID string, data jsontext.Value, credential *jsontext.Value) error {
-	all, _, err := c.resources(ctx, p.UserID)
+// assignNew assigns a password to the resource just stored in tx: the
+// saved password of data when saved is set, else a new one.
+func (s *Service) assignNew(ctx context.Context, tx *store.Tx, p principal.Principal, kind ResourceKind, stored jsontext.Value, records Records, data jsontext.Value, saved bool, credential *jsontext.Value) error {
+	recordID, ok := stringMember(stored, "id")
+	if !ok {
+		return fault.New(fault.InvalidTargets, "")
+	}
+	r, err := resolve(ResourcesFromRecords(records), ResourceID(kind, recordID))
 	if err != nil {
 		return err
 	}
-	r, err := resolve(all, ResourceID(kind, recordID))
+	d, err := loadDoc(ctx, tx, p.UserID)
+	if err != nil {
+		return storage(err)
+	}
+	var rec *credRow
+	if saved {
+		id, _ := field(data, "credential_id")
+		rec, err = record(d, id)
+	} else {
+		rec, err = s.createNamed(p.UserID, d, data)
+	}
 	if err != nil {
 		return err
 	}
-	return s.mutate(ctx, p.UserID, func(_ *store.Tx, d *credDoc) error {
-		rec, err := s.createNamed(p.UserID, d, data)
-		if err != nil {
-			return err
-		}
-		*credential = publicCredential(rec, jsontext.Value("[]"))
-		d.assign(Assignment{ResourceID: r.ID, CredentialID: rec.ID, Fingerprint: r.Fingerprint, Generation: randomHex(32)})
-		return nil
-	})
+	*credential = publicCredential(rec, jsontext.Value("[]"))
+	d.assign(Assignment{ResourceID: r.ID, CredentialID: rec.ID, Fingerprint: r.Fingerprint, Generation: randomHex(32)})
+	if err := saveDoc(ctx, tx, p.UserID, d); err != nil {
+		return storage(err)
+	}
+	return nil
 }
 
 // liveRoute returns the fingerprint of the saved route of a normalized

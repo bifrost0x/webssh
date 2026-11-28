@@ -520,9 +520,37 @@ func ImportLegacyVaultTx(ctx, tx *store.Tx, userID int64, document []byte, versi
   (`preview_changed`). Replacing an assigned credential needs the
   confirmation of the old one (`replacement_confirmation_required`).
 - Step-up: binding a saved secret (assign, import, authorize a one-off
-  target) consumes a grant for `credentials.vault` with the intent token
-  as target. After one grant, further bindings of the same session need
+  target, and since 3.4 creating a resource with a saved password)
+  consumes a grant for `credentials.vault` with the intent token as
+  target. After one grant, further bindings of the same session need
   none for 300 seconds (Python `BINDING_ASSURANCE_SECONDS`).
+- `create_for_resource` (T4, new in 3.4) takes either a new password
+  (`name`, `password`) or a saved one (`credential_id`, refused together
+  with `name` or `password`). The resource and its assignment are stored
+  in one transaction: `ResourceWriter.CreateResource` runs the vault's
+  `Within` in the transaction that writes the record, so a failed
+  assignment leaves no record (3.3 and the M2 build removed the record
+  again afterwards). A taken name is `duplicate_name`; other
+  refusals of the resource stay `invalid_targets`.
+- `assign` and `create` with `resource_id` (T4, new in 3.4) also take
+  `resource`, the edited record of a saved host, jump host or SOCKS proxy
+  (not an SMB share). `ResourceWriter.UpdateResource` stores the edit and
+  runs the assignment in the same transaction; the intent stays bound to
+  the resource as it was (`preview_changed`), a `target` the page sends
+  must be the edited record (`credential_target_changed`), replacements
+  need `replace_credential_id` as before, and binding a saved password
+  needs the step-up before anything is written. Refusals of the store keep
+  their code (`validation_error` and `duplicate_name` with their fixed
+  text, `not_found`). The result carries `resource`.
+- The state carries `save_with_assignment: true`, which tells the page to
+  use these instead of save-then-assign; without it (Python) the page
+  confirms the step-up first (`authorize_target`) and then saves and
+  assigns.
+- Names of saved passwords are unique per user (`internal/naming`,
+  `duplicate_name` 409) for create, rename and the new password of
+  `create_for_resource` and `create`. The legacy vault import (D-06) is
+  exempt: it restores names as 3.3 stored them and never fails on a
+  repeated name.
 - Legacy vault (D-06): the file stays byte for byte in
   `vault_legacy_automation`; `ImportLegacy` decrypts it with the user's
   passphrase (scrypt N=131072, r=8, p=1, AES-GCM, AAD

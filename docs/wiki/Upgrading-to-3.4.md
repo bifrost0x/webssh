@@ -172,6 +172,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U58 | Quick SFTP uses the same connection rules as the terminal: it asks about an unknown host key, supports jump hosts and SOCKS5 and uses `SSH_CONNECT_TIMEOUT`. A changed host key is still refused. Quick SFTP over Tailscale SSH remains unsupported. | decided | Nothing. |
 | U59 | A host import file with `NaN`, `Infinity` or more than 512 levels of nesting is refused with "Invalid JSON document.". | fix | Export the file again from WebSSH. |
 | U60 | A failed step-up for a global host key (invalid entry, unknown id) no longer uses up the confirmation. | fix | Nothing. |
+| U100 | Names are unique per user and kind, compared without surrounding spaces and without regard to case: saved hosts, jump hosts, SOCKS5 proxies, SSH keys and saved passwords. Saving a new record, renaming one or importing a host under a name another record of the same kind already has is refused at the name field (`duplicate_name`); similar hosts with other authentication or settings need their own name. A key upload with a taken name is refused before the confirmation and is never renamed silently. Records that 3.3 stored with the same name are migrated unchanged and stay editable under their name; the import of the old automation vault restores its names as they were. Save and Save & connect are locked while a save is running, so repeated clicks store a record once. | decided | Rename duplicates if you want to tell them apart; nothing else. |
 
 ### Terminal
 
@@ -198,6 +199,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 
 | # | Change | Kind | What to do |
 |---|---|---|---|
+| U101 | A saved host, jump host or SOCKS5 proxy that uses an existing saved password asks for the account confirmation before it is saved, and the record, new or edited, is stored together with its password assignment in one step (3.3 saved the record first and asked afterwards, so a cancelled confirmation left a record without its password or an edit without its new password). Cancelling stores nothing and keeps the form with its input. Replacing the assigned password of an existing record is confirmed before the record changes, too. | fix | Nothing. |
 | U70 | The old passphrase-protected automation vault (before 3.0) is kept unchanged and can only be imported. The import button is shown until the vault has been imported. Entries for hosts behind a jump host or SOCKS5 proxy show as changed after the import. | decided | Import the vault with its passphrase, then confirm the changed entries. |
 | U71 | Runbooks use saved passwords only; the password prompt of a run is a step-up confirmation. Runs are refused with `unsupported_target` for hosts behind an SSH gateway, Tailscale SSH, a SOCKS5 proxy or more than one jump host, and for usernames with `:`. Every hop needs a trusted host key. | fix | Move such hosts out of runbooks or connect them directly. |
 | U72 | When the first check of a run fails, its targets are `skipped` and the run is `failed` (3.3: `unknown`). | fix | Nothing. |

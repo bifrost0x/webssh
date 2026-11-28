@@ -138,6 +138,8 @@ func (s *Service) Upload(ctx context.Context, u Upload) (Summary, error) {
 	if err := s.fill(&r, key); err != nil {
 		return Summary{}, err
 	}
+	// The name and the limits are checked before the step-up, so that a
+	// refusal does not spend the grant, and again in the transaction.
 	grow := func(tx *store.Tx) error {
 		count, size, err := usage(ctx, tx, p.UserID)
 		if err != nil {
@@ -146,7 +148,7 @@ func (s *Service) Upload(ctx context.Context, u Upload) (Summary, error) {
 		if count >= int64(s.limits.MaxRecords) || size+int64(len(r.Sealed)) > s.limits.MaxStoreBytes {
 			return storageLimit()
 		}
-		return nil
+		return checkKeyName(ctx, tx, p.UserID, "", r.Name)
 	}
 	if err := s.db.Read(ctx, grow); err != nil {
 		return Summary{}, storage(err)
@@ -183,6 +185,9 @@ func (s *Service) Rename(ctx context.Context, id, name string) (Summary, error) 
 	}
 	var r keyRow
 	if err := s.db.Write(ctx, func(tx *store.Tx) error {
+		if err := checkKeyName(ctx, tx, p.UserID, id, name); err != nil {
+			return err
+		}
 		if err := renameRow(ctx, tx, p.UserID, id, name); err != nil {
 			return err
 		}

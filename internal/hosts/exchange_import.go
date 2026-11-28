@@ -5,8 +5,6 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"math/big"
-	"strings"
-	"unicode"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/pyjson"
@@ -14,13 +12,14 @@ import (
 )
 
 // duplicateProfile is the skip_duplicate rule of upsert_profile: a saved
-// host with the same name (case-folded) or the same host, port, username,
-// jump host and SOCKS5 proxy.
+// host with the same name (trimmed and case-folded, the rule of every
+// save since 3.4) or the same host, port, username, jump host and SOCKS5
+// proxy.
 func duplicateProfile(profiles []record, validated *record) bool {
-	name := foldText(validated.text("name"))
+	name := foldName(validated.text("name"))
 	for i := range profiles {
 		existing := &profiles[i]
-		if foldText(existing.text("name")) == name {
+		if foldName(existing.text("name")) == name {
 			return true
 		}
 		same := true
@@ -37,20 +36,6 @@ func duplicateProfile(profiles []record, validated *record) bool {
 		}
 	}
 	return false
-}
-
-// foldText approximates str.casefold(): simple case folding plus ß.
-func foldText(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch r {
-		case 'ß', 'ẞ':
-			b.WriteString("ss")
-		default:
-			b.WriteRune(unicode.ToLower(unicode.ToUpper(r)))
-		}
-	}
-	return b.String()
 }
 
 // pyEqual is == of two decoded JSON values as dict.get returns them: an
@@ -99,7 +84,7 @@ type ImportOutcome struct {
 // ImportProfile creates one host from an import (upsert_profile with
 // skip_duplicate). It never updates a saved host.
 func (s *Service) ImportProfile(ctx context.Context, owner int64, req protocol.HostsProfileSave) ImportOutcome {
-	saved, err := s.saveProfile(ctx, owner, req, true)
+	saved, err := s.saveProfile(ctx, owner, req, true, nil)
 	switch {
 	case errors.Is(err, errDuplicateProfile):
 		return ImportOutcome{Duplicate: true}

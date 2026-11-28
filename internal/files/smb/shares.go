@@ -126,6 +126,18 @@ func (r SaveRequest) get(name string) (jsontext.Value, bool) {
 // Save creates or updates one definition (upsert_smb_share). An update
 // keeps created_at and the unknown non-secret members of the record.
 func (s *Shares) Save(ctx context.Context, owner int64, req SaveRequest) (jsontext.Value, error) {
+	return s.save(ctx, owner, req, nil)
+}
+
+// Create stores a new definition as Save does and runs then in the same
+// transaction after the record is written; an error of then stores
+// nothing. It is how a share and its saved password are created together.
+func (s *Shares) Create(ctx context.Context, owner int64, req SaveRequest, then func(ctx context.Context, tx *store.Tx, saved jsontext.Value) error) (jsontext.Value, error) {
+	req.ID = nil
+	return s.save(ctx, owner, req, then)
+}
+
+func (s *Shares) save(ctx context.Context, owner int64, req SaveRequest, then func(ctx context.Context, tx *store.Tx, saved jsontext.Value) error) (jsontext.Value, error) {
 	f, id, err := validateSave(req)
 	if err != nil {
 		return nil, err
@@ -162,9 +174,15 @@ func (s *Shares) Save(ctx context.Context, owner int64, req SaveRequest) (jsonte
 		saved = record(nil, f, hex.EncodeToString(token[:]), now, now)
 		_, err = tx.ExecContext(ctx, `INSERT INTO smb_shares (user_id, position, id, record) VALUES (?, ?, ?, ?)`,
 			owner, len(recs), recordID(saved), string(saved))
-		return err
+		if err != nil || then == nil {
+			return err
+		}
+		return then(ctx, tx, saved)
 	})
-	return saved, err
+	if err != nil {
+		return nil, err
+	}
+	return saved, nil
 }
 
 // validateSave is _validate_payload without the secret check: the

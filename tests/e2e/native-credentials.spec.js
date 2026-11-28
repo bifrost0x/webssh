@@ -43,15 +43,19 @@ test('saving a changed SSH destination uses the submitted target and cancelled e
  await login(page,'e2e_admin',{workspace:false});
  const profile={id:'password-review',name:'Password review',host:'password.local',port:22,username:'passworduser',auth_type:'password',key_id:null,jump_host_id:null,credential_id:'named',credential_status:'ready'};
  await page.route('**/api/credentials/state',route=>route.fulfill({json:{enabled:true,profiles:[profile],credentials:[{id:'named',name:'Assigned password',uses:[{resource_id:profile.id,valid:true}]}],legacy_vault:false}}));
- let mutations=0;await page.route('**/api/credentials/intents',route=>{mutations++;return route.fulfill({json:{intent:'unexpected'}});});
+ // Rebinding the assigned password to the changed destination is
+ // confirmed for the submitted target before the host is saved (T4).
+ const mutations=[];await page.route('**/api/credentials/intents',route=>{mutations.push(route.request().postDataJSON().mutation);return route.fulfill({json:{intent:'binding-'+mutations.length}});});
+ await page.route('**/api/credentials/authorize-target',route=>route.fulfill({json:{credential_target_token:'confirmed'}}));
  await page.evaluate(()=>{window.openConnectionAssetManager('hosts');window.ProfileManager.openEditor('password-review');const original=window.socket.emit.bind(window.socket);window.socket.emit=(event,payload,ack)=>{if(event==='save_profile'){window.__capturedSave={payload};window.__saveAck=ack;return;}return original(event,payload,ack);};});
  await expect(page.locator('#profileEditorCredential')).toHaveValue('named');await page.locator('#profileEditorHost').fill('changed.invalid');await page.locator('#profileEditorForm button[type=submit]').first().click();
  await expect.poll(()=>page.evaluate(()=>Boolean(window.__saveAck))).toBe(true);
  await expect(page.locator('.credential-question')).toHaveCount(0);
+ expect(mutations.map(mutation=>[mutation.method,mutation.credential_id,mutation.target.host])).toEqual([['authorize_target','named','changed.invalid']]);
  expect(await page.evaluate(()=>window.__capturedSave.payload.host)).toBe('changed.invalid');
  expect(await page.evaluate(()=>window.__capturedSave.payload.id)).toBe(profile.id);
  await page.evaluate(()=>{window.ProfileManager.showManagementList();window.__saveAck({success:true,profile:{...window.__capturedSave.payload,id:'password-review'}});});
- expect(mutations).toBe(0);await expect(page.locator('#profileEditorView')).toHaveClass(/hidden/);
+ expect(mutations).toHaveLength(1);await expect(page.locator('#profileEditorView')).toHaveClass(/hidden/);
 });
 test('mobile New password enters detail navigation and Back returns to the list',async({page})=>{
  await login(page,'e2e_admin',{workspace:false});await page.route('**/api/credentials/state',route=>route.fulfill({json:{enabled:true,credentials:[],profiles:[],legacy_vault:false}}));await page.setViewportSize({width:360,height:560});await page.evaluate(()=>window.openConnectionAssetManager('passwords'));await page.locator('[data-credential-new]').click();await expect(page.locator('.credential-back')).toBeVisible();await expect(page.locator('[data-credential-list]')).toBeHidden();await page.locator('.credential-back').click();await expect(page.locator('[data-credential-new]')).toBeVisible();

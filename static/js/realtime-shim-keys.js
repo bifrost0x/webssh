@@ -18,12 +18,14 @@
     // profile-manager.js answers these failures of key changes with a
     // step-up or a passphrase prompt and sends the request again.
     const keyChallenge = failed => failed.code === 'step_up_required' || failed.passphrase_required === true;
+    // A taken name is shown at the name field.
+    const taken = failed => failed.code === 'duplicate_name';
 
     return Object.freeze({
         requests: Object.freeze({
             list_keys: {type: 'keys.list', push: [['keys_list', a => ({keys: a.keys || []})]], errorEvent: true},
-            upload_key: {type: 'keys.upload', push: [['key_uploaded', a => ({key: a.key})]], errorEvent: true, answeredByPage: keyChallenge},
-            rename_key: {type: 'keys.rename', push: [['key_renamed', a => a]], errorEvent: true, refresh: KEYS_REFRESH},
+            upload_key: {type: 'keys.upload', push: [['key_uploaded', a => ({key: a.key})]], errorEvent: true, answeredByPage: failed => keyChallenge(failed) || taken(failed)},
+            rename_key: {type: 'keys.rename', push: [['key_renamed', a => a]], errorEvent: true, answeredByPage: taken, refresh: KEYS_REFRESH},
             replace_key: {type: 'keys.replace', push: [['key_replaced', a => a]], errorEvent: true, answeredByPage: keyChallenge, refresh: KEYS_REFRESH},
             delete_key: {
                 type: 'keys.delete',

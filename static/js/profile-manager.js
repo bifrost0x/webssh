@@ -663,6 +663,7 @@ const ProfileManager = {
                 const input = document.createElement('input');
                 input.type = 'text';
                 input.className = 'form-control key-rename-input';
+                input.id = 'keyRenameInput';
                 input.dataset.keyId = key.id;
                 input.value = this.editingKeyName ?? key.name;
                 input.maxLength = 128;
@@ -1714,8 +1715,23 @@ const ProfileManager = {
         preview.classList.toggle('error', error);
     },
 
+    // Save and "Save & connect" stay locked while a save is on its way, so
+    // repeated clicks cannot store the same host twice.
+    setProfileSavePending(pending) {
+        this.profileSavePending = pending;
+        document.querySelectorAll?.('#profileEditorForm button[type="submit"]').forEach(button => {
+            button.disabled = pending;
+            if (pending) button.setAttribute('aria-busy', 'true');
+            else button.removeAttribute('aria-busy');
+        });
+    },
+
+    showProfileNameError(message) {
+        window.ConnectionValidation?.fieldError(document.getElementById('profileEditorName'), message);
+    },
+
     async saveFromEditor({connect = false} = {}) {
-        if (!window.socket) return;
+        if (!window.socket || this.profileSavePending) return;
         const mode = document.getElementById('profileEditorPostConnectMode').value;
         const payload = {
             name: document.getElementById('profileEditorName').value.trim(),
@@ -1780,8 +1796,22 @@ const ProfileManager = {
         const releasePending=()=>{if(generation===(this.nativeCredentialSaveGeneration||0))this.nativeCredentialSavePending=false;};
         const current = () => this.editingProfileId === editorId && (this.nativeCredentialSaveGeneration || 0) === generation && this.editorSnapshot() === snapshot && !document.getElementById('profileEditorView')?.classList.contains('hidden') && !document.getElementById('profileManagementModal')?.hidden && document.getElementById('profileManagementModal')?.classList.contains('show');
         this.nativeCredentialSavePending = Boolean(credentialChoice || assigned);
+        this.showProfileNameError('');
+        // A host the server created while the editor moved on (another
+        // render changed the form) still exists: a later save of the same
+        // draft updates it instead of creating it again.
+        const adoptCreated = acknowledgement => {
+            if (!editorId && this.editingProfileId === editorId && acknowledgement?.success && acknowledgement.profile?.id
+                && !document.getElementById('profileEditorView')?.classList.contains('hidden')) {
+                this.editingProfileId = acknowledgement.profile.id;
+            }
+        };
         const completeSave = acknowledgement => {
             releasePending();
+            if (!acknowledgement?.success && acknowledgement?.code === 'duplicate_name') {
+                this.showProfileNameError(this.t('profiles.duplicateName', 'A saved host with this name already exists. Choose another name.'));
+                return;
+            }
             if (!acknowledgement?.success) {
                 window.showNotification?.(
                     acknowledgement?.error || this.t('profiles.saveFailed', 'Failed to save connection'),
@@ -1803,34 +1833,92 @@ const ProfileManager = {
             if (connect) this.connect(saved.id);
             else back?.(saved.id);
         };
-        if (credentialChoice === '__new' && !payload.id) {
-            const {name,password} = credentialDraft;
-            if (!name || !password) { window.showNotification?.(this.t('credentials.required', 'Enter a password name and password.'), 'error'); return; }
+        const failCreate = error => {
+            if (error.name === 'AbortError') return;
+            if (error.code !== 'duplicate_name') window.showNotification?.(error.message, 'error');
+            else if (credentialChoice === '__new' && window.NativeCredentials?.passwordNameTaken?.(credentialDraft.name)) {
+                window.ConnectionValidation?.fieldError(document.getElementById('profileEditorCredentialName'), this.t('common.nameTaken', 'This name is already in use. Choose another name.'));
+            } else completeSave({success: false, code: error.code});
+        };
+        // Binding an existing saved password needs the account confirmation
+        // (step-up). It comes before anything is saved, so cancelling it
+        // leaves no host and keeps the form as it is.
+        const bindsSaved = needsAssignment && Boolean(credentialChoice) && credentialChoice !== '__new';
+        const createWith = credentialChoice === '__new'
+            ? (() => {
+                const {name, password} = credentialDraft;
+                return {name, username: payload.username, password};
+            })()
+            : {credential_id: credentialChoice};
+        if (!payload.id && (credentialChoice === '__new' || (bindsSaved && window.NativeCredentials?.supports?.('save_with_assignment')))) {
+            if (credentialChoice === '__new' && (!createWith.name || !createWith.password)) { window.showNotification?.(this.t('credentials.required', 'Enter a password name and password.'), 'error'); return; }
+            // Host and password are stored in one step; the confirmation,
+            // when the server asks for it, comes first.
+            this.setProfileSavePending(true);
             try {
-                const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind: 'ssh', resource: payload, name, username: payload.username, password, confirm_target: true}, null, current);
+                const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind: 'ssh', resource: payload, ...createWith, confirm_target: true}, null, current);
                 if (!current()) return;
                 completeSave({success: true, profile: result.resource});
-            } catch (error) { if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error'); }
-            finally { releasePending(); }
+            } catch (error) { failCreate(error); }
+            finally { releasePending(); this.setProfileSavePending(false); }
+            return;
+        }
+        // An edit that changes the password assignment: with the server's
+        // one-step save, the host and its assignment are stored in one
+        // request (a replacement and the step-up are confirmed first).
+        if (payload.id && needsAssignment && (credentialChoice || assigned) && window.NativeCredentials?.supports?.('save_with_assignment')) {
+            if (credentialChoice === '__new' && (!createWith.name || !createWith.password)) { window.showNotification?.(this.t('credentials.required', 'Enter a password name and password.'), 'error'); return; }
+            const target = {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id, socks_proxy_id: payload.socks_proxy_id, key_id: payload.key_id};
+            const change = credentialChoice === '__new' ? createWith : {credential_id: credentialChoice || null};
+            this.setProfileSavePending(true);
+            try {
+                const result = await window.NativeCredentials.mutate(credentialChoice === '__new' ? 'create' : 'assign', {...change, resource_id: payload.id, resource: payload, confirm_target: true, target}, null, current);
+                if (!current()) return;
+                completeSave({success: true, profile: result.resource});
+            } catch (error) { failCreate(error); }
+            finally { releasePending(); this.setProfileSavePending(false); }
+            return;
+        }
+        // Without it (the Python release): replacing an assigned password is
+        // confirmed before the host changes, for the same reason.
+        const replacing = Boolean(payload.id) && needsAssignment && Boolean(credentialChoice);
+        this.setProfileSavePending(true);
+        try {
+            const approved = replacing ? await window.NativeCredentials?.confirmAssignmentChange?.(payload.id,
+                credentialChoice === '__new' ? null : credentialChoice, credentialChoice === '__new' ? credentialDraft.name : null) : true;
+            if (approved === false || (replacing && !current())) throw Object.assign(new Error('Cancelled'), {name: 'AbortError'});
+            if (bindsSaved) {
+                const target = {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id};
+                if (payload.socks_proxy_id) target.socks_proxy_id = payload.socks_proxy_id;
+                await window.NativeCredentials.authorizeTarget(credentialChoice, target, current);
+            }
+        } catch (error) {
+            releasePending();
+            this.setProfileSavePending(false);
+            if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error');
             return;
         }
         window.socket.emit('save_profile', payload, async acknowledgement => {
-            if (!current()) { releasePending(); return; }
-            if (!acknowledgement?.success || !needsAssignment) { completeSave(acknowledgement); return; }
             try {
-                if (credentialChoice === '__new') {
-                    await window.NativeCredentials.mutate('create', {...credentialDraft, username: payload.username, resource_id: acknowledgement.profile.id, confirm_target: true, target: {host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id,jump_host_id:payload.jump_host_id,socks_proxy_id:payload.socks_proxy_id}}, null, current);
+                if (!current()) { releasePending(); adoptCreated(acknowledgement); return; }
+                if (!acknowledgement?.success || !needsAssignment) { completeSave(acknowledgement); return; }
+                try {
+                    if (credentialChoice === '__new') {
+                        await window.NativeCredentials.mutate('create', {...credentialDraft, username: payload.username, resource_id: acknowledgement.profile.id, confirm_target: true, target: {host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id,jump_host_id:payload.jump_host_id,socks_proxy_id:payload.socks_proxy_id}}, null, current, replacing);
+                        if (!current()) return;
+                    } else {
+                        await window.NativeCredentials.mutate('assign', {resource_id: acknowledgement.profile.id, credential_id: credentialChoice || null, confirm_target: true, target: {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id, socks_proxy_id: payload.socks_proxy_id, key_id: payload.key_id}}, null, current, replacing);
+                    }
                     if (!current()) return;
-                } else {
-                    await window.NativeCredentials.mutate('assign', {resource_id: acknowledgement.profile.id, credential_id: credentialChoice || null, confirm_target: true, target: {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id, socks_proxy_id: payload.socks_proxy_id, key_id: payload.key_id}}, null, current);
+                    completeSave(acknowledgement);
+                } catch (error) {
+                    releasePending();
+                    if (error.name === 'AbortError') return;
+                    window.showNotification?.(this.t('credentials.assignmentFailed', 'Host saved, but password assignment failed. Your password draft is preserved. Review the saved target and try again.'), 'error');
+                    this.editingProfileId = acknowledgement.profile.id;
                 }
-                if (!current()) return;
-                completeSave(acknowledgement);
-            } catch (error) {
-                releasePending();
-                if (error.name === 'AbortError') return;
-                window.showNotification?.(this.t('credentials.assignmentFailed', 'Host saved, but password assignment failed. Your password draft is preserved. Review the saved target and try again.'), 'error');
-                this.editingProfileId = acknowledgement.profile.id;
+            } finally {
+                this.setProfileSavePending(false);
             }
         });
     },
@@ -2046,6 +2134,11 @@ const ProfileManager = {
         this.uploadKey(name, keyContent, acknowledgement => {
             this.inlineKeyUploadPending = false;
             if (submitButton) submitButton.disabled = false;
+            if (acknowledgement?.code === 'duplicate_name') {
+                if (status) status.textContent = '';
+                window.ConnectionValidation?.fieldError(nameInput, this.t('common.nameTaken', 'This name is already in use. Choose another name.'));
+                return;
+            }
             if (!acknowledgement?.success || !acknowledgement.key) {
                 if (status) {
                     status.textContent = acknowledgement?.error || 'Failed to upload key';
@@ -2287,6 +2380,11 @@ const ProfileManager = {
             name: name,
         }, acknowledgement => {
             this.keyRenamePending = false;
+            if (acknowledgement?.code === 'duplicate_name') {
+                this.renderKeysList();
+                window.ConnectionValidation?.fieldError(document.getElementById('keyRenameInput'), this.t('common.nameTaken', 'This name is already in use. Choose another name.'));
+                return;
+            }
             if (!acknowledgement?.success || !acknowledgement.key) {
                 window.showNotification?.(
                     acknowledgement?.error || this.t(

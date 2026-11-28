@@ -94,6 +94,12 @@ what to do is in [Upgrading to 3.4](wiki/Upgrading-to-3.4.md#changes-you-can-not
   first start (`U14`).
 - Server management now lists the first systemd service and the first Docker
   container of a host, which 3.3 left out (`U99`).
+- Names of saved hosts, jump hosts, SOCKS5 proxies, SSH keys and saved
+  passwords are unique per user, ignoring case; records 3.3 stored with
+  the same name are kept and stay editable (`U100`).
+- A host, jump host or SOCKS5 proxy with an existing saved password asks for
+  the account confirmation before it is saved, new or edited, and is stored
+  with its assignment in one step; cancelling stores nothing (`U101`).
 
 Only Linux is supported: the image for `linux/amd64` and `linux/arm64` and a
 source build on Linux. Windows and macOS binaries and the systemd service of

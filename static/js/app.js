@@ -2688,8 +2688,12 @@
             }
         });
 
+        // One upload at a time: a second click while the first is on its
+        // way would store the key twice.
+        let keyUploadPending = false;
         document.getElementById('keyUploadForm').addEventListener('submit', (e) => {
             e.preventDefault();
+            if (keyUploadPending) return;
 
             const name = document.getElementById('keyNameInput').value;
             const keyContent = document.getElementById('keyContentInput').value;
@@ -2699,7 +2703,19 @@
                 return;
             }
 
-            ProfileManager.uploadKey(name, keyContent);
+            const submit = e.currentTarget.querySelector('button[type="submit"]');
+            keyUploadPending = true;
+            if (submit) submit.disabled = true;
+            ProfileManager.uploadKey(name, keyContent, acknowledgement => {
+                keyUploadPending = false;
+                if (submit) submit.disabled = false;
+                if (acknowledgement?.code === 'duplicate_name') {
+                    window.ConnectionValidation?.fieldError(document.getElementById('keyNameInput'),
+                        window.i18n?.t('common.nameTaken') || 'This name is already in use. Choose another name.');
+                    return;
+                }
+                ProfileManager.reportKeyChangeFailure(acknowledgement);
+            });
         });
 
         document.getElementById('closeJumpHostModal')?.addEventListener('click', () => {

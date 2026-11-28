@@ -42,5 +42,36 @@
     function isValidPort(value) {
         return /^\d+$/.test(String(value)) && Number(value) >= 1 && Number(value) <= 65535;
     }
-    return {isValidHost, isValidUsername, isValidPort, isGateway};
+    // Shows message under a form field (role=alert, aria-invalid) and moves
+    // the focus there; an empty message clears it. Typing in the field
+    // clears it, too. Used for a name another saved record already has.
+    let fieldCount = 0;
+    function fieldError(input, message) {
+        if (!input || typeof document === 'undefined') return;
+        if (!input.id) input.id = `formField${++fieldCount}`;
+        let hint = document.getElementById(`${input.id}Error`);
+        if (!message) {
+            if (hint) {
+                hint.hidden = true;
+                input.removeAttribute('aria-invalid');
+                input.classList.remove('has-form-error');
+            }
+            return;
+        }
+        if (!hint) {
+            hint = document.createElement('p');
+            hint.id = `${input.id}Error`;
+            hint.className = 'form-error';
+            hint.setAttribute('role', 'alert');
+            input.after(hint);
+            input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), hint.id].filter(Boolean).join(' '));
+            input.addEventListener('input', () => fieldError(input, ''));
+        }
+        hint.textContent = message;
+        hint.hidden = false;
+        input.setAttribute('aria-invalid', 'true');
+        input.classList.add('has-form-error');
+        input.focus();
+    }
+    return {isValidHost, isValidUsername, isValidPort, isGateway, fieldError};
 }));

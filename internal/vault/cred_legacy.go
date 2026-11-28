@@ -261,7 +261,7 @@ func (s *Service) importLegacy(ctx context.Context, c *credentials, userID int64
 				name = "Imported password"
 			}
 			data := pyjson.Object([]pyjson.Member{{Name: "name", Value: pyjson.String(name)}, {Name: "password", Value: pyjson.String(rec.Password)}})
-			cred, err := s.createNamed(userID, d, data)
+			cred, err := s.newNamed(userID, d, data, false)
 			if err != nil {
 				return err
 			}

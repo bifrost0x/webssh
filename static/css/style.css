@@ -5195,6 +5195,16 @@ body.keyboard-open.notepad-focused .notepad-panel {
     min-height: 0;
 }
 
+.form-control.has-form-error {
+    border-color: var(--error-color);
+}
+
+.form-error {
+    margin: 6px 0 0;
+    color: var(--error-color);
+    font-size: 0.85rem;
+}
+
 .profile-editor-scroll-region {
     min-height: 0;
     padding-right: 10px;

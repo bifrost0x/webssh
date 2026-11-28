@@ -115,6 +115,7 @@ var pythonStatus = map[fault.Code]int{
 	fault.AuthenticationNeeded: 401, fault.HTTPSRequired: 403, fault.StepUpRequired: 403, fault.Busy: 429,
 	fault.NotFound: 404, fault.InvalidIntent: 409, fault.PreviewChanged: 409, fault.VaultLocked: 423,
 	fault.Unavailable: 503, fault.CredentialsDisabled: 403, fault.CredentialInUse: 409,
+	fault.DuplicateName: 409, // new in 3.4: names are unique (U100)
 }
 
 type credentialError struct {
@@ -138,7 +139,13 @@ func (h *CredentialsHTTP) fail(w http.ResponseWriter, r *http.Request, err error
 		}
 		logger.ErrorContext(r.Context(), "credential request failed", "code", code, "error", err)
 	}
-	writeCredentialJSON(w, status, credentialError{Error: "Credential request could not be completed.", Code: string(code)})
+	text := "Credential request could not be completed."
+	if code == fault.ValidationError || code == fault.DuplicateName {
+		// The fixed texts of the resource stores (an invalid host, a taken
+		// name) when a resource is saved with its password.
+		_, _, text = fault.Status(err)
+	}
+	writeCredentialJSON(w, status, credentialError{Error: text, Code: string(code)})
 }
 
 func (h *CredentialsHTTP) reply(w http.ResponseWriter, r *http.Request, out jsontext.Value, err error) {
