@@ -384,4 +384,28 @@ func TestRenderFailsClosedOnUnencodableJSONBlocks(t *testing.T) {
 	if !strings.Contains(buf.String(), `{"profiles":[{"id":"a"}]}`) {
 		t.Error("inventory block missing")
 	}
+	if strings.Contains(buf.String(), "host_order") {
+		t.Error("an account without an own host order gets one in the page")
+	}
+}
+
+// The overview block carries the account's host order once it arranged
+// its hosts; the other members keep their form.
+func TestRenderOverviewHostOrder(t *testing.T) {
+	r := testRenderer(t)
+	var buf bytes.Buffer
+	data := PageData{OverviewPreferences: &OverviewPreferences{Panels: json.RawMessage(`null`), Dismissed: []string{},
+		HostOrder: []string{"web", "db"}}}
+	if err := r.Render(&buf, PageWorkspace, data); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `{"panels":null,"dismissed":[],"host_order":["web","db"]}`) {
+		t.Errorf("overview block: %s", overviewBlock(buf.String()))
+	}
+}
+
+func overviewBlock(page string) string {
+	_, after, _ := strings.Cut(page, `id="overviewPreferences">`)
+	block, _, _ := strings.Cut(after, "</script>")
+	return block
 }

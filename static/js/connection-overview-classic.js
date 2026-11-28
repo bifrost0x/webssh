@@ -6,8 +6,6 @@
 })(typeof window !== 'undefined' ? window : globalThis, function() {
     'use strict';
 
-    const VISIBLE_SERVICES = 3;
-
     // Deliberately whitelist display fields. Addresses, users, credentials and
     // arbitrary graph relationships never enter this presentation model.
     function buildAccessModel(profiles = [], jumpHosts = [], jumpsLoaded = false, socksProxies = [], socksLoaded = false) {
@@ -33,6 +31,8 @@
                 role: described ? {id: described.role.id, source: described.role.source} : {id: 'server', source: 'pending'},
                 virt: described ? described.virt : '',
                 services: described ? described.facts.services : [],
+                // Apps first, then what the host runs on, as one line of names.
+                serviceText: globalThis.HostPlatform?.serviceSummary?.(profile).text || '',
                 order: Number(profile.sort_order) || 0,
                 route: profile.socks_proxy_id ? (proxy ? 'configured' : (socksLoaded ? 'unavailable' : 'loading')) : profile.jump_host_id ? (jump ? 'configured' : (jumpsLoaded ? 'unavailable' : 'loading')) : 'none',
                 jump: jump || null,
@@ -330,7 +330,7 @@
             target.dataset.role = host.role.id;
             const name = node('span', 'overview-row-title', host.name);
             target.append(win.HostPlatform?.render(host.platform, doc) || icon('dns'), name);
-            // One line of identity under the name: virtualization, role, main services.
+            // One line of identity under the name: virtualization, role, the names of its services.
             const meta = node('span', 'overview-row-meta');
             if (host.virt) meta.append(node('span', 'overview-row-virt', host.virt));
             if (win.HostIdentity) {
@@ -338,15 +338,7 @@
                 pill.append(icon(win.HostIdentity.ROLE_GLYPHS[host.role.id] || 'dns'), node('span', '', t(`role.${host.role.id}`)));
                 meta.append(pill);
             }
-            const tiles = win.HostPlatform?.serviceTiles?.(host.services.slice(0, VISIBLE_SERVICES), 'shell-host-service', doc) || [];
-            if (tiles.length) {
-                const holder = node('span', 'shell-host-services');
-                holder.setAttribute('aria-hidden', 'true');
-                holder.append(...tiles);
-                meta.append(holder);
-                // Measured once attached; logos give way before the name is cut.
-                win.HostPlatform.keepTilesFitting(holder, name);
-            }
+            if (host.serviceText) meta.append(node('span', 'overview-row-apps', host.serviceText));
             if (meta.childElementCount) target.append(meta);
             if (host.favorite) {
                 const favorite = icon('star');
@@ -472,7 +464,6 @@
                 preview.replaceChildren();
                 preview.hidden = true;
                 byId('overviewRouteCard').hidden = true;
-                win.HostPlatform?.releaseFits?.(container);
                 container.replaceChildren();
                 const manager = win.ProfileManager;
                 const loaded = manager?.profilesLoaded === true;

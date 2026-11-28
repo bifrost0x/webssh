@@ -35,6 +35,12 @@ how to remove the 3.3 data later.
   `<APPLICATION_ROOT>/ws` instead of Socket.IO; long polling is gone
   (`U29`). Reverse proxies must forward WebSocket upgrades and the `Origin`
   header for that path.
+- **Overview host cards.** The cards of a row line up with their status and
+  actions at the bottom, and the host details open as a popover instead of
+  unfolding inside the card (`U103`). **Arrange** keeps your own order of
+  the hosts, saved to your account; favorites stay first (`U104`). Cards,
+  the identity line and the classic overview name a host's apps instead of
+  showing small logo tiles (`U105`).
 - **Command line.** `webssh <command>` replaces `flask --app start:app`.
   The 3.3 command forms and health checks of the shipped Compose files keep
   working until the next major release (`U16`, `U18`).
@@ -103,6 +109,8 @@ what to do is in [Upgrading to 3.4](wiki/Upgrading-to-3.4.md#changes-you-can-not
 - A host, jump host or SOCKS5 proxy with an existing saved password asks for
   the account confirmation before it is saved, new or edited, and is stored
   with its assignment in one step; cancelling stores nothing (`U101`).
+- Rail rows and session tabs no longer show service logos; the identity line
+  above a terminal names the services instead (`U105`).
 
 Only Linux is supported: the image for `linux/amd64` and `linux/arm64` and a
 source build on Linux. Windows and macOS binaries and the systemd service of

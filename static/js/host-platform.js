@@ -194,157 +194,23 @@
             detected_family: stored.detected_family, detected_os_id: stored.detected_os_id,
             detection_state: stored.detection_state, greeting_platform: stored.greeting_platform}, doc);
     }
-    const TAB_SERVICES = 2;
-    const BAR_SERVICES = 4;
+    // How many service names a line of text shows before it counts the rest.
+    // The overview cards fit their app chips to two lines instead; rail rows
+    // and tabs name no services. Every place takes the names from here.
+    const NAMED_SERVICES = 3;
     /**
-     * Hides whole tiles of a logo strip, last first, while `cut()` reports that
-     * the text next to it is cut. A tile whose removal gives the text no room
-     * stays: the text is longer than its own limit. Hidden tiles leave the
-     * accessibility tree.
+     * The services of a host for display: apps first, then what it runs on
+     * (HostIdentity.services), and one line of their names, at most `limit`,
+     * the rest counted ("Jellyfin, Bazarr, Overseerr +9").
      */
-    function dropTiles(holder, cut, width) {
-        const tiles = [...holder.children];
-        holder.hidden = false;
-        tiles.forEach(tile => { tile.hidden = false; });
-        for (let index = tiles.length - 1; index >= 0 && cut(); index -= 1) {
-            const before = width();
-            tiles[index].hidden = true;
-            if (width() <= before) {
-                tiles[index].hidden = false;
-                break;
-            }
-        }
-        holder.hidden = tiles.every(tile => tile.hidden);
-    }
-    // scrollWidth and clientWidth are rounded, so text a fraction of a pixel too
-    // wide still draws its ellipsis; the fractional checks below catch that.
-    function contentBox(element) {
-        const box = element.getBoundingClientRect();
-        const style = globalThis.getComputedStyle(element);
-        const left = parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth);
-        const right = parseFloat(style.paddingRight) + parseFloat(style.borderRightWidth);
-        return {left: box.left + left, right: box.right - right, width: box.width - left - right};
-    }
-    const measurable = element => typeof element.getBoundingClientRect === 'function'
-        && typeof globalThis.getComputedStyle === 'function';
-    /** Whether the text of `element` is cut, measured by its text nodes. */
-    function textCut(element) {
-        if (element.scrollWidth > element.clientWidth) return true;
-        const range = measurable(element) ? element.ownerDocument?.createRange?.() : null;
-        if (!range) return false;
-        range.selectNodeContents(element);
-        return range.getBoundingClientRect().width > contentBox(element).width + 0.01;
-    }
-    /**
-     * Whether a line of inline parts is cut. Its last part ends past the content
-     * edge; a Range would miss generated separators between the parts.
-     */
-    function lineCut(element) {
-        if (element.scrollWidth > element.clientWidth) return true;
-        const last = element.lastElementChild;
-        if (!last || !measurable(element)) return false;
-        return last.getBoundingClientRect().right > contentBox(element).right + 0.01;
-    }
-    // A text is an element, or {lead, within}: a leading part that must end inside
-    // the content box of the element it runs in, whatever follows it there.
-    function isCut(text) {
-        if (text.lead) {
-            return measurable(text.within)
-                && text.lead.getBoundingClientRect().right > contentBox(text.within).right + 0.01;
-        }
-        return text.children?.length ? lineCut(text) : textCut(text);
-    }
-    function widthOf(text) {
-        const element = text.within || text;
-        return typeof element.getBoundingClientRect === 'function' ? element.getBoundingClientRect().width : element.clientWidth;
-    }
-    /** Shows as many service tiles as fit without cutting the tab name. */
-    function fitSessionTab(tab) {
-        const label = tab?.querySelector('.tab-label');
-        const holder = tab?.querySelector('.tab-services');
-        if (!label || !holder) return;
-        if (label.querySelector('.tab-rename-input') || !rendered(label)) return;
-        const parts = [...label.children];
-        dropTiles(holder, () => label.scrollWidth > label.clientWidth || parts.some(textCut), () => widthOf(label));
-    }
-    // A text in a hidden container (the rail of another view, for example) measures
-    // nothing. It is fitted when it shows: that resizes it, and the observer fires.
-    const rendered = element => typeof element?.getClientRects !== 'function' || element.getClientRects().length > 0;
-    /** Shows as many tiles of `holder` as fit without cutting any of `texts`. */
-    function fitTiles(holder, texts) {
-        if (!holder?.isConnected || !texts.length) return;
-        if (!texts.every(text => rendered(text.within || text))) return;
-        dropTiles(holder, () => texts.some(isCut), () => texts.reduce((sum, text) => sum + widthOf(text), 0));
-    }
-    // Text widths follow renames, theme fonts, panes and the viewport, so the text is what is watched.
-    const fitters = new WeakMap();
-    const observed = new Set();
-    let fitObserver = null;
-    let pendingFits = new Set();
-    function observeFit(target, fit) {
-        fitters.set(target, fit);
-        if (!fitObserver && typeof globalThis.ResizeObserver === 'function') {
-            fitObserver = new globalThis.ResizeObserver(entries => {
-                const schedule = !pendingFits.size;
-                entries.forEach(({target: element}) => pendingFits.add(element));
-                if (!schedule) return;
-                // Refitting inside the callback would resize observed text again in the
-                // same frame and trip the browser's resize loop guard.
-                const run = () => {
-                    const targets = pendingFits;
-                    pendingFits = new Set();
-                    targets.forEach(element => {
-                        if (!element.isConnected) {
-                            fitObserver.unobserve(element);
-                            observed.delete(element);
-                        } else fitters.get(element)?.();
-                    });
-                };
-                if (typeof globalThis.requestAnimationFrame === 'function') globalThis.requestAnimationFrame(run);
-                else run();
-            });
-        }
-        fitObserver?.observe(target);
-        if (fitObserver) observed.add(target);
-    }
-    /**
-     * Stops watching every text inside `root`. Call it before the container's rows
-     * are replaced: rows that never rendered (a hidden rail) never resize, so
-     * nothing else would let go of them.
-     */
-    function releaseFits(root) {
-        if (!fitObserver || !root) return;
-        observed.forEach(target => {
-            if (!root.contains(target)) return;
-            fitObserver.unobserve(target);
-            observed.delete(target);
-        });
-    }
-    /** Keeps the tiles of `holder` fitted next to the given texts while they change size. */
-    function keepTilesFitting(holder, ...candidates) {
-        const texts = candidates.filter(Boolean);
-        if (!holder || !texts.length) return;
-        fitTiles(holder, texts);
-        texts.forEach(text => observeFit(text.within || text, () => fitTiles(holder, texts)));
-    }
-    function serviceTile(id, className, doc) {
-        const logo = renderService(id, doc);
-        if (!logo) return null;
-        // The tile carries the name; the logo inside is decoration.
-        ['title', 'role', 'aria-label'].forEach(attribute => logo.removeAttribute(attribute));
-        logo.setAttribute('aria-hidden', 'true');
-        const tile = doc.createElement('span');
-        tile.className = className;
-        tile.setAttribute('data-service', id);
-        tile.setAttribute('role', 'img');
-        tile.setAttribute('aria-label', serviceLabels[id]);
-        tile.title = serviceLabels[id];
-        tile.append(logo);
-        return tile;
-    }
-    /** Service tiles for known ids, each with the given class; unknown ids are skipped. */
-    function serviceTiles(ids, className, doc = document) {
-        return (Array.isArray(ids) ? ids : []).map(id => serviceTile(id, className, doc)).filter(Boolean);
+    function serviceSummary(profile, limit = NAMED_SERVICES) {
+        const Identity = globalThis.HostIdentity;
+        const split = Identity?.services ? Identity.services(profile) : {apps: services(profile), infrastructure: []};
+        const ids = [...split.apps, ...split.infrastructure].filter(id => Object.hasOwn(serviceLabels, id));
+        const names = ids.slice(0, limit).map(id => serviceLabels[id]);
+        const more = ids.length - names.length;
+        return {apps: split.apps, infrastructure: split.infrastructure, names, more,
+            text: names.length ? `${names.join(', ')}${more ? ` +${more}` : ''}` : ''};
     }
     // A platform detected in this session counts until the saved host is reloaded
     // with it, exactly as for the platform icon.
@@ -362,35 +228,33 @@
     function sessionIdentity(session, profile) {
         const Identity = globalThis.HostIdentity;
         if (!Identity?.describe || !sameEndpoint(session, profile)) return null;
-        const {role, facts, system, virt} = Identity.describe(sessionProfile(session, profile));
+        const stored = sessionProfile(session, profile);
+        const {role, facts, system, virt} = Identity.describe(stored);
         const label = globalThis.i18n?.t(`role.${role.id}`);
         const name = typeof profile.name === 'string' && profile.name.trim() ? profile.name.trim() : String(session.host || '');
         return {role: role.id, glyph: Identity.ROLE_GLYPHS[role.id] || 'dns',
             label: label && label !== `role.${role.id}` ? label : role.id,
-            name, system, virt, services: facts.services.slice(0, BAR_SERVICES),
+            name, system, virt, services: serviceSummary(stored).text,
             // A plain Server with nothing known about it would only repeat the tab name.
             informative: role.id !== 'server' || Boolean(system || virt) || facts.services.length > 0};
     }
     /**
      * The identity line above a terminal pane: role, host name, system, machine
-     * and up to four service logos. Left out when the session does not match its
-     * saved host or the host has no role, system, machine or service to show;
-     * rebuilt only when what it shows changes.
+     * and the names of its services. Left out when the session does not match
+     * its saved host or the host has no role, system, machine or service to
+     * show; rebuilt only when what it shows changes. The service names give
+     * way to the host name when the pane is narrow.
      */
     function markIdentityBar(pane, session, profile, doc = document) {
         if (!pane) return null;
         const current = [...(pane.children || [])].find(child => child.classList?.contains('session-identity-bar')) || null;
         const identity = sessionIdentity(session, profile);
         if (!identity?.informative) {
-            if (current) {
-                releaseFits(current);
-                current.remove();
-            }
+            current?.remove();
             return null;
         }
         const parts = [identity.label, identity.name, identity.system, identity.virt].filter(Boolean);
-        const names = identity.services.map(id => serviceLabels[id]);
-        const summary = [...parts, names.join(', ')].filter(Boolean).join(' · ');
+        const summary = [...parts, identity.services].filter(Boolean).join(' · ');
         const key = JSON.stringify([identity.role, parts, identity.services]);
         if (current?.dataset.identity === key) {
             if (pane.firstElementChild !== current) pane.insertBefore(current, pane.firstElementChild);
@@ -418,54 +282,36 @@
                 text.append(item);
             });
         bar.append(glyph, text);
-        const tiles = serviceTiles(identity.services, 'session-identity-service', doc);
-        let holder = null;
-        if (tiles.length) {
-            holder = doc.createElement('span');
-            holder.className = 'session-identity-services';
-            holder.setAttribute('aria-hidden', 'true');
-            holder.append(...tiles);
-            bar.append(holder);
+        if (identity.services) {
+            const apps = doc.createElement('span');
+            apps.className = 'session-identity-apps';
+            apps.setAttribute('aria-hidden', 'true');
+            apps.textContent = identity.services;
+            bar.append(apps);
         }
-        if (current) {
-            releaseFits(current);
-            current.replaceWith(bar);
-        }
+        if (current) current.replaceWith(bar);
         else pane.insertBefore(bar, pane.firstElementChild);
-        if (holder) keepTilesFitting(holder, text);
         return bar;
     }
-    /** Role and main services of a session tab, from the saved host only while it matches the endpoint. */
+    /** The role of a session tab, from the saved host only while it matches the endpoint. Tabs name no services. */
     function markSessionTab(tab, session, profile, doc = document) {
         const Identity = globalThis.HostIdentity;
         const label = tab?.querySelector('.tab-label');
         if (!label) return;
         if (!Identity || !sameEndpoint(session, profile)) {
             tab.querySelector('.tab-role')?.remove();
-            tab.querySelector('.tab-services')?.remove();
             delete tab.dataset.role;
             return;
         }
-        const stored = sessionProfile(session, profile);
-        const role = Identity.role(stored).id;
-        const ids = Identity.facts(stored).services.slice(0, TAB_SERVICES);
-        const shown = [...(tab.querySelector('.tab-services')?.children || [])].map(tile => tile.getAttribute('data-service'));
-        if (tab.dataset.role === role && tab.querySelector('.tab-role') && shown.join() === ids.join()) return;
+        const role = Identity.role(sessionProfile(session, profile)).id;
+        if (tab.dataset.role === role && tab.querySelector('.tab-role')) return;
         tab.querySelector('.tab-role')?.remove();
-        tab.querySelector('.tab-services')?.remove();
         tab.dataset.role = role;
         const name = doc.createElement('span');
         name.className = 'tab-role sr-only';
         name.setAttribute('data-i18n', `role.${role}`);
         name.textContent = globalThis.i18n?.t(`role.${role}`) || role;
         tab.insertBefore(name, label);
-        if (!ids.length) return;
-        const holder = doc.createElement('span');
-        holder.className = 'tab-services';
-        holder.append(...serviceTiles(ids, 'tab-service', doc));
-        tab.insertBefore(holder, label.nextElementSibling);
-        if (tab.isConnected) fitSessionTab(tab);
-        observeFit(label, () => fitSessionTab(tab));
     }
     function refreshSessionIcons(manager, profiles = [], doc = globalThis.document) {
         if (!manager?.sessions || !doc) return;
@@ -480,6 +326,5 @@
         manager.refreshSessionIdentity?.();
     }
     return {labels, resolve, services, serviceLabels, serviceAsset, render, renderService, renderSession,
-        sameEndpoint, markSessionTab, fitSessionTab, refreshSessionIcons, sessionIdentity, markIdentityBar, serviceTiles,
-        keepTilesFitting, releaseFits};
+        sameEndpoint, markSessionTab, refreshSessionIcons, sessionIdentity, markIdentityBar, serviceSummary, NAMED_SERVICES};
 });

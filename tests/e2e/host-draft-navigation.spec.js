@@ -48,6 +48,6 @@ test('an unsaved role choice asks before it is discarded and a saved one shows o
  const card=page.locator('#overviewHostList .od-host',{hasText:'Usable key'}).first();
  await expect(card).toHaveAttribute('data-role','backup');
  await expect(card.locator('.od-role')).toHaveText(/Backup/);
- await card.locator('.od-host-profile > summary').click();
- await expect(card.locator('.od-host-profile dd').filter({hasText:/Backup/})).toHaveText(/Backup.*manual/);
+ await card.locator('[data-key^="head:"]').click();
+ await expect(page.locator('#odHostDetails .od-host-profile dd').filter({hasText:/Backup/})).toHaveText(/Backup.*manual/);
 });

@@ -72,7 +72,6 @@
     }
 
     const GROUPING_KEY = 'webssh.hostRailGrouping';
-    const VISIBLE_SERVICES = 4;
 
     /** The saved rail grouping: 'role', or 'group' for anything else. */
     function readGrouping(storage) {
@@ -165,12 +164,10 @@
                 && (sessionManager.getAllSessions().length > 0 || doc.body.dataset.hostRailRequested === 'true');
             container.parentElement.hidden = !showTree;
             retainFocus(container, () => {
-                win.HostPlatform?.releaseFits?.(container);
                 container.replaceChildren();
                 if (!showTree) return;
                 const favoritesOnly = doc.body.dataset.hostAccessFilter === 'favorites';
                 let shown = 0;
-                const fits = [];
                 let rows = 0;
                 const row = host => {
                     const item = button(host.name, () => launch(host.id), 'shell-host');
@@ -184,14 +181,7 @@
                     role.dataset.i18n = `role.${host.role.id}`;
                     item.setAttribute('aria-describedby', role.id);
                     item.append(role);
-                    const tiles = win.HostPlatform?.serviceTiles?.(host.services.slice(0, VISIBLE_SERVICES), 'shell-host-service', doc) || [];
-                    if (tiles.length) {
-                        const holder = node('span', 'shell-host-services');
-                        holder.setAttribute('aria-hidden', 'true');
-                        holder.append(...tiles);
-                        item.append(holder);
-                        fits.push([holder, name]);
-                    }
+                    // Rail rows name no services: the host name keeps the whole width.
                     return item;
                 };
                 const section = (key, set, items, heading, attributes) => {
@@ -223,8 +213,6 @@
                             [icon('folder_open'), node('span', '', group || t('profiles.ungrouped'))], {tone: groupTone(group)});
                     });
                 }
-                // Measured once attached; logos give way before a name is cut.
-                fits.forEach(([holder, name]) => win.HostPlatform.keepTilesFitting(holder, name));
                 if (!shown) container.append(node('p', 'shell-host-empty', favoritesOnly
                     ? t('profiles.noFavorites', 'No favorite hosts yet.') : t('profiles.none')));
             });

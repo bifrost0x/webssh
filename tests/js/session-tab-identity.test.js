@@ -39,6 +39,11 @@ function createElement(tagName = 'div') {
             child.parentNode = null;
         },
         remove() { this.parentNode?.removeChild(this); },
+        replaceWith(node) {
+            const parent = this.parentNode;
+            parent.insertBefore(node, this);
+            parent.removeChild(this);
+        },
         get firstElementChild() { return this.children[0] || null; },
         get nextElementSibling() {
             const siblings = this.parentNode?.children || [];
@@ -97,37 +102,30 @@ const session = (overrides = {}) => ({host: 'paper.example.test', username: 'ops
 const tabOf = (tabs, id) => tabs.children.find(child => child.id === `tab-${id}`);
 const services = tab => (tab.querySelector('.tab-services')?.children || []).map(child => child.attributes['data-service']);
 
-test('a tab of a Paperless host carries the docs role and its two main services after the label', () => {
+test('a tab of a Paperless host carries the docs role and names no services', () => {
     const {manager, tabs} = setup([PAPERLESS]);
     manager.sessions.s1 = session();
     manager.createSessionTab('s1');
     const tab = tabOf(tabs, 's1');
     assert.equal(tab.dataset.role, 'docs');
-    assert.deepEqual(services(tab), ['paperless', 'postgresql']);
-    const holder = tab.querySelector('.tab-services');
-    assert.equal(tab.querySelector('.tab-label').nextElementSibling, holder);
+    // Tabs carry no service tiles; the identity line above the terminal names them.
+    assert.deepEqual(services(tab), []);
+    assert.equal(tab.querySelector('.tab-services'), null);
     // The role is named for assistive technology, never as markup.
     const role = tab.querySelector('.tab-role');
     assert.equal(role.textContent, 'docs');
     assert.equal(role.attributes['data-i18n'], 'role.docs');
     assert.match(role.className, /\bsr-only\b/);
-    // Each tile carries the service name; the logo inside is decoration.
-    assert.deepEqual(holder.children.map(tile => [tile.className, tile.attributes.role, tile.attributes['aria-label'], tile.title]),
-        [['tab-service', 'img', 'Paperless', 'Paperless'], ['tab-service', 'img', 'PostgreSQL', 'PostgreSQL']]);
-    for (const tile of holder.children) {
-        assert.equal(tile.children[0].className, 'host-service-icon');
-        assert.equal(tile.children[0].attributes['aria-hidden'], 'true');
-        assert.equal(tile.children[0].attributes.role, undefined);
-    }
+    assert.equal(role.nextElementSibling, tab.querySelector('.tab-label'));
 });
 
-test('a tab of a host with a container runtime carries the container role, apps first', () => {
+test('a tab of a host with a container runtime carries the container role', () => {
     const {manager, tabs} = setup([{...PAPERLESS, detected_services: ['docker', 'postgresql', 'paperless']}]);
     manager.sessions.s1 = session();
     manager.createSessionTab('s1');
     const tab = tabOf(tabs, 's1');
     assert.equal(tab.dataset.role, 'container');
-    assert.deepEqual(services(tab), ['paperless', 'postgresql']);
+    assert.equal(tab.querySelector('.tab-services'), null);
 });
 
 test('a tab whose endpoint differs from the saved host shows neither role nor services', () => {
@@ -143,7 +141,7 @@ test('a tab whose endpoint differs from the saved host shows neither role nor se
     }
 });
 
-test('a profile update changes role and services in place without rebuilding the tab', () => {
+test('a profile update changes the role in place without rebuilding the tab', () => {
     const {manager, tabs, document} = setup([PAPERLESS]);
     manager.sessions.s1 = session();
     manager.createSessionTab('s1');
@@ -156,8 +154,7 @@ test('a profile update changes role and services in place without rebuilding the
     assert.equal(tab.querySelector('.tab-label'), label);
     assert.equal(tab.querySelector('.session-platform-icon'), icon);
     assert.equal(tab.dataset.role, 'media');
-    assert.deepEqual(services(tab), ['jellyfin', 'plex']);
-    assert.equal(tab.querySelectorAll('.tab-services').length, 1);
+    assert.equal(tab.querySelectorAll('.tab-services').length, 0);
     assert.equal(tab.querySelectorAll('.tab-role').length, 1);
 
     HostPlatform.refreshSessionIcons(manager, [{...PAPERLESS, role_override: 'backup', detected_services: []}], document);
@@ -193,54 +190,15 @@ test('the endpoint rule is shared by the icon and the identity', () => {
     assert.equal(HostPlatform.sameEndpoint({host: 'nas.example.test', username: 'root'}, null), false);
 });
 
-test('unchanged role and services keep their nodes on refresh', () => {
+test('an unchanged role keeps its node on refresh', () => {
     const {manager, tabs, document} = setup([PAPERLESS]);
     manager.sessions.s1 = session();
     manager.createSessionTab('s1');
     const tab = tabOf(tabs, 's1');
     const role = tab.querySelector('.tab-role');
-    const holder = tab.querySelector('.tab-services');
     HostPlatform.refreshSessionIcons(manager, [{...PAPERLESS, name: 'Renamed', detected_services: ['paperless', 'postgresql', 'redis']}], document);
     assert.equal(tab.querySelector('.tab-role'), role);
-    assert.equal(tab.querySelector('.tab-services'), holder);
-});
-
-// A label that needs `need` pixels and gets what the visible tiles leave of `room`.
-function laidOut(tab, {need, room, cap = Infinity}) {
-    const label = tab.querySelector('.tab-label');
-    const tiles = () => tab.querySelector('.tab-services').children.filter(tile => !tile.hidden).length;
-    const width = () => Math.min(need, cap, room - tiles() * 21);
-    Object.defineProperty(label, 'clientWidth', {configurable: true, get: width});
-    Object.defineProperty(label, 'scrollWidth', {configurable: true, get: width});
-    const name = label.children[0];
-    Object.defineProperty(name, 'clientWidth', {configurable: true, get: width});
-    Object.defineProperty(name, 'scrollWidth', {configurable: true, get: () => need});
-    return tiles;
-}
-
-test('tiles give way whole, last first, while the tab name is cut', () => {
-    const cases = [
-        [{need: 50, room: 100}, 2],
-        [{need: 70, room: 100}, 1],
-        [{need: 90, room: 100}, 0],
-        [{need: 200, room: 100}, 0],
-        // A name cut by its own limit gains nothing from hiding tiles.
-        [{need: 200, room: 100, cap: 40}, 2],
-    ];
-    for (const [layout, visible] of cases) {
-        const {manager, tabs} = setup([PAPERLESS]);
-        manager.sessions.s1 = session();
-        manager.createSessionTab('s1');
-        const tab = tabOf(tabs, 's1');
-        const tiles = laidOut(tab, layout);
-        HostPlatform.fitSessionTab(tab);
-        assert.equal(tiles(), visible, JSON.stringify(layout));
-        assert.equal(tab.querySelector('.tab-services').hidden, visible === 0, JSON.stringify(layout));
-        // Freed space brings the tiles back.
-        laidOut(tab, {need: 10, room: 100});
-        HostPlatform.fitSessionTab(tab);
-        assert.equal(tiles(), 2);
-    }
+    assert.equal(tab.querySelector('.tab-services'), null);
 });
 
 test('the identity line appears only when the saved host says more than its name', () => {
@@ -275,19 +233,35 @@ test('the identity line appears only when the saved host says more than its name
     assert.equal(pane.children.length, 0);
 });
 
-test('closing a session stops watching the names in its tab', () => {
-    const {manager, tabs, window} = setup([PAPERLESS], {
+test('the identity line names the services as text, apps first, from the shared rule', () => {
+    const pane = createElement('div');
+    pane.append(createElement('div'));
+    const profile = {...PAPERLESS, detected_services: ['postgresql', 'redis', 'paperless', 'nginx', 'immich']};
+    const bar = HostPlatform.markIdentityBar(pane, session(), profile, {createElement});
+    const apps = bar.querySelector('.session-identity-apps');
+    const summary = HostPlatform.serviceSummary(profile);
+    assert.deepEqual(summary.apps, ['immich', 'paperless']);
+    assert.deepEqual(summary.infrastructure, ['nginx', 'postgresql', 'redis']);
+    assert.equal(summary.text, 'Immich, Paperless, nginx +2');
+    assert.equal(apps.textContent, summary.text);
+    assert.equal(apps.attributes['aria-hidden'], 'true');
+    assert.match(bar.attributes['aria-label'], /· Immich, Paperless, nginx \+2$/);
+    assert.equal(bar.querySelector('.session-identity-service'), null);
+    // Unchanged facts keep the line; a host without services has no names part.
+    assert.equal(HostPlatform.markIdentityBar(pane, session(), profile, {createElement}), bar);
+    const plain = HostPlatform.markIdentityBar(pane, session(), {...profile, detected_services: []}, {createElement});
+    assert.equal(plain.querySelector('.session-identity-apps'), null);
+});
+
+test('closing a session removes its tab', () => {
+    const {manager, tabs} = setup([PAPERLESS], {
         TerminalManager: {destroyTerminal() {}},
         CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
     });
     manager.sessions.s1 = session();
     manager.createSessionTab('s1');
-    const tab = tabOf(tabs, 's1');
-    const released = [];
-    window.HostPlatform = {...HostPlatform, releaseFits: root => released.push(root)};
     manager.updateSessionMeta = () => {};
     manager.notifyWorkspaceChange = () => {};
     manager.removeSessionUI('s1');
     assert.equal(tabOf(tabs, 's1'), undefined);
-    assert.deepEqual(released, [tab]);
 });

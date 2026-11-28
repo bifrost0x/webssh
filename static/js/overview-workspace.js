@@ -46,14 +46,14 @@
 
         const wf = (key, fallback, values) => t(`workFirst.${key}`, fallback, values);
         const fileSessions = new Set();
-        const openHostContexts = new Set();
-        const openHostProfiles = new Set();
+        let details = null;
+        let arrange = null;
         const search = $('overviewSearch');
         const hostList = $('overviewHostList');
         const mode = () => view.dataset.reachability || 'manual';
         const state = {readiness: null, reachability: null, checkedAt: null, readinessAt: null, checking: false, reachError: null,
             shown: new Map(), scheduled: false, readinessTimer: 0, automaticTimer: 0, routeMap: null, firstPaint: true, returnKey: null, topologyNarrow: false, stateFilter: null, focusId: null, idFilter: null,
-            dismissed: [], dismissSequence: 0, attention: [], board: null};
+            dismissed: [], dismissSequence: 0, attention: [], board: null, hostOrder: null};
 
         const profiles = () => win.ProfileManager?.profiles || [];
         const sessions = () => sessionManager?.getAllSessions?.() || [];
@@ -484,7 +484,6 @@
             // The route has its own chip; the badge only states readiness.
             return host.state === 'unknown' ? tw('loading', 'Loading…') : stateLabel(host.state);
         }
-        const VISIBLE_SERVICES = 5;
         const formatDate = seconds => new Date(seconds * 1000).toLocaleDateString(win.i18n?.getLanguage?.() || undefined);
         const sentence = text => (text ? `${text.charAt(0).toLocaleUpperCase()}${text.slice(1)}` : text);
         /** Role, facts and the derived display texts of one host card. */
@@ -507,12 +506,9 @@
         /** The host profile: what was detected, how the role came about, and when. */
         function hostProfile(host, identity) {
             const {role, facts} = identity;
-            const details = node('details', 'od-host-profile');
-            details.dataset.profileHostId = host.id;
-            details.open = openHostProfiles.has(host.id);
-            const summary = node('summary', '', tw('profileTitle', 'Host profile'));
-            summary.dataset.key = `profile:${host.id}`;
-            summary.setAttribute('aria-label', tw('profileFor', 'Host profile: {name}', {name: host.name}));
+            const section = node('section', 'od-host-profile');
+            section.dataset.profileHostId = host.id;
+            const heading = node('h3', '', tw('profileTitle', 'Host profile'));
             const list = node('dl');
             const row = (label, ...values) => {
                 const value = node('dd');
@@ -542,13 +538,105 @@
             } else {
                 row(tw('profileDetection', 'Detection'), source || sentence(t('platform.pending', 'not detected yet')), schedule);
             }
-            if (facts?.stale) details.classList.add('od-stale');
-            details.append(summary, list, node('small', 'od-host-profile-note', tw('profileNote', 'Only facts read when connecting. No monitoring, no sudo.')));
-            return details;
+            if (facts?.stale) section.classList.add('od-stale');
+            section.append(heading, list, node('small', 'od-host-profile-note', tw('profileNote', 'Only facts read when connecting. No monitoring, no sudo.')));
+            return section;
         }
+        /** What the details of a card show: the host profile and the configuration checks. */
+        function hostDetails(host) {
+            const context = node('section', 'od-host-context');
+            context.dataset.contextHostId = host.id;
+            context.append(node('h3', '', wf('configTitle', 'Configuration readiness')),
+                node('small', '', wf('configHint', 'Configuration checks do not test login or permissions.')));
+            if (state.readinessAt) context.append(node('small', '', wf('configChecked', 'Configuration checked {time}', {time: new Date(state.readinessAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
+            if (host.reach && state.checkedAt) context.append(node('small', '', wf('tcpChecked', 'TCP {state} · {time}', {state: wf(host.reach.state, host.reach.state), time: new Date(state.checkedAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
+            if (host.reach) context.append(node('small', '', host.reach.via_socks ? t('connection.socksProxyProbeHint', 'Only the SOCKS5 proxy endpoint was checked, not the target.') : wf('tcpHint', 'TCP checks do not authenticate. For jump routes only the jump host is checked.')));
+            return [hostProfile(host, identityOf(host)), context];
+        }
+        /**
+         * What a host is for: its apps as named chips (a bundled logo where there
+         * is one, never a monogram), at most two lines, the rest behind "+N".
+         * Hypervisors show their guests; a host without apps says why.
+         */
+        function hostApps(host, identity) {
+            const {role, facts} = identity;
+            const Platform = win.HostPlatform;
+            const split = Platform?.serviceSummary?.(host.profile) || {apps: [], infrastructure: []};
+            const block = node('div', 'od-host-apps');
+            if (role.id === 'hypervisor' && facts?.guests > 0) {
+                const chip = node('span', 'od-chip od-fact-chip');
+                chip.dataset.kind = 'guests';
+                chip.append(icon('layers'), node('span', '', identity.guests));
+                block.append(chip);
+            } else if (split.apps.length) {
+                const list = node('ul', 'od-app-list');
+                list.setAttribute('aria-label', tw('appsOn', 'Apps on {name}', {name: host.name}));
+                split.apps.forEach(id => {
+                    const chip = node('li', 'od-app');
+                    chip.dataset.service = id;
+                    if (Platform.serviceAsset(id, doc)) {
+                        const mark = Platform.renderService(id, doc);
+                        // The chip names the service; its logo is decoration.
+                        ['title', 'role', 'aria-label'].forEach(name => mark.removeAttribute(name));
+                        mark.setAttribute('aria-hidden', 'true');
+                        chip.append(mark);
+                    }
+                    chip.append(node('span', '', Platform.serviceLabels[id]));
+                    list.append(chip);
+                });
+                const more = node('button', 'od-app-more');
+                more.type = 'button';
+                more.hidden = true;
+                more.dataset.key = `apps:${host.id}`;
+                more.setAttribute('aria-haspopup', 'dialog');
+                // A press on "+N" while the details are open dismisses them before the click arrives.
+                let wasOpen = false;
+                more.addEventListener('pointerdown', () => { wasOpen = Boolean(details?.isOpen(host.id)); });
+                more.addEventListener('click', () => {
+                    if (!wasOpen) details?.toggle(host.id, more.dataset.key);
+                    wasOpen = false;
+                });
+                list.append(more);
+                block.append(list);
+            } else {
+                const pending = facts?.state !== 'detected';
+                block.append(node('p', 'od-host-empty', pending
+                    ? tw('servicesPending', 'Services are read on the next connection.') : tw('appsNone', 'No apps detected')));
+            }
+            if (facts?.containerAccess === 'denied') {
+                const chip = node('span', 'od-chip od-hint-chip');
+                chip.dataset.kind = 'containers';
+                chip.title = tw('containersDeniedHint', 'The SSH user may not read the Docker socket, so running containers are unknown.');
+                chip.append(icon('warning_amber'), node('span', '', tw('chipContainersDenied', 'Containers not readable')));
+                block.append(chip);
+                block.dataset.lines = '1';
+            }
+            return {block, infrastructure: split.infrastructure};
+        }
+        /** Hides the app chips that do not fit their lines, last first, and counts them on "+N". */
+        function fitApps(list) {
+            const chips = [...list.querySelectorAll('.od-app')];
+            const more = list.querySelector('.od-app-more');
+            if (!chips.length || !more || !list.getClientRects().length) return;
+            const lines = list.closest('.od-host-apps')?.dataset.lines === '1' ? 1 : 2;
+            chips.forEach(chip => { chip.hidden = false; });
+            more.hidden = true;
+            const first = chips[0].getBoundingClientRect();
+            const gap = parseFloat(win.getComputedStyle(list).rowGap) || 0;
+            const limit = first.top + lines * first.height + (lines - 1) * gap + 1;
+            const fits = () => [...chips, more].every(item => item.hidden || item.getBoundingClientRect().bottom <= limit);
+            for (let index = chips.length - 1; index > 0 && !fits(); index -= 1) {
+                chips[index].hidden = true;
+                const hidden = chips.filter(chip => chip.hidden);
+                more.hidden = false;
+                more.textContent = `+${hidden.length}`;
+                more.setAttribute('aria-label', tw('appsMore', '{count} more apps: {names}', {count: hidden.length, names: hidden.map(chip => chip.textContent).join(', ')}));
+            }
+        }
+        const fitAllApps = () => hostList.querySelectorAll('.od-app-list').forEach(fitApps);
         function hostCard(host) {
             const identity = identityOf(host);
-            const {role, facts} = identity;
+            const {role} = identity;
             const item = node('li', 'od-host');
             item.dataset.hostId = host.id;
             item.dataset.state = host.state;
@@ -558,48 +646,23 @@
             rolePill.append(icon(win.HostIdentity?.ROLE_GLYPHS?.[role.id] || 'dns'), node('span', '', t(`role.${role.id}`, role.id)));
             const logo = node('span', 'od-host-logo');
             logo.append(win.HostPlatform?.render(host.profile, doc) || icon('dns'));
-            if (identity.virt) logo.append(node('span', 'od-virt', identity.virt));
-            const copy = node('div', 'od-host-copy');
+            const copy = node('span', 'od-host-copy');
             copy.append(node('span', 'od-host-name', host.name), node('span', 'od-host-destination', host.destination));
-            if (identity.system) copy.append(node('span', 'od-host-os', identity.system));
-            // What runs on the host, as detected when connecting: logos, the role's service first.
-            const servicesRow = node('div', 'od-host-services');
-            const services = facts?.services || [];
-            const labels = services.map(id => win.HostPlatform.serviceLabels[id]);
-            const detectedHint = tw('servicesDetected', 'Detected when connecting');
-            services.slice(0, VISIBLE_SERVICES).forEach((id, index) => {
-                const logoNode = win.HostPlatform?.renderService?.(id, doc);
-                if (!logoNode) return;
-                // The chip carries the name; the logo inside is decoration.
-                ['title', 'role', 'aria-label'].forEach(name => logoNode.removeAttribute(name));
-                logoNode.setAttribute('aria-hidden', 'true');
-                const chip = node('span', 'od-chip od-service-chip');
-                chip.dataset.service = id;
-                chip.title = `${labels[index]} · ${detectedHint}`;
-                chip.setAttribute('role', 'img');
-                chip.setAttribute('aria-label', labels[index]);
-                chip.append(logoNode);
-                servicesRow.append(chip);
-            });
-            if (services.length > VISIBLE_SERVICES) {
-                const more = node('span', 'od-chip od-service-chip od-service-more', `+${services.length - VISIBLE_SERVICES}`);
-                more.title = labels.slice(VISIBLE_SERVICES).join(', ');
-                more.setAttribute('role', 'img');
-                more.setAttribute('aria-label', `+${services.length - VISIBLE_SERVICES}: ${more.title}`);
-                servicesRow.append(more);
+            // System and machine kind as one line of text; the kind is no badge on the logo.
+            if (identity.system || identity.virt) {
+                const system = node('span', 'od-host-system');
+                if (identity.system) system.append(node('span', 'od-host-os', identity.system));
+                if (identity.system && identity.virt) system.append(doc.createTextNode(' · '));
+                if (identity.virt) system.append(node('span', 'od-virt', identity.virt));
+                copy.append(system);
             }
-            if (role.id === 'hypervisor' && facts.guests > 0) {
-                const chip = node('span', 'od-chip od-fact-chip');
-                chip.dataset.kind = 'guests';
-                chip.append(icon('layers'), node('span', '', identity.guests));
-                servicesRow.append(chip);
-            }
-            if (facts?.containerAccess === 'denied') {
-                const chip = node('span', 'od-chip od-hint-chip');
-                chip.dataset.kind = 'containers';
-                chip.title = tw('containersDeniedHint', 'The SSH user may not read the Docker socket, so running containers are unknown.');
-                chip.append(icon('warning_amber'), node('span', '', tw('chipContainersDenied', 'Containers not readable')));
-                servicesRow.append(chip);
+            const apps = hostApps(host, identity);
+            const runs = node('p', 'od-host-runs');
+            if (apps.infrastructure.length) {
+                const names = apps.infrastructure.map(id => win.HostPlatform.serviceLabels[id]);
+                runs.append(node('span', 'od-host-runs-label', tw('runsOn', 'Runs on')), doc.createTextNode(' '),
+                    node('span', 'od-host-runs-names', names.join(' · ')));
+                runs.title = `${tw('runsOn', 'Runs on')} ${names.join(', ')}`;
             }
             const meta = node('div', 'od-host-meta');
             const route = node('span', 'od-chip');
@@ -644,7 +707,26 @@
             favorite.dataset.key = `favorite:${host.id}`;
             favorite.setAttribute('aria-pressed', String(host.favorite));
             favorite.append(icon(host.favorite ? 'star' : 'star_border'));
-            top.append(rolePill, logo, copy, favorite);
+            // Logo, name and address open the details of the host.
+            const head = node('button', 'od-host-head');
+            head.type = 'button';
+            head.dataset.key = `head:${host.id}`;
+            head.setAttribute('aria-haspopup', 'dialog');
+            head.setAttribute('aria-expanded', String(Boolean(details?.isOpen(host.id))));
+            head.setAttribute('aria-label', `${host.name}, ${host.destination}`);
+            head.title = tw('hostDetails', 'Show details');
+            head.append(logo, copy);
+            // A press on the card of open details dismisses them before the click arrives.
+            let wasOpen = false;
+            head.addEventListener('pointerdown', () => { wasOpen = Boolean(details?.isOpen(host.id)); });
+            head.addEventListener('click', () => {
+                if (!wasOpen) details?.toggle(host.id);
+                wasOpen = false;
+            });
+            top.append(rolePill, head, favorite);
+            // While the hosts are arranged, only the handle of a card works.
+            const arranging = Boolean(arrange?.active());
+            if (arranging) top.append(arrange.handle(host));
             const bottom = node('div', 'od-host-bottom');
             const badge = node('span', 'od-state');
             badge.dataset.state = host.state;
@@ -659,17 +741,9 @@
             connectButton.dataset.key = `connect:${host.id}`;
             connectButton.append(icon(host.sessionId ? 'east' : 'terminal'), node('span', '', primary));
             bottom.append(badge, editButton, connectButton);
-            const context = node('details', 'od-host-context');
-            context.dataset.contextHostId = host.id;
-            context.open = openHostContexts.has(host.id);
-            const summary = node('summary', '', wf('configTitle', 'Configuration readiness'));
-            summary.dataset.key = `context:${host.id}`;
-            context.append(summary,
-                node('small', '', wf('configHint', 'Configuration checks do not test login or permissions.')));
-            if (state.readinessAt) context.append(node('small', '', wf('configChecked', 'Configuration checked {time}', {time: new Date(state.readinessAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
-            if (host.reach && state.checkedAt) context.append(node('small', '', wf('tcpChecked', 'TCP {state} · {time}', {state: wf(host.reach.state, host.reach.state), time: new Date(state.checkedAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
-            if (host.reach) context.append(node('small', '', host.reach.via_socks ? t('connection.socksProxyProbeHint', 'Only the SOCKS5 proxy endpoint was checked, not the target.') : wf('tcpHint', 'TCP checks do not authenticate. For jump routes only the jump host is checked.')));
-            item.append(top, ...(servicesRow.childElementCount ? [servicesRow] : []), meta, bottom, hostProfile(host, identity), context);
+            // Details open in a popover from the card head, so every card keeps the height of its row.
+            item.append(top, apps.block, runs, meta, bottom);
+            if (arranging) [head, favorite, apps.block, runs, meta, bottom].forEach(part => { part.inert = true; });
             return item;
         }
         function identitySignature(host) {
@@ -678,6 +752,8 @@
                 facts.containerAccess, facts.state, facts.checkedAt, facts.stale, facts.services]];
         }
         function renderHosts(hosts) {
+            // A card that is being dragged stays in place; the drop renders again.
+            if (arrange?.dragging()) return;
             const loaded = win.ProfileManager?.profilesLoaded === true;
             const visible = visibleHosts(hosts);
             $('overviewHostsEmpty').hidden = !loaded || hosts.length > 0;
@@ -688,19 +764,11 @@
             const signature = JSON.stringify([loaded, win.i18n?.getLanguage?.() || '', visible.map(host => [host.id, host.state, host.name,
                 host.destination, host.favorite, host.group, host.route.kind, host.route.name, host.sessionId, reasonFor(host),
                 win.HostPlatform?.resolve?.(host.profile)?.id || '', identitySignature(host),
-                Model.maintenance(host.profile)]), state.readinessAt, state.checkedAt]);
+                Model.maintenance(host.profile)]), state.readinessAt, state.checkedAt, Boolean(arrange?.active()), filtered()]);
             if (signature === state.hostSignature) return;
             state.hostSignature = signature;
             const focusedKey = hostList.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
             hostList.setAttribute('aria-busy', String(!loaded));
-            hostList.querySelectorAll('.od-host-context').forEach(context => {
-                if (context.open) openHostContexts.add(context.dataset.contextHostId);
-                else openHostContexts.delete(context.dataset.contextHostId);
-            });
-            hostList.querySelectorAll('.od-host-profile').forEach(profile => {
-                if (profile.open) openHostProfiles.add(profile.dataset.profileHostId);
-                else openHostProfiles.delete(profile.dataset.profileHostId);
-            });
             hostList.replaceChildren();
             if (!loaded) {
                 for (let index = 0; index < 6; index += 1) hostList.append(node('li', 'od-host od-skeleton'));
@@ -708,6 +776,9 @@
             }
             visible.forEach(host => hostList.append(hostCard(host)));
             if (focusedKey) [...hostList.querySelectorAll('[data-key]')].find(item => item.dataset.key === focusedKey)?.focus({preventScroll: true});
+            fitAllApps();
+            details?.refresh();
+            arrange?.refresh();
         }
 
         function renderAttention(items, hiddenCount) {
@@ -967,7 +1038,8 @@
             renderLegend(hosts);
             renderHostFilter();
             renderTopology(hosts);
-            renderHosts(hosts);
+            // The hosts pane shows the account's own order; favourites stay first.
+            renderHosts(win.OverviewHostOrder ? win.OverviewHostOrder.arranged(hosts, state.hostOrder) : hosts);
             state.automationEnabled = runInfo.enabled === true;
             renderAttention(attentionItems, allAttention.length - attentionItems.length);
             renderAutomation(runInfo, metrics);
@@ -1138,9 +1210,10 @@
         function preferences() {
             try {
                 const data = JSON.parse($('overviewPreferences')?.textContent || '{}');
-                return {panels: Array.isArray(data.panels) ? data.panels : null, dismissed: Array.isArray(data.dismissed) ? data.dismissed : []};
+                return {panels: Array.isArray(data.panels) ? data.panels : null, dismissed: Array.isArray(data.dismissed) ? data.dismissed : [],
+                    hostOrder: Array.isArray(data.host_order) ? data.host_order.filter(id => typeof id === 'string') : null};
             } catch {
-                return {panels: null, dismissed: []};
+                return {panels: null, dismissed: [], hostOrder: null};
             }
         }
         function panelLabel(id) {
@@ -1182,6 +1255,19 @@
         }
 
         function init() {
+            const hostsPanel = view.querySelector('[data-panel="hosts"]');
+            if (win.OverviewHostDetails && hostsPanel) {
+                details = win.OverviewHostDetails.create({window: win, document: doc, list: hostList, panel: hostsPanel,
+                    hosts: hostModel, sections: hostDetails, tw});
+            }
+            state.hostOrder = preferences().hostOrder;
+            if (win.OverviewHostArrange && win.OverviewHostOrder && win.OverviewHostDrag && hostsPanel) {
+                arrange = win.OverviewHostArrange.create({window: win, document: doc, panel: hostsPanel, list: hostList,
+                    hosts: () => win.OverviewHostOrder.arranged(hostModel(), state.hostOrder), filtered,
+                    order: {get: () => state.hostOrder, set: ids => { state.hostOrder = ids; }},
+                    save: hostOrder => request('/api/overview/preferences', {method: 'PUT', body: JSON.stringify({host_order: hostOrder})}).then(() => true, () => false),
+                    tw, announce, rerender: schedule});
+            }
             state.dismissed = preferences().dismissed;
             state.board = createBoard();
             $('overviewCustomize')?.addEventListener('click', () => setEditing(!state.board?.isEditing()));
@@ -1252,6 +1338,13 @@
                 if (event.animationName === 'od-panel-flash') event.currentTarget.classList.remove('od-panel-flash');
             });
             $('overviewSetupHost')?.addEventListener('change', schedule);
+            // A panel that scrolls its own body sets its heading off from what passes under it.
+            view.addEventListener('scroll', event => {
+                const body = event.target;
+                if (!body.matches?.('[data-panel] > .od-panel-body')) return;
+                const scrolled = String(body.scrollTop > 0);
+                if (body.parentElement.dataset.scrolled !== scrolled) body.parentElement.dataset.scrolled = scrolled;
+            }, {capture: true, passive: true});
             view.addEventListener('wheel', event => {
                 if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.shiftKey || !event.deltaY || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
                 const body = event.target.closest?.('[data-panel][data-fixed-height="true"] > .od-panel-body');
@@ -1282,6 +1375,9 @@
             win.addEventListener('primary-workspace-change', () => { schedule(); if (!view.hidden) { queueReadiness(); syncAutomatic(); } else win.clearInterval(state.automaticTimer); });
             ['connect', 'disconnect'].forEach(name => win.socket?.on?.(name, schedule));
             win.setInterval(() => { if (!view.hidden && !doc.hidden) schedule(); }, 60 * 1000);
+            // Chips are measured: refit them when the cards change width or the theme changes the type.
+            if (win.ResizeObserver) new win.ResizeObserver(() => win.requestAnimationFrame(fitAllApps)).observe(hostList);
+            new win.MutationObserver(() => win.requestAnimationFrame(fitAllApps)).observe(doc.body, {attributes: true, attributeFilter: ['data-theme']});
             if (win.ResizeObserver) {
                 new win.ResizeObserver(entries => {
                     // Layout is clean here, so reading the width costs nothing; renders reuse it.

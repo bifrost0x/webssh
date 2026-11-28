@@ -36,9 +36,13 @@ type Page struct {
 	// OverviewDismissed the acknowledged items, as checked values.
 	OverviewPanels    jsontext.Value
 	OverviewDismissed []string
+	// OverviewHostOrder is the account's order of the host cards, nil for
+	// the default order.
+	OverviewHostOrder []string
 	// OverviewPreferencesJSON is {"panels", "dismissed"} encoded exactly as
-	// the Jinja filter tojson of the Python release; the page block
-	// #overviewPreferences must carry these bytes.
+	// the Jinja filter tojson of the Python release, plus "host_order" once
+	// the account arranged its hosts; the page block #overviewPreferences
+	// must carry these bytes.
 	OverviewPreferencesJSON string
 	// TerminalAppearance is the override object; TerminalAppearanceJSON is
 	// its tojson form for data-terminal-appearance.
@@ -92,7 +96,7 @@ func (pp PageProvider) Page(ctx context.Context, acct Account) (Page, error) {
 	p := Page{
 		Theme: u.Theme, StartPage: u.StartPage, OverviewLayout: u.OverviewLayout,
 		OverviewReachability: u.OverviewReachability, OverviewPanels: u.overviewPanelsValue(),
-		OverviewDismissed: u.OverviewDismissed, SyncTerminalDirectory: u.SyncTerminalDirectory,
+		OverviewDismissed: u.OverviewDismissed, OverviewHostOrder: u.OverviewHostOrder, SyncTerminalDirectory: u.SyncTerminalDirectory,
 		ConfirmSessionClose: u.ConfirmSessionClose, DisconnectSessionAction: u.DisconnectSessionAction,
 		SessionDurationMinutes: u.SessionDurationMinutes,
 		ConnectionHistoryScope: pp.Scope.BrowserScope(acct.ID, acct.Username, acct.HistoryGeneration),
@@ -104,7 +108,7 @@ func (pp PageProvider) Page(ctx context.Context, acct Account) (Page, error) {
 		SFTPChmodEnabled:  app.RuntimeFeature("sftp_chmod_enabled").Enabled,
 		LegacySSHOptIn:    !app.Policy.LegacySSHAlgorithms,
 	}
-	prefs, err := json.Marshal(map[string]any{"panels": p.OverviewPanels, "dismissed": p.OverviewDismissed})
+	prefs, err := json.Marshal(u.overviewPreferences())
 	if err != nil {
 		return Page{}, fault.Wrap(fault.Internal, err, "")
 	}

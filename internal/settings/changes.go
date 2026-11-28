@@ -24,6 +24,9 @@ type Changes struct {
 	OverviewPanels jsontext.Value
 	// OverviewDismissed replaces the acknowledged attention items.
 	OverviewDismissed jsontext.Value
+	// OverviewHostOrder replaces the order of the host cards; "null"
+	// restores the default order.
+	OverviewHostOrder jsontext.Value
 	// Tour records the state of the introduction tour; "completed" also
 	// records the acknowledgement of the current tour.
 	Tour *string
@@ -43,6 +46,7 @@ const (
 	msgInvalidDuration    = "Invalid authentication session duration"
 	msgInvalidPanels      = "Invalid layout."
 	msgInvalidDismissed   = "Invalid acknowledgement list."
+	msgInvalidHostOrder   = "Invalid host order."
 	msgInvalidTourState   = "Invalid tour state"
 	msgNothingToChange    = "Invalid settings payload"
 	msgSettingsNotSaved   = "Failed to save settings"
@@ -111,6 +115,12 @@ func (c Changes) rows() (map[string]jsontext.Value, error) {
 			return nil, invalid(msgInvalidDismissed)
 		}
 		out[keyOverviewDismissed] = c.OverviewDismissed
+	}
+	if c.OverviewHostOrder != nil {
+		if !ValidOverviewHostOrder(c.OverviewHostOrder) {
+			return nil, invalid(msgInvalidHostOrder)
+		}
+		out[keyOverviewHostOrder] = c.OverviewHostOrder
 	}
 	if c.Tour != nil {
 		if !in(TourStates, *c.Tour) {

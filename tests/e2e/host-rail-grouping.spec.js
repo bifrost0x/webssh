@@ -108,18 +108,22 @@ test('collapsing a heading in one mode leaves the other mode open', async ({page
     await expect(page.locator('#shellGroups > details').first()).not.toHaveAttribute('open', '');
 });
 
-test('rows show at most four service logos and drop them before cutting a name', async ({page}) => {
+test('rows name no services, so the host name has the whole row', async ({page}) => {
     await openRail(page);
     const crowded = page.locator('#shellGroups .shell-host[aria-label="plain"]');
-    // Six services are known; the row builds the first four only.
-    await expect(crowded.locator('.shell-host-service')).toHaveCount(4);
+    await expect(crowded).toBeVisible();
+    await expect(page.locator('#shellGroups .shell-host-services, #shellGroups .shell-host-service, #shellGroups .host-service-icon')).toHaveCount(0);
+    // A name shorter than the rail is shown whole; only a name wider than the rail is cut.
+    expect(await crowded.locator('.shell-host-name').evaluate(name => name.scrollWidth <= name.clientWidth)).toBe(true);
     const long = page.locator('#shellGroups .shell-host[aria-label^="a-rather-long"]');
-    const logos = await long.evaluate(row => row.querySelectorAll('.shell-host-service:not([hidden])').length);
-    // The name alone is wider than the rail: logos may not take any of its room.
-    expect(logos).toBe(0);
+    const room = await long.evaluate(row => {
+        const name = row.querySelector('.shell-host-name');
+        return {nameRight: name.getBoundingClientRect().right, rowRight: row.getBoundingClientRect().right};
+    });
+    expect(room.nameRight).toBeLessThanOrEqual(room.rowRight);
 });
 
-test('rows built inside a collapsed heading fit their logos once it opens', async ({page}) => {
+test('rows built inside a collapsed heading show whole names once it opens', async ({page}) => {
     await openRail(page);
     const edge = page.locator('#shellGroups > details[data-tone]').filter({hasText: 'Edge'});
     // The rail stores the collapsed heading from the toggle event, which fires after the click.
@@ -127,19 +131,15 @@ test('rows built inside a collapsed heading fit their logos once it opens', asyn
     await edge.locator('summary').click();
     await toggled;
     await expect(edge).not.toHaveAttribute('open', '');
-    // Rebuilt while collapsed: the rows exist but are not rendered and cannot be measured.
     await page.evaluate(items => ProfileManager.setProfiles(items.map(item => ({...item}))), profiles);
     const reopened = page.locator('#shellGroups > details[data-tone]').filter({hasText: 'Edge'});
     await expect(reopened).not.toHaveAttribute('open', '');
     await reopened.locator('summary').click();
-    const long = page.locator('#shellGroups .shell-host[aria-label^="a-rather-long"]');
-    await expect.poll(() => long.evaluate(row => row.querySelectorAll('.shell-host-service:not([hidden])').length)).toBe(0);
     const crowded = page.locator('#shellGroups .shell-host[aria-label="plain"]');
     await expect.poll(() => crowded.evaluate(row => {
         const name = row.querySelector('.shell-host-name');
-        return {cut: name.scrollWidth > name.clientWidth,
-            shown: row.querySelectorAll('.shell-host-service:not([hidden])').length > 0};
-    })).toEqual({cut: false, shown: true});
+        return {cut: name.scrollWidth > name.clientWidth, tiles: row.querySelectorAll('.shell-host-service').length};
+    })).toEqual({cut: false, tiles: 0});
 });
 
 test('names are text only, the page does not overflow at 360 px and the rail stays hidden there', async ({page}) => {
@@ -169,5 +169,28 @@ test('every rail row names its role to screen readers without a visible glyph', 
             expect(row.inside).toBe(true);
             expect(row.hidden).toBe(true);
         }
+    }
+});
+
+test('the Hosts switch shows the rail whenever it reports it expanded', async ({page}) => {
+    await openRail(page);
+    const toggle = page.locator('#toggleHostRail');
+    const rail = page.locator('#shellGroups');
+    for (const [width, height] of [[1440, 900], [1100, 800], [1024, 768], [900, 700], [768, 1024], [1366, 600]]) {
+        await page.setViewportSize({width, height});
+        await expect(toggle, `${width}x${height}`).toBeVisible();
+        if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(rail, `${width}x${height} expanded`).toBeVisible();
+        const layout = await page.evaluate(() => {
+            const groups = document.querySelector('.shell-groups').getBoundingClientRect();
+            const main = document.querySelector('.main-content').getBoundingClientRect();
+            return {inside: groups.left >= 0 && groups.right <= window.innerWidth && groups.height > 100,
+                clear: main.left >= groups.right - 1, wide: main.width >= 300};
+        });
+        expect(layout, `${width}x${height}`).toEqual({inside: true, clear: true, wide: true});
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(rail, `${width}x${height} collapsed`).toBeHidden();
     }
 });

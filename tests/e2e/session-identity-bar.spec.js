@@ -81,16 +81,15 @@ test('a pane with a session names its host above the terminal', async ({ page })
     await expect(identity).toHaveCount(1);
     await expect(identity).toHaveAttribute('data-role', 'docs');
     await expect(identity).toHaveAttribute('role', 'note');
-    await expect(identity).toHaveAttribute('aria-label', 'Documents · Paperless · Ubuntu 24.04 · VM · Paperless, nginx, PostgreSQL, Redis');
+    // Apps first, then what the host runs on: three names and a count, as everywhere.
+    await expect(identity).toHaveAttribute('aria-label', 'Documents · Paperless · Ubuntu 24.04 · VM · Paperless, nginx, PostgreSQL +1');
     await expect(identity.locator('.session-identity-role')).toHaveText('Documents');
     await expect(identity.locator('.session-identity-name')).toHaveText('Paperless');
     await expect(identity.locator('.session-identity-system')).toHaveText('Ubuntu 24.04');
     await expect(identity.locator('.session-identity-virt')).toHaveText('VM');
-    const tiles = identity.locator('.session-identity-service');
-    await expect(tiles).toHaveCount(4);
-    await expect(tiles.first()).toHaveAttribute('data-service', 'paperless');
-    await expect(tiles.first()).toHaveAttribute('title', 'Paperless');
-    for (const tile of await tiles.all()) await expect(tile).toBeVisible();
+    await expect(identity.locator('.session-identity-apps')).toHaveText('Paperless, nginx, PostgreSQL +1');
+    await expect(identity.locator('.session-identity-apps')).toBeVisible();
+    await expect(identity.locator('.session-identity-service, .host-service-icon')).toHaveCount(0);
     // The bar is one slim line and the terminal below it shows whole rows only.
     const height = await identity.evaluate(element => element.getBoundingClientRect().height);
     expect(height).toBeGreaterThanOrEqual(22);
@@ -152,27 +151,20 @@ test('a saved host without facts keeps the terminal layout of a pane without a s
     await expect.poll(async () => (await layout('plain')).rows).toBeLessThan(plainLayout.rows);
 });
 
-test('a pane lets go of its old identity line before it is redrawn', async ({ page }) => {
+test('a pane replaces its identity line when it shows another session', async ({ page }) => {
     await page.setViewportSize({width: 1440, height: 900});
     await login(page);
     await simulateSessions(page);
     await connect(page, 'pve');
     await connect(page, 'paper');
     await expect(bar(page, 'paper')).toHaveCount(1);
-    await page.evaluate(() => {
-        window.__released = [];
-        const release = HostPlatform.releaseFits;
-        HostPlatform.releaseFits = root => {
-            window.__released.push({pane: root.classList.contains('terminal-pane'), bar: Boolean(root.querySelector?.('.session-identity-bar')),
-                tab: root.classList.contains('session-tab')});
-            return release(root);
-        };
-    });
     await page.locator('#tab-idbar-pve .tab-label').click();
-    await expect(page.locator('.terminal-pane').first().locator('.session-identity-bar')).toHaveAttribute('data-role', 'hypervisor');
-    expect(await page.evaluate(() => window.__released)).toContainEqual({pane: true, bar: true, tab: false});
+    const pane = page.locator('.terminal-pane').first();
+    await expect(pane.locator('.session-identity-bar')).toHaveAttribute('data-role', 'hypervisor');
+    await expect(pane.locator('.session-identity-bar')).toHaveCount(1);
+    await expect(pane.locator('.session-identity-apps')).toHaveCount(0);
     await page.evaluate(() => SessionManager.removeSessionUI('idbar-paper'));
-    expect(await page.evaluate(() => window.__released)).toContainEqual({pane: false, bar: false, tab: true});
+    await expect(page.locator('#tab-idbar-paper')).toHaveCount(0);
 });
 
 test('the bar follows profile updates and the session a pane shows', async ({ page }) => {
@@ -186,12 +178,12 @@ test('the bar follows profile updates and the session a pane shows', async ({ pa
     await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'paper'
         ? {...profile, detected_services: ['jellyfin', 'plex']} : profile))));
     await expect(pane.locator('.session-identity-bar')).toHaveAttribute('data-role', 'media');
-    await expect(pane.locator('.session-identity-service')).toHaveCount(2);
+    await expect(pane.locator('.session-identity-apps')).toHaveText('Jellyfin, Plex');
     await page.locator('#tab-idbar-pve .tab-label').click();
     await expect(pane.locator('.session-identity-bar')).toHaveAttribute('data-role', 'hypervisor');
     await expect(pane.locator('.session-identity-system')).toHaveText('Proxmox 9.1');
     await expect(pane.locator('.session-identity-virt')).toHaveText('Bare Metal');
-    await expect(pane.locator('.session-identity-service')).toHaveCount(0);
+    await expect(pane.locator('.session-identity-apps')).toHaveCount(0);
     // A detection result for the running session reaches the bar too.
     await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'pve'
         ? {...profile, role_override: 'backup'} : profile))));
@@ -240,57 +232,53 @@ test('four split panes keep their bars inside the pane at 1366x768', async ({ pa
     expect(resizeLoops).toEqual([]);
 });
 
-test('a narrow pane drops service logos whole before cutting the host name', async ({ page }) => {
+test('a narrow pane cuts the service names before the host name', async ({ page }) => {
     await page.setViewportSize({width: 360, height: 740});
     await login(page);
     await simulateSessions(page);
     await connect(page, 'paper');
     const identity = page.locator('.session-identity-bar');
     await expect(identity).toHaveCount(1);
-    await expect.poll(() => identity.locator('.session-identity-service:visible').count()).toBeLessThan(4);
     const state = await identity.evaluate(element => {
-        const tiles = [...element.querySelectorAll('.session-identity-service')];
         const text = element.querySelector('.session-identity-text');
+        const apps = element.querySelector('.session-identity-apps');
+        const name = element.querySelector('.session-identity-name');
         const style = getComputedStyle(text);
         const right = text.getBoundingClientRect().right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth);
         return {
             // Measured in fractions: rounded widths miss a cut of less than a pixel.
-            textCut: text.lastElementChild.getBoundingClientRect().right > right + 0.01,
-            visibleTiles: tiles.filter(tile => !tile.hidden).length,
+            nameCut: name.getBoundingClientRect().right > right + 0.01,
+            appsCut: apps.scrollWidth > apps.clientWidth,
+            appsWidth: apps.getBoundingClientRect().width,
             overflow: element.scrollWidth - element.clientWidth,
-            hiddenOutOfTree: tiles.filter(tile => tile.hidden).every(tile => tile.offsetWidth === 0),
             page: document.documentElement.scrollWidth,
         };
     });
     expect(state.overflow).toBeLessThanOrEqual(0);
-    expect(state.hiddenOutOfTree).toBe(true);
     expect(state.page).toBeLessThanOrEqual(360);
-    if (state.textCut) expect(state.visibleTiles).toBe(0);
+    // The names give way first: the host name is whole while the names are cut.
+    expect(state.nameCut).toBe(false);
+    expect(state.appsCut).toBe(true);
 });
 
-test('a tab name cut by a fraction of a pixel still makes its logos give way', async ({ page }) => {
+test('session tabs carry the role but no service tiles', async ({ page }) => {
     await page.setViewportSize({width: 1440, height: 900});
     await login(page);
-    await page.evaluate(() => applyTheme('glass'));
     await simulateSessions(page);
-    await page.evaluate(() => {
-        const gateway = ProfileManager.profiles.find(profile => profile.id === 'fw');
-        ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile === gateway ? {...profile, name: 'Gateway'} : profile)));
-    });
     await setLayout(page, 4);
     for (const id of ['paper', 'pve', 'cloud', 'fw']) await connect(page, id);
-    const tab = page.locator('#tab-idbar-fw');
-    await expect(tab).toHaveAttribute('data-role', 'network');
-    await expect.poll(() => tab.evaluate(element => {
-        const name = element.querySelector('.tab-host-name');
-        const range = document.createRange();
-        range.selectNodeContents(name);
-        const style = getComputedStyle(name);
-        const inner = name.getBoundingClientRect().width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-        const whole = range.getBoundingClientRect().width <= inner + 0.01;
-        const tiles = [...element.querySelectorAll('.tab-service')].filter(tile => !tile.hidden).length;
-        return whole || tiles === 0;
-    })).toBe(true);
+    await expect(page.locator('#tab-idbar-fw')).toHaveAttribute('data-role', 'network');
+    await expect(page.locator('#tab-idbar-paper')).toHaveAttribute('data-role', 'docs');
+    await expect(page.locator('.session-tab .tab-services, .session-tab .tab-service, .session-tab .host-service-icon')).toHaveCount(0);
+    await expect(page.locator('#tab-idbar-paper .tab-role')).toHaveText('Documents');
+    // Without tiles every tab name has the whole tab.
+    for (const id of ['paper', 'pve', 'cloud', 'fw']) {
+        const whole = await page.locator(`#tab-idbar-${id}`).evaluate(element => {
+            const name = element.querySelector('.tab-host-name');
+            return name.scrollWidth <= name.clientWidth;
+        });
+        expect(whole, id).toBe(true);
+    }
 });
 
 test('floating windows carry the identity in their title bar, not in a second line', async ({ page }) => {
@@ -303,24 +291,18 @@ test('floating windows carry the identity in their title bar, not in a second li
     const frame = page.locator('#terminalGrid > .ws-window').filter({has: page.locator('#terminal-idbar-paper')});
     await expect(frame.locator('.ws-window-subtitle')).toContainText('Documents · Ubuntu 24.04 · VM');
     await expect(frame).toHaveAttribute('data-role', 'docs');
-    await expect(frame.locator('.ws-window-badges .session-identity-service')).toHaveCount(4);
+    // The services are named in the title bar text by the shared rule.
+    await expect(frame.locator('.ws-window-identity')).toHaveText('Documents · Ubuntu 24.04 · VM · Paperless, nginx, PostgreSQL +1');
+    await expect(frame.locator('.ws-window-services, .session-identity-service')).toHaveCount(0);
     await expect(frame.locator('.session-identity-bar')).toHaveCount(0);
-    // In a narrow window the logos give way before the identity text is cut.
+    // A narrow window ellipsizes the line inside the title bar.
     await frame.evaluate(element => { element.style.width = '470px'; });
-    await expect.poll(() => frame.evaluate(element => {
-        const subtitle = element.querySelector('.ws-window-subtitle');
-        const lead = subtitle.querySelector('.ws-window-identity');
-        const style = getComputedStyle(subtitle);
-        const right = subtitle.getBoundingClientRect().right - parseFloat(style.paddingRight);
-        const tiles = [...element.querySelectorAll('.ws-window-services .session-identity-service')].filter(tile => !tile.hidden);
-        return {whole: lead.getBoundingClientRect().right <= right + 0.01, someHidden: tiles.length < 4,
-            ok: lead.getBoundingClientRect().right <= right + 0.01 || tiles.length === 0};
-    })).toMatchObject({ok: true, someHidden: true});
+    expect(await frame.evaluate(element => element.querySelector('.ws-window-titlebar').scrollWidth
+        <= element.querySelector('.ws-window-titlebar').clientWidth)).toBe(true);
     await frame.evaluate(element => { element.style.width = ''; });
     await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'paper'
         ? {...profile, detected_services: ['jellyfin']} : profile))));
-    await expect(frame.locator('.ws-window-subtitle')).toContainText('Media');
-    await expect(frame.locator('.ws-window-badges .session-identity-service')).toHaveCount(1);
+    await expect(frame.locator('.ws-window-identity')).toHaveText('Media · Ubuntu 24.04 · VM · Jellyfin');
     // Leaving window mode brings the bar back into the pane.
     await setLayout(page, 1);
     await expect(bar(page, 'paper')).toHaveAttribute('data-role', 'media');

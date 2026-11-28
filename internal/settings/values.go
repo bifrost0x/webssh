@@ -59,6 +59,7 @@ const (
 	keyOverviewReachability = "overview_reachability"
 	keyOverviewPanels       = "overview_panels"
 	keyOverviewDismissed    = "overview_dismissed"
+	keyOverviewHostOrder    = "overview_host_order"
 	keyStartPage            = "start_page"
 	keyTerminalAppearance   = "terminal_appearance"
 	keyConfirmSessionClose  = "confirm_session_close"

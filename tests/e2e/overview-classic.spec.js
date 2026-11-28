@@ -37,7 +37,7 @@ test('account can switch classic overview and dashboard without losing layout',a
  await page.goto('/');await expect(page.locator('#connectionOverview[data-overview-workspace]')).toBeVisible();await expect(page.locator('#overviewSearch')).toBeVisible();await expect(page.locator('#overviewQuickConnect')).toHaveCount(0);await expect(page.locator('body')).toHaveAttribute('data-theme',theme);
  expect(await page.locator('.global-navigation').evaluate(e=>getComputedStyle(e).flexDirection)).toBe(navDirection);expect(errors).toEqual([]);
 });
-test('classic host rows show platform, virtualization, role and up to three service logos',async({page})=>{
+test('classic host rows show platform, virtualization, role and the names of their services',async({page})=>{
  await login(page,'e2e_admin',{workspace:false});
  await page.goto('/settings#preferences');await page.locator('#settingsOverviewLayout').selectOption('classic');
  await expect(page.locator('#settingsOverviewLayout')).toHaveAttribute('data-saved','classic');
@@ -53,20 +53,21 @@ test('classic host rows show platform, virtualization, role and up to three serv
  await expect(row('pve').locator('.host-platform-icon')).toHaveAttribute('data-platform','proxmox');
  await expect(row('pve').locator('.overview-row-virt')).toHaveText('Bare Metal');
  await expect(row('pve').locator('.overview-role')).toContainText('Hypervisor');
- await expect(row('pve').locator('.shell-host-service')).toHaveCount(3);
+ // Apps first, then what the host runs on: three names and a count, by the shared rule.
+ await expect(row('pve').locator('.overview-row-apps')).toHaveText('Grafana, Prometheus, nginx +2');
+ await expect(row('pve').locator('.shell-host-service, .host-service-icon[data-service]')).toHaveCount(0);
  await page.setViewportSize({width:360,height:800});
  const title=row('pve').locator('.overview-row-title');
  await expect(title).toHaveText('pve-one');
  expect(await title.evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
- const logos=id=>row(id).locator('.shell-host-service:visible').count();
  const nameWhole=id=>row(id).locator('.overview-row-title').evaluate(e=>e.scrollWidth<=e.clientWidth);
- // Classic rows wrap the name instead of cutting it, so the logos keep their place at any width.
+ // Classic rows wrap the name and the service names instead of cutting them.
  const inside=id=>row(id).evaluate(e=>{const box=e.getBoundingClientRect();
-  return e.scrollWidth<=e.clientWidth&&[...e.querySelectorAll('.shell-host-service')].every(tile=>{const r=tile.getBoundingClientRect();return r.left>=box.left&&r.right<=box.right;});});
+  return e.scrollWidth<=e.clientWidth&&[...e.querySelectorAll('.overview-row-apps')].every(names=>{const r=names.getBoundingClientRect();return r.left>=box.left&&r.right<=box.right;});});
  for(const width of [1440,360]){
   await page.setViewportSize({width,height:900});
   await expect(row('long').locator('.overview-row-title')).toHaveText('a-rather-long-host-name-for-a-narrow-row-that-keeps-going-on');
-  await expect.poll(()=>logos('long'),{message:`${width}px`}).toBe(3);
+  await expect(row('long').locator('.overview-row-apps'),`${width}px`).toHaveText('Grafana, Prometheus, Docker');
   expect(await nameWhole('long'),`${width}px name`).toBe(true);
   expect(await inside('long'),`${width}px row`).toBe(true);
  }
@@ -74,7 +75,7 @@ test('classic host rows show platform, virtualization, role and up to three serv
  await expect(row('pve').locator('.overview-row-title')).toHaveText('pve-one');
  await expect(row('plain').locator('.overview-role')).toContainText('Server');
  await expect(row('plain').locator('.overview-row-virt')).toHaveCount(0);
- await expect(row('plain').locator('.shell-host-service')).toHaveCount(0);
+ await expect(row('plain').locator('.overview-row-apps')).toHaveCount(0);
  expect(await sshAttempts(page)).toEqual([]);
 });
 test('classic rail rows show the platform icon without a role tint',async({page})=>{

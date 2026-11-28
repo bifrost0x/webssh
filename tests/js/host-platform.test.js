@@ -250,34 +250,29 @@ test('every monogram shown for a catalog service is distinct', () => {
     assert.ok(shown.size > 0);
 });
 
-test('re-rendering a container releases the texts its previous rows were fitted against', () => {
-    const observed = new Set();
-    const previous = globalThis.ResizeObserver;
-    globalThis.ResizeObserver = class {
-        observe(target) { observed.add(target); }
-        unobserve(target) { observed.delete(target); }
-    };
+test('every place names services by one rule: apps first, then what the host runs on, three names and a count', () => {
+    const Identity = require('../../static/js/host-identity.js');
+    const previous = globalThis.HostIdentity;
+    globalThis.HostIdentity = Identity;
     try {
-        // A rail that is hidden never resizes its rows, so nothing else would unobserve them.
-        const row = () => ({
-            holder: {isConnected: true, hidden: false, children: []},
-            name: {isConnected: true, clientWidth: 0, scrollWidth: 0, children: []},
-        });
-        // Called before the old rows are replaced, so the container still holds them.
-        const rail = {contains: () => true};
-        const render = () => {
-            icons.releaseFits(rail);
-            [row(), row(), row()].forEach(item => icons.keepTilesFitting(item.holder, item.name));
-        };
-        render();
-        assert.equal(observed.size, 3);
-        render();
-        render();
-        assert.equal(observed.size, 3);
-        icons.releaseFits(rail);
-        assert.equal(observed.size, 0);
+        const profile = {detected_platform: 'ubuntu', detection_state: 'detected',
+            detected_services: ['docker', 'jellyfin', 'sonarr', 'traefik', 'radarr', 'not-a-service']};
+        const summary = icons.serviceSummary(profile);
+        assert.deepEqual(summary.apps, ['jellyfin', 'radarr', 'sonarr']);
+        assert.deepEqual(summary.infrastructure, ['traefik', 'docker']);
+        assert.deepEqual(summary.names, ['Jellyfin', 'Radarr', 'Sonarr']);
+        assert.equal(summary.more, 2);
+        assert.equal(summary.text, 'Jellyfin, Radarr, Sonarr +2');
+        assert.equal(icons.NAMED_SERVICES, 3);
+        assert.equal(icons.serviceSummary(profile, 5).text, 'Jellyfin, Radarr, Sonarr, Traefik, Docker');
+        // A host that only runs infrastructure is named by it; nothing known is no text.
+        assert.equal(icons.serviceSummary({detected_services: ['wireguard', 'unbound']}).text, 'Unbound, WireGuard');
+        assert.deepEqual(icons.serviceSummary({}), {apps: [], infrastructure: [], names: [], more: 0, text: ''});
+        // Labels are text, never markup.
+        assert.doesNotMatch(icons.serviceSummary(profile).text, /[<>]/);
     } finally {
-        if (previous === undefined) delete globalThis.ResizeObserver;
-        else globalThis.ResizeObserver = previous;
+        if (previous === undefined) delete globalThis.HostIdentity;
+        else globalThis.HostIdentity = previous;
     }
 });
+
