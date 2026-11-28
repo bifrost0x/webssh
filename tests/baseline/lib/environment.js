@@ -118,8 +118,10 @@ async function pollReady(baseUrl, timeoutMs) {
 }
 
 class DockerApp {
-    constructor({ image, port, environment }) {
+    constructor({ image, port, environment, name = APP_NAME }) {
         this.kind = 'docker';
+        // A second name lets two backends run side by side on one sshd.
+        this.name = name;
         this.image = image;
         this.port = port;
         this.environment = environment;
@@ -129,7 +131,8 @@ class DockerApp {
 
     // Measures docker run (container creation included) until /ready is 200.
     async start({ keepVolume = false } = {}) {
-        dockerQuiet(['rm', '-f', APP_NAME]);
+        ensureNetwork();
+        dockerQuiet(['rm', '-f', this.name]);
         if (!keepVolume || !this.volume) {
             if (this.volume) dockerQuiet(['volume', 'rm', this.volume]);
             this.volume = `webssh-baseline-data-${randomSecret(4)}`;
@@ -137,13 +140,13 @@ class DockerApp {
         const envArgs = Object.entries(this.environment).flatMap(([key, value]) => ['-e', `${key}=${value}`]);
         const started = process.hrtime.bigint();
         docker([
-            'run', '-d', '--name', APP_NAME, '--network', NETWORK,
+            'run', '-d', '--name', this.name, '--network', NETWORK,
             '-p', `127.0.0.1:${this.port}:5000`, '-v', `${this.volume}:/app/data`,
             ...envArgs, this.image,
         ]);
         const ready = await pollReady(this.baseUrl, 120000);
         const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
-        if (!ready) throw new Error(`WebSSH container not ready: ${dockerQuiet(['logs', '--tail', '40', APP_NAME])}`);
+        if (!ready) throw new Error(`WebSSH container not ready: ${dockerQuiet(['logs', '--tail', '40', this.name])}`);
         return elapsedMs;
     }
 
@@ -152,24 +155,24 @@ class DockerApp {
     }
 
     rootPid() {
-        return Number(docker(['inspect', '--format', '{{.State.Pid}}', APP_NAME]));
+        return Number(docker(['inspect', '--format', '{{.State.Pid}}', this.name]));
     }
 
     memory() {
-        const stats = docker(['stats', '--no-stream', '--format', '{{.MemUsage}}', APP_NAME]);
+        const stats = docker(['stats', '--no-stream', '--format', '{{.MemUsage}}', this.name]);
         return { container_mem_usage: stats.split('/')[0].trim(), ...processTreeMemory(this.rootPid()) };
     }
 
     logs() {
-        return dockerQuiet(['logs', APP_NAME]) || '';
+        return dockerQuiet(['logs', this.name]) || '';
     }
 
     async stop() {
-        dockerQuiet(['rm', '-f', APP_NAME]);
+        dockerQuiet(['rm', '-f', this.name]);
     }
 
     cleanup() {
-        dockerQuiet(['rm', '-f', APP_NAME]);
+        dockerQuiet(['rm', '-f', this.name]);
         if (this.volume) dockerQuiet(['volume', 'rm', this.volume]);
         this.volume = null;
     }
