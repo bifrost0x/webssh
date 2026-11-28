@@ -9,7 +9,7 @@ import os
 import re
 
 
-VERSION = '3.3.0'
+VERSION = '3.3.1'
 
 _REVISION = re.compile(r'[0-9a-f]{40}')
 
