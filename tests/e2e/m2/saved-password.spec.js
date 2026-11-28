@@ -82,12 +82,42 @@ function expectSavedPasswordTarget(target, fields) {
     expect(target).not.toHaveProperty('password');
 }
 
+// Records every "Disconnected from server" notice with the close codes the
+// page's realtime connections ended with, so that a lost connection fails
+// the test with its reason (RC0-4: seen once after a step-up, not
+// reproduced since). A close because the page navigates away is not one.
+async function watchDisconnects(page) {
+    const lost = [];
+    await page.exposeFunction('__recordDisconnect', entry => lost.push(entry));
+    await page.addInitScript(() => {
+        const closes = [];
+        const Native = window.WebSocket;
+        window.WebSocket = class extends Native {
+            constructor(...args) {
+                super(...args);
+                this.addEventListener('close', event => closes.push(`${event.code} ${event.reason}`));
+            }
+        };
+        new MutationObserver(records => {
+            for (const record of records) {
+                for (const node of record.addedNodes) {
+                    if (/Disconnected from server/.test(node.textContent || '')) {
+                        window.__recordDisconnect({closes: [...closes], at: location.pathname});
+                    }
+                }
+            }
+        }).observe(document, {childList: true, subtree: true});
+    });
+    return lost;
+}
+
 async function signedIn(browser, baseURL) {
     const context = await browser.newContext({baseURL, ignoreHTTPSErrors: true});
     const page = await context.newPage();
+    const disconnects = await watchDisconnects(page);
     const opens = recordConnectTargets(page);
     await ui.signIn(page, admin.username, admin.password);
-    return {context, page, opens};
+    return {context, page, opens, disconnects};
 }
 
 // Turns on "Save passwords" in the Settings Center (credentials_enabled,
@@ -140,7 +170,7 @@ function notifications(page) {
 }
 
 test('over HTTPS a saved host signs in with its saved password and nothing is typed', async ({browser}) => {
-    const {context, page, opens} = await signedIn(browser, proxy.url);
+    const {context, page, opens, disconnects} = await signedIn(browser, proxy.url);
     const password = lab.password('ssh-modern', 'pwuser');
     await allowSavedPasswords(page);
 
@@ -158,6 +188,19 @@ test('over HTTPS a saved host signs in with its saved password and nothing is ty
         await expect(ui.hostRow(page, hostName)).toBeVisible();
     });
 
+    // The launcher card does not look at saved passwords: Python shows
+    // "Password needed · Connect" for this host as well, and the connection
+    // then uses the saved password without a prompt (RC0-3, parity).
+    await test.step('the launcher card reads as on the Python release', async () => {
+        await page.goto('/');
+        await ui.dismissTour(page);
+        await page.locator('#workspaceNavBtn').click();
+        const id = await page.evaluate(name => window.ProfileManager.profiles.find(p => p.name === name)?.id, hostName);
+        const card = page.locator(`.profile-launcher-card[data-profile-id="${id}"]`).first();
+        await expect(card).toHaveAttribute('data-readiness', 'password-needed');
+        await expect(card.locator('.profile-launcher-action')).toHaveText('Password needed · Connect');
+    });
+
     await test.step('the host connects without a password prompt', async () => {
         await ui.openHosts(page);
         const id = await ui.hostRow(page, hostName).getAttribute('data-profile-id');
@@ -170,6 +213,7 @@ test('over HTTPS a saved host signs in with its saved password and nothing is ty
         expect(JSON.stringify(opens)).not.toContain(password);
         authorized = target;
     });
+    expect(disconnects, 'the realtime connection was lost').toEqual([]);
     await context.close();
 });
 
@@ -189,7 +233,7 @@ async function fillQuickConnectWithSavedPassword(page) {
 }
 
 test('over HTTPS a Quick Connect target signs in with a saved password chosen for it', async ({browser}) => {
-    const {context, page, opens} = await signedIn(browser, proxy.url);
+    const {context, page, opens, disconnects} = await signedIn(browser, proxy.url);
     await openQuickConnect(page);
     await fillQuickConnectWithSavedPassword(page);
     await expect(page.locator('#passwordInput')).toHaveValue('');
@@ -200,11 +244,12 @@ test('over HTTPS a Quick Connect target signs in with a saved password chosen fo
     expectSavedPasswordTarget(target, {credential_id: authorized.credential_id, host: modern.host, username: 'pwuser'});
     expect(target.credential_target_token).toEqual(expect.any(String));
     expect(target.profile_id ?? null).toBeNull();
+    expect(disconnects, 'the realtime connection was lost').toEqual([]);
     await context.close();
 });
 
 test('a target changed after the page authorized it gets no saved password', async ({browser}) => {
-    const {context, page, opens} = await signedIn(browser, proxy.url);
+    const {context, page, opens, disconnects} = await signedIn(browser, proxy.url);
     await openQuickConnect(page);
     await fillQuickConnectWithSavedPassword(page);
     // The page authorizes the saved password for pwuser; the request that
@@ -223,11 +268,12 @@ test('a target changed after the page authorized it gets no saved password', asy
     expect(target.credential_target_token).toEqual(expect.any(String));
     expect(await ui.sessionIds(page)).toEqual(before);
     await expect(page.locator('#sshHostKeyModal')).toBeHidden();
+    expect(disconnects, 'the realtime connection was lost').toEqual([]);
     await context.close();
 });
 
 test('over plain HTTP saved passwords are unavailable and the server sends none', async ({browser}) => {
-    const {context, page, opens} = await signedIn(browser, backend.localhostURL);
+    const {context, page, opens, disconnects} = await signedIn(browser, backend.localhostURL);
 
     await test.step('the form says that saved passwords need HTTPS', async () => {
         await openQuickConnect(page);
@@ -273,5 +319,6 @@ test('over plain HTTP saved passwords are unavailable and the server sends none'
         expect(await ui.sessionIds(page)).toEqual(before);
         await expect(page.locator('#sshHostKeyModal')).toBeHidden();
     });
+    expect(disconnects, 'the realtime connection was lost').toEqual([]);
     await context.close();
 });
