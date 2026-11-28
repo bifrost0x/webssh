@@ -104,9 +104,11 @@ follow [Production Deployment](wiki/Production-Deployment.md).
    data volume while WebSSH is stopped.
 2. Stop and remove the 3.3 container: `docker compose down` (keeps the
    volumes).
-3. Replace the Compose file with the one of 3.4, or remove the Python
-   `healthcheck:` block and any `command:` or `entrypoint:` that starts a
-   shell, `gunicorn` or `python`. Keep `SECRET_KEY` if you set it before.
+3. Replace the Compose file with the one of 3.4, or remove any `command:`
+   or `entrypoint:` that starts a shell, `gunicorn` or `python`. The
+   `healthcheck:` blocks of the 3.3 Compose files keep working; health
+   checks of your own that run other programs report `unhealthy`. Keep
+   `SECRET_KEY` if you set it before.
 4. Optional: `docker compose run --rm webssh migrate --dry-run` prints the
    report without writing to `DATA_DIR`. Its scratch database lives in
    `TMPDIR` (default `/tmp`) and needs three times the size of `app.db`
@@ -164,12 +166,11 @@ the trial goes back to 3.3.
    docker logs webssh-trial | grep -E 'data state|migration'
    ```
 
-   Before the release, build the image from the repository instead and use
-   `webssh:local` in place of the published tag:
+   To test an unreleased revision, build the image from the repository
+   instead and use `webssh:local` in place of the published tag:
 
    ```bash
-   docker build -f deploy/docker/Dockerfile --target release \
-     --build-arg VCS_REF=$(git rev-parse HEAD) -t webssh:local .
+   docker build --build-arg VCS_REF=$(git rev-parse HEAD) -t webssh:local .
    ```
 
 3. If 3.3 received `SECRET_KEY` from the environment, pass the same value
@@ -314,7 +315,7 @@ described step by step in [Upgrading to
 
 | Symptom | Cause | Action |
 |---|---|---|
-| Container `unhealthy`, log fine | the Compose file still has the 3.3 Python health check | remove the `healthcheck:` block |
+| Container `unhealthy`, log fine | a health check of your own that runs another program than the 3.3 Compose files did | use `/app/webssh healthcheck` or remove the `healthcheck:` block |
 | Exit 2, "the image has no shell" | a `command:` or `entrypoint:` that starts `sh`, `gunicorn` or `python` | remove the override |
 | Start stops, "SECRET_KEY does not match the stored data" | `SECRET_KEY` differs from the one 3.3 used | pass the same value |
 | Start stops, "migrate --replace" named | 3.3 changed its data after the migration, or `go/` is missing | `migrate --replace` with the service stopped |
@@ -336,8 +337,10 @@ More checks: [Health Checks and Troubleshooting](wiki/Health-Checks-and-Troubles
   `warpgate-down.sh` removes it.
 - Lab tests: `go test -tags lab -run Lab ./cmd/... ./internal/...`.
 - Network namespaces: `internal/netpolicy/testdata/netns-test.sh lab` and
-  `… crafted`; they compare with the recorded route answers of the Python
+  `… crafted`; they compare with the recorded route answers of the 3.3
   release (`testdata/python_routes.json`), and with
-  `WEBSSH_PYTHON_ORACLE=live` also with the live release.
+  `WEBSSH_PYTHON_ORACLE=live` also with that release itself, taken from a
+  worktree named by `WEBSSH_PYTHON_ROOT` (see
+  [Development and Testing](wiki/Development-and-Testing.md#difference-tests-against-33)).
 - Migration report on a copy: `webssh migrate --dry-run` with `DATA_DIR`
   pointing at the copy.

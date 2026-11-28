@@ -290,8 +290,10 @@ The way back is the 3.3 image on the unchanged data volume. It exists until
 you run `webssh legacy purge`.
 
 1. Stop and remove the 3.4 container.
-2. Start the last 3.3 image (pin its tag, for example `3.3.0`) with the
-   same volumes and the 3.3 Compose file.
+2. Start the 3.3 image, `ghcr.io/bifrost0x/webssh:3.3` (or a pinned
+   `3.3.x` tag), with the same volumes and the 3.3 Compose file, for
+   example `https://raw.githubusercontent.com/bifrost0x/webssh/v3.3.1/docker-compose.yml`.
+   3.3 is maintained on the branch `release/3.3`.
 
 3.3 finds its data as it was before the update. Everything done in 3.4
 after the update is missing there: new accounts, hosts, keys, settings and
