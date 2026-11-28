@@ -65,8 +65,10 @@ jobs:
           test "$(uname -m)" = "x86_64"
           runtime_ref="$(docker image inspect --format '{{.Id}}' "webssh-security:$GITHUB_SHA")"
           test "$(docker image inspect --format '{{.Architecture}}' "$runtime_ref")" = amd64
-          python scripts/check_hardened_container.py --image "$runtime_ref" \
-            --revision "$GITHUB_SHA" --platform linux/amd64
+          docker buildx build --load --target debug --platform linux/amd64 \
+            --build-arg VCS_REF="$GITHUB_SHA" --tag "webssh-security-debug:$GITHUB_SHA" .
+          BUILD=0 IMG="webssh-security:$GITHUB_SHA" DEBUG_IMG="webssh-security-debug:$GITHUB_SHA" REVISION="$GITHUB_SHA" \
+            tests/image/check.sh
 
       - name: Provide the pinned Syft release from its image
         shell: bash
@@ -162,8 +164,10 @@ jobs:
           test "$(uname -m)" = "aarch64"
           runtime_ref="$(docker image inspect --format '{{.Id}}' "webssh-security:$GITHUB_SHA")"
           test "$(docker image inspect --format '{{.Architecture}}' "$runtime_ref")" = arm64
-          python scripts/check_hardened_container.py --image "$runtime_ref" \
-            --revision "$GITHUB_SHA" --platform linux/arm64
+          docker buildx build --load --target debug --platform linux/arm64 \
+            --build-arg VCS_REF="$GITHUB_SHA" --tag "webssh-security-debug:$GITHUB_SHA" .
+          BUILD=0 IMG="webssh-security:$GITHUB_SHA" DEBUG_IMG="webssh-security-debug:$GITHUB_SHA" REVISION="$GITHUB_SHA" \
+            tests/image/check.sh
 
       - name: Scan ARM64 fixable high and critical vulnerabilities
         if: ${{ always() }}

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const launcher = require('../../static/js/session-command-launcher.js');
-const catalog = require('../../app/resources/commands/system_commands.json');
+const catalog = require('../../internal/commands/system_commands.json');
 const {runI18n} = require('./i18n-locales.js');
 
 test('only the exact known template receives an impact label; custom and edited text stays unclassified', () => {

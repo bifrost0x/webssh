@@ -159,12 +159,19 @@ function connectedSocket(emit) {
     };
 }
 
-test('disconnected Socket.IO never buffers interactive input', async () => {
-    const io = require('../../static/vendor/socketio/socket.io.min.js');
-    const socket = io('http://127.0.0.1:1', {autoConnect: false, reconnection: false});
+test('a disconnected realtime socket never buffers interactive input', async () => {
+    const {FakeWebSocket, loadShim} = require('./support/realtime-harness.js');
+    const window = loadShim();
+    const socket = window.io({path: '/socket.io', autoConnect: false, reconnection: false});
     const transport = loadSSHInput(socket);
     assert.equal(await transport.send('session-1', 'echo offline\r'), false);
-    assert.equal(socket.sendBuffer.length, 0);
+    assert.deepEqual(FakeWebSocket.instances.flatMap(ws => ws.sent), []);
+    socket.connect();
+    const ws = FakeWebSocket.instances.at(-1);
+    ws.hello([]);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const text = frame => (typeof frame === 'string' ? frame : new TextDecoder().decode(frame));
+    assert.ok(ws.sent.every(frame => !text(frame).includes('echo offline')), 'input sent after reconnecting');
     socket.disconnect();
 });
 

@@ -42,10 +42,10 @@ test('translation table includes every supported language', () => {
     assert.deepEqual(Object.keys(locales).sort(), ['de', 'en', 'es', 'fr', 'vi', 'zh']);
 });
 
-test('all HTML templates reference existing translation keys', () => {
+test('all page templates reference existing translation keys', () => {
     const english = registered.en;
-    const templateRoot = path.join(__dirname, '../../templates');
-    const templates = fs.readdirSync(templateRoot, {recursive: true}).filter(file => file.endsWith('.html'));
+    const templateRoot = path.join(__dirname, '../../internal/httpapi/pages');
+    const templates = fs.readdirSync(templateRoot, {recursive: true}).filter(file => file.endsWith('.gohtml'));
     assert.ok(templates.length > 0, 'No templates found');
     for (const template of templates) {
         const markup = fs.readFileSync(path.join(templateRoot, template), 'utf8');

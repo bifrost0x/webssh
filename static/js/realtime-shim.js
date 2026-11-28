@@ -1,7 +1,7 @@
 /* Socket.IO-compatible client on the native realtime endpoint (webssh.v1).
  *
- * Loaded instead of socket.io.min.js by the pages of the Go server only, so
- * the existing frontend keeps using io(), emit, on, once, off, listeners,
+ * Provides the Socket.IO client API the frontend was written against, so
+ * it keeps using io(), emit, on, once, off, listeners,
  * timeout().emit, volatile, connected, id and socket.io.on(...). Emits made
  * while the connection is down are never buffered: they fail at once.
  */

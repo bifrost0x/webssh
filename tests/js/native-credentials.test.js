@@ -15,7 +15,7 @@ test('native password state uses enabled policy and exact confirmed destination 
 test('native resource is mounted with no credential iframe',()=>{
  const source=fs.readFileSync('static/js/credential-picker.js','utf8');
  assert.doesNotMatch(source,/createElement\('iframe'\)/);
- assert.match(fs.readFileSync('templates/index.html','utf8'),/credentialManagementView/);
+ assert.match(fs.readFileSync('internal/httpapi/pages/index.gohtml','utf8'),/credentialManagementView/);
 });
 function nativeClient(fetch){
  const context={window:{},document:{addEventListener(){},querySelector(){return null;}},fetch,DOMException};

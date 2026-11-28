@@ -1,9 +1,9 @@
 """Record how the Python release encodes LDAP search filters.
 
-Usage (from the repository root, with the project virtual environment and
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT and
 the libldap of the Python image, OpenLDAP 2.6):
 
-    .venv/bin/python -I internal/ldapproto/testdata/libldap_filters.py . \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/ldapproto/testdata/libldap_filters.py "$WEBSSH_PYTHON_ROOT" \
         > internal/ldapproto/testdata/libldap_filters.json
 
 The Python release builds the filter with escape_filter_value of

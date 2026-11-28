@@ -1,0 +1,16 @@
+# Optional container restrictions. Append after docker-compose.production.yml.
+# Check custom mounts, runtime identity and resource needs before opting in.
+services:
+  webssh:
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: ${WEBSSH_PIDS_LIMIT:-512}
+    mem_limit: ${WEBSSH_MEMORY_LIMIT:-2g}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=${WEBSSH_TMPFS_SIZE:-128m},mode=1777
+      - /run/webssh:rw,noexec,nosuid,nodev,size=1m,uid=${WEBSSH_RUNTIME_UID:-1000},gid=${WEBSSH_RUNTIME_GID:-1000},mode=700
+    environment:
+      XDG_RUNTIME_DIR: /run/webssh

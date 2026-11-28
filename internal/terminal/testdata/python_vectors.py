@@ -1,8 +1,8 @@
 """Record the post-connect, tmux and Herdr rules of the Python release.
 
-Usage (from the repository root, with the project virtual environment):
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
-    .venv/bin/python -I internal/terminal/testdata/python_vectors.py . \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/terminal/testdata/python_vectors.py "$WEBSSH_PYTHON_ROOT" \
         > internal/terminal/testdata/python_vectors.json
 
 app/startup_commands.py, app/post_connect_manager.py and app/herdr.py are

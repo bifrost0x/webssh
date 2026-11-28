@@ -1,15 +1,22 @@
-"""Regression checks for the reviewed Socket.IO contract inventory."""
-import ast
+"""Regression checks for the reviewed Socket.IO contract inventory.
+
+The Go server answers the frontend's Socket.IO events through the realtime
+shim: its area tables (static/js/realtime-shim-*.js) map each request event
+to a v1 request and rebuild the response events the pages listen for, and
+realtime-terminal.js handles the terminal events.
+"""
+import re
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOCKET_EVENTS = ROOT / 'app' / 'socket_events.py'
-LOGIN_TEMPLATE = ROOT / 'templates' / 'login.html'
+PAGES = ROOT / 'internal' / 'httpapi' / 'pages'
+LOGIN_TEMPLATE = PAGES / 'login.gohtml'
 BINARY_TRANSFER_CLIENT = ROOT / 'static' / 'js' / 'binary-transfer-client.js'
-AUTHENTICATED_TEMPLATE = ROOT / 'templates' / 'index.html'
+AUTHENTICATED_TEMPLATE = PAGES / 'index.gohtml'
 AUTHENTICATED_APP = ROOT / 'static' / 'js' / 'app.js'
-SECURITY_TEMPLATE = ROOT / 'templates' / 'security.html'
+SECURITY_TEMPLATE = PAGES / 'security.gohtml'
+TERMINAL_SHIM = ROOT / 'static' / 'js' / 'realtime-terminal.js'
 
 STALE_SERVER_EVENTS = {'detect_os', 'get_sessions'}
 RETAINED_SERVER_EVENTS = {
@@ -28,7 +35,6 @@ RETAINED_RESPONSE_EVENTS = {
     'profiles_list',
     'profile_saved',
     'profile_deleted',
-    'profile_organization_updated',
     'command_sets_list',
     'command_set_saved',
     'command_set_deleted',
@@ -36,45 +42,26 @@ RETAINED_RESPONSE_EVENTS = {
     'quick_disconnect_success',
 }
 
+# Answered by the acknowledgement alone; no page listens for the push the
+# Python release also sent (profile_organization_updated).
+ACKNOWLEDGEMENT_ONLY_RESPONSE_EVENTS = {'profile_organization_updated'}
+
 TRANSFER_CONTROL_EVENTS = {'prepare_transfer', 'cancel_transfer'}
 
 
-def _event_name(call):
-    if not call.args:
-        return None
-    event = call.args[0]
-    return event.value if isinstance(event, ast.Constant) and isinstance(event.value, str) else None
+def _area_sources():
+    paths = sorted((ROOT / 'static' / 'js').glob('realtime-shim-*.js'))
+    assert paths, 'no realtime shim areas found'
+    return '\n'.join(path.read_text(encoding='utf-8') for path in paths)
 
 
 def _server_inventory():
-    tree = ast.parse(SOCKET_EVENTS.read_text(encoding='utf-8'))
-    handlers = set()
-    emitted = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if (
-            isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == 'socketio'
-            and node.func.attr == 'on'
-        ):
-            event = _event_name(node)
-            if event:
-                handlers.add(event)
-        if isinstance(node.func, ast.Name) and node.func.id == 'emit':
-            event = _event_name(node)
-            if event:
-                emitted.add(event)
+    """Request events the shim answers and response events it pushes."""
+    source = _area_sources()
+    handlers = set(re.findall(r'^\s+([a-z0-9_]+): \{', source, re.MULTILINE))
+    handlers |= set(re.findall(r'^\s+([a-z0-9_]+): \(', TERMINAL_SHIM.read_text(encoding='utf-8'), re.MULTILINE))
+    emitted = set(re.findall(r"\[\s*'([a-z0-9_]+)',", source))
     return handlers, emitted
-
-
-def _change_password_route():
-    tree = ast.parse((ROOT / 'app' / '__init__.py').read_text(encoding='utf-8'))
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == 'change_password':
-            return node
-    raise AssertionError('change_password route not found')
 
 
 def test_reviewed_stale_server_handlers_are_absent():
@@ -88,26 +75,16 @@ def test_profile_command_set_and_integration_contracts_remain_registered():
 
     assert RETAINED_SERVER_EVENTS <= handlers
     assert RETAINED_RESPONSE_EVENTS <= emitted
+    pages = '\n'.join(path.read_text(encoding='utf-8') for path in (ROOT / 'static' / 'js').glob('*.js'))
+    for event in ACKNOWLEDGEMENT_ONLY_RESPONSE_EVENTS:
+        assert f"'{event}'" not in pages
 
 
 def test_herdr_snapshot_is_answered_by_acknowledgement_only():
-    tree = ast.parse(SOCKET_EVENTS.read_text(encoding='utf-8'))
     handlers, emitted = _server_inventory()
-    handler = next(
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name == 'handle_request_herdr_snapshot'
-    )
 
     assert 'request_herdr_snapshot' in handlers
     assert not any(event.startswith('herdr') for event in emitted)
-    assert not any(
-        isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'emit'
-        for node in ast.walk(handler)
-    )
-    assert any(
-        isinstance(decorator, ast.Name) and decorator.id == 'socket_login_required'
-        for decorator in handler.decorator_list
-    )
 
 
 def test_transfer_control_contracts_have_client_and_server_halves():
@@ -123,26 +100,12 @@ def test_login_template_has_no_unauthenticated_password_change_action():
     login_template = LOGIN_TEMPLATE.read_text(encoding='utf-8')
     authenticated_template = AUTHENTICATED_TEMPLATE.read_text(encoding='utf-8')
     security_template = SECURITY_TEMPLATE.read_text(encoding='utf-8')
-    route = _change_password_route()
 
-    assert "url_for('change_password')" not in login_template
+    assert '/change-password' not in login_template
     assert 'id="changePasswordBtn"' not in authenticated_template
     assert 'id="password"' in security_template
     assert 'id="securityChangePasswordBtn"' in security_template
-    assert "url_for('change_password')" in security_template
-    assert any(
-        isinstance(decorator, ast.Name) and decorator.id == 'login_required'
-        for decorator in route.decorator_list
-    )
-    assert any(
-        isinstance(decorator, ast.Call)
-        and isinstance(decorator.func, ast.Attribute)
-        and decorator.func.attr == 'route'
-        and decorator.args
-        and isinstance(decorator.args[0], ast.Constant)
-        and decorator.args[0].value == '/change-password'
-        for decorator in route.decorator_list
-    )
+    assert '{{$.URL "/change-password"}}' in security_template
 
 
 def test_password_actions_navigate_through_security_center():
@@ -153,12 +116,13 @@ def test_password_actions_navigate_through_security_center():
 
 
 def test_ssh_authentication_banner_has_mandatory_safe_client_contract():
-    handlers, emitted = _server_inventory()
+    handlers, _ = _server_inventory()
     template = AUTHENTICATED_TEMPLATE.read_text(encoding='utf-8')
     app_source = AUTHENTICATED_APP.read_text(encoding='utf-8')
+    terminal_shim = TERMINAL_SHIM.read_text(encoding='utf-8')
 
     assert 'ssh_auth_banner_decision' in handlers
-    assert 'ssh_auth_banner' in emitted
+    assert "host.dispatch('ssh_auth_banner'" in terminal_shim
     assert 'id="sshAuthBannerModal" role="alertdialog"' in template
     assert 'id="sshAuthBannerCancel"' in template
     assert 'id="sshAuthBannerContinue"' in template

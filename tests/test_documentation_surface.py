@@ -123,7 +123,7 @@ def test_wiki_has_no_unresolved_placeholders():
 
 def test_github_setup_is_actionable_in_admin_and_wiki():
     """GitHub setup must name the exact menus and credentials in both places."""
-    admin = (ROOT / "templates" / "admin.html").read_text(encoding="utf-8")
+    admin = (ROOT / "internal" / "httpapi" / "pages" / "admin.gohtml").read_text(encoding="utf-8")
     guide = wiki_text("GitHub-Authentication.md")
 
     for phrase in (

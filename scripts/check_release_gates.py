@@ -5,9 +5,8 @@ import os
 
 
 REQUIRED = frozenset({
-    'dispatch-integrity', 'lint', 'dependency-locks', 'pytest-shards', 'pytest', 'redis-rate-limiter',
-    'ssh-integration', 'smb-integration', 'browser-e2e-shards', 'browser-fonts', 'browser-e2e',
-    'container-threading-smoke', 'container-upgrade', 'release-contract', 'go-gates',
+    'dispatch-integrity', 'lint', 'browser-e2e-shards', 'browser-fonts', 'browser-e2e',
+    'container-image', 'container-upgrade', 'release-contract', 'go-gates',
 })
 
 # Jobs that run for every change scope, including documentation-only changes.

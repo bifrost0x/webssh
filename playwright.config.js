@@ -1,10 +1,6 @@
 const path = require('node:path');
 const {ensureOutputDir} = require('./tests/e2e/output-dir');
 
-const python = process.env.PYTHON
-    || (process.platform === 'win32'
-        ? path.join('.venv', 'Scripts', 'python.exe')
-        : 'python');
 const e2ePort = process.env.WEBSSH_E2E_PORT || '4173';
 // Specs and helpers build loopback URLs from the port, so the host is fixed.
 const e2eBaseUrl = `http://127.0.0.1:${e2ePort}`;
@@ -14,19 +10,20 @@ const outputDir = process.env.WEBSSH_E2E_OUTPUT_DIR || (process.env.CI ? 'test-r
 const timingOutput = process.env.WEBSSH_E2E_TIMING_FILE
     || path.join(outputDir, 'e2e-timing-full.json');
 
-// Specs of go-suite.json marked go_only check behaviour that only the Go
-// server has. The default Python backend leaves them out; Python is no
-// longer part of main once 3.4 replaces it.
-const pythonBackend = !process.env.WEBSSH_E2E_SERVER_COMMAND;
-const goOnlySpecs = pythonBackend
-    ? require('./tests/e2e/go-suite.json').specs.filter(spec => spec.go_only).map(spec => spec.file)
-    : [];
+// Tests that go-suite.json leaves out by a decision (an ADR or a product
+// decision) check behaviour the Go server dropped for good, such as long
+// polling (ADR 0005).
+const escapeTitle = title => title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const droppedTitles = require('./tests/e2e/go-suite.json').specs
+    .flatMap(spec => spec.exclude.filter(entry => entry.decision).map(entry => entry.title));
+const grepInvert = droppedTitles.length ? new RegExp(droppedTitles.map(escapeTitle).join('|')) : undefined;
 
 module.exports = {
     testDir: './tests/e2e',
     // The M1 and M2 acceptance specs start their own backends and need the
-    // lab (tests/e2e/m1, tests/e2e/m2); goOnlySpecs see above.
-    testIgnore: ['m1/**', 'm2/**', ...goOnlySpecs],
+    // lab (tests/e2e/m1, tests/e2e/m2).
+    testIgnore: ['m1/**', 'm2/**'],
+    grepInvert,
     // Test-level sharding keeps independent CI servers evenly loaded.
     fullyParallel: true,
     workers: 1,
@@ -48,10 +45,10 @@ module.exports = {
         screenshot: 'only-on-failure',
     },
     webServer: {
-        // Another backend replaces the default runner via
-        // WEBSSH_E2E_SERVER_COMMAND; tests/e2e/README.md has the contract.
-        command: process.env.WEBSSH_E2E_SERVER_COMMAND
-            || `"${python}" tests/e2e/run_app.py`,
+        // The Go server's e2e build (go-backend.js). Another backend replaces
+        // it via WEBSSH_E2E_SERVER_COMMAND; tests/e2e/README.md has the
+        // contract.
+        command: process.env.WEBSSH_E2E_SERVER_COMMAND || 'node tests/e2e/go-backend.js',
         env: { WEBSSH_E2E_PORT: e2ePort },
         url: `${e2eBaseUrl}/login`,
         reuseExistingServer: false,

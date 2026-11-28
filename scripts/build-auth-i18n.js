@@ -8,11 +8,13 @@ const projectRoot = path.resolve(__dirname, '..');
 const sourcePath = path.join(projectRoot, 'static/js/i18n.js');
 const outputPath = path.join(projectRoot, 'static/js/i18n-auth.js');
 const surfacePaths = [
-    'templates/_auth_messages.html',
-    'templates/login.html',
-    'templates/register.html',
-    'templates/change_password.html',
-    'templates/error.html',
+    // The flash message table of the sign-in pages.
+    'internal/httpapi/page_tables.go',
+    'internal/httpapi/pages/partials.gohtml',
+    'internal/httpapi/pages/login.gohtml',
+    'internal/httpapi/pages/register.gohtml',
+    'internal/httpapi/pages/change_password.gohtml',
+    'internal/httpapi/pages/error.gohtml',
     'static/js/auth.js',
     'static/js/webauthn.js',
     'static/js/security-ui.js',

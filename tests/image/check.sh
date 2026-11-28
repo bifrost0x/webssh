@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# Container checks for the Go image (deploy/docker/Dockerfile).
+# Container checks for the image of the root Dockerfile.
 #
 #   tests/image/check.sh            build both targets, then check
 #   BUILD=0 tests/image/check.sh    check existing webssh:local and :local-debug
 #   TRIVY=1 tests/image/check.sh    also scan the release image with Trivy
+#   IMG, DEBUG_IMG                   image names (default webssh:local and
+#                                    webssh:local-debug)
+#   REVISION=<commit>                also require this revision label
 #
 # Every run uses the restrictions of docker-compose.hardened.yml. The debug
 # image (the same image plus BusyBox) inspects files the release image has
-# no tools for. Section 7 starts the unchanged Compose files of the Python
-# release against this image; sections 8 and 9 repeat what
-# scripts/check_hardened_container.py checks for the Python image: the
+# no tools for. Section 7 starts the Compose files of 3.3
+# (tests/image/compose-3.3, unchanged from the last Python release) and
+# those of this release against this image; sections 8 and 9 check the
 # production profile, offline backup and restore under the restrictions,
-# /app/recovery and the Unraid template. Only containers, volumes and Compose projects
-# named webssh-go-check* are created, and removed again.
+# /app/recovery and the Unraid template. Only containers, volumes and
+# Compose projects named webssh-go-check* are created, and removed again.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -41,8 +44,10 @@ compose() { docker compose -p "$P" --project-directory . "$@"; }
 cleanup() {
   docker rm -f "$P-run" "$P-port" "$P-u99" "$P-u99b" "$P-tz" "$P-prod" "$P-unraid" >/dev/null 2>&1
   if [ -n "$OVERRIDE" ] && [ -f "$OVERRIDE" ]; then
-    compose -f docker-compose.yml -f docker-compose.hardened.yml -f docker-compose.ldap.yml -f "$OVERRIDE" \
-      --profile ldap-tools down -v --remove-orphans >/dev/null 2>&1
+    for dir in . tests/image/compose-3.3; do
+      compose -f "$dir/docker-compose.yml" -f "$dir/docker-compose.hardened.yml" -f "$dir/docker-compose.ldap.yml" \
+        -f "$OVERRIDE" --profile ldap-tools down -v --remove-orphans >/dev/null 2>&1
+    done
     rm -f "$OVERRIDE"
   fi
   docker volume rm -f "$P-data" "$P-data99" "$P-pdata" "$P-prec" >/dev/null 2>&1
@@ -59,8 +64,8 @@ cleanup
 
 if [ "${BUILD:-1}" = 1 ]; then
   rev=$(git rev-parse HEAD)
-  docker build -q -f deploy/docker/Dockerfile --target release --build-arg VERSION="$VERSION" --build-arg VCS_REF="$rev" -t "$IMG" . >/dev/null || exit 1
-  docker build -q -f deploy/docker/Dockerfile --target debug --build-arg VERSION="$VERSION" --build-arg VCS_REF="$rev" -t "$DEBUG_IMG" . >/dev/null || exit 1
+  docker build -q --target release --build-arg VERSION="$VERSION" --build-arg VCS_REF="$rev" -t "$IMG" . >/dev/null || exit 1
+  docker build -q --target debug --build-arg VERSION="$VERSION" --build-arg VCS_REF="$rev" -t "$DEBUG_IMG" . >/dev/null || exit 1
 fi
 
 wait_healthy() {
@@ -191,11 +196,16 @@ label=$(docker image inspect "$IMG" -f '{{index .Config.Labels "org.opencontaine
 echo "version: $version, revision label: $label"
 check "version reports the release version and the revision of the label" bash -c \
   "[[ \"\$1\" == \"\$3\"* ]] && { [ \"\$2\" = unknown ] || [ \"\$1\" = \"\$3 (\${2:0:7})\" ]; }" _ "$version" "$label" "$VERSION"
+if [ -n "${REVISION:-}" ]; then
+  check "the revision label is $REVISION" test "$label" = "$REVISION"
+fi
 
-echo "== 7 unchanged Compose files of the Python release"
+echo "== 7 Compose files of 3.3 (tests/image/compose-3.3) and of this release"
 # Only the image, the container name, the published port and the health
-# check interval are overridden; the health check command stays the one of
-# docker-compose.yml (CMD-SHELL with python).
+# check interval are overridden. The 3.3 files keep their own health check
+# (CMD-SHELL with python) and run ldap-tools as python
+# /app/deployment/ldap_secret_cli.py; the files of this release rely on
+# the image's health check and run "webssh ldap-secret".
 OVERRIDE=$(mktemp "${TMPDIR:-/tmp}/webssh-go-check.XXXXXX.yml")
 cat >"$OVERRIDE" <<YAML
 services:
@@ -208,30 +218,38 @@ services:
   ldap-tools:
     image: $IMG
 YAML
-base=(-f docker-compose.yml -f docker-compose.hardened.yml -f "$OVERRIDE")
-compose "${base[@]}" up -d --quiet-pull webssh >/dev/null 2>&1 || compose "${base[@]}" logs webssh 2>&1 | tail -5
-test_kind=$(docker inspect -f '{{index .Config.Healthcheck.Test 0}}' "$P-compose" 2>/dev/null)
-check "docker-compose.yml with docker-compose.hardened.yml becomes healthy through its own CMD-SHELL health check" \
-  bash -c "[ '$test_kind' = CMD-SHELL ] && wait_() { for _ in \$(seq 60); do [ \"\$(docker inspect -f '{{.State.Health.Status}}' '$P-compose')\" = healthy ] && return 0; sleep 0.5; done; return 1; }; wait_"
-# The exec-form health checks of docker-compose.yml before 3.3.
-py_ready="import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '5000') + '/ready', timeout=2).read(1)"
-py_tcp="import socket; s=socket.create_connection(('127.0.0.1', 5000), 2); s.close()"
-check "the older exec-form health checks (python -c ...) pass through PATH" bash -c \
-  "docker exec '$P-compose' python -c \"\$1\" && docker exec '$P-compose' python -c \"\$2\"" _ "$py_ready" "$py_tcp"
-check "other python programs and shell commands are refused" bash -c \
-  "! docker exec '$P-compose' python -c 'print(1)' 2>/dev/null && ! docker exec '$P-compose' sh -c 'id' 2>/dev/null"
-compose "${base[@]}" down -v >/dev/null 2>&1
-ldap=(-f docker-compose.yml -f docker-compose.ldap.yml -f "$OVERRIDE" --profile ldap-tools)
-set_out=$(printf 'synthetic-%s\n' "$RANDOM$RANDOM" | compose "${ldap[@]}" run --rm -T ldap-tools set-password --stdin 2>&1); set_code=$?
-status_out=$(compose "${ldap[@]}" run --rm -T ldap-tools status 2>&1)
-echo "$set_out" | tail -1; echo "$status_out" | grep ldap_
-mode=$(docker run --rm -v "${P}_webssh_auth_secrets:/v:ro" "$BUSYBOX" stat -c '%a %u:%g' /v /v/ldap_bind_password 2>&1 | tr '\n' ' ')
-echo "secret volume: $mode"
-check "ldap-tools of docker-compose.ldap.yml stores the secret on a fresh volume (0700/0600, 1000:1000)" bash -c \
-  "[ $set_code -eq 0 ] && grep -q 'stored securely' <<<\"\$1\" && grep -q 'ldap_bind_password: present' <<<\"\$2\" && [ \"\$3\" = '700 1000:1000 600 1000:1000 ' ]" _ "$set_out" "$status_out" "$mode"
+compose_set() {
+  local dir=$1 label=$2 want_kind=$3 test_kind set_out set_code status_out mode
+  local base=(-f "$dir/docker-compose.yml" -f "$dir/docker-compose.hardened.yml" -f "$OVERRIDE")
+  compose "${base[@]}" up -d --quiet-pull webssh >/dev/null 2>&1 || compose "${base[@]}" logs webssh 2>&1 | tail -5
+  test_kind=$(docker inspect -f '{{if .Config.Healthcheck}}{{index .Config.Healthcheck.Test 0}}{{end}}' "$P-compose" 2>/dev/null)
+  check "$label: docker-compose.yml with docker-compose.hardened.yml becomes healthy through the $want_kind health check" \
+    bash -c "[ '$test_kind' = '$want_kind' ] && wait_() { for _ in \$(seq 60); do [ \"\$(docker inspect -f '{{.State.Health.Status}}' '$P-compose')\" = healthy ] && return 0; sleep 0.5; done; return 1; }; wait_"
+  if [ "$label" = 3.3 ]; then
+    # The exec-form health checks of docker-compose.yml before 3.3.
+    local py_ready="import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '5000') + '/ready', timeout=2).read(1)"
+    local py_tcp="import socket; s=socket.create_connection(('127.0.0.1', 5000), 2); s.close()"
+    check "3.3: the older exec-form health checks (python -c ...) pass through PATH" bash -c \
+      "docker exec '$P-compose' python -c \"\$1\" && docker exec '$P-compose' python -c \"\$2\"" _ "$py_ready" "$py_tcp"
+    check "3.3: other python programs and shell commands are refused" bash -c \
+      "! docker exec '$P-compose' python -c 'print(1)' 2>/dev/null && ! docker exec '$P-compose' sh -c 'id' 2>/dev/null"
+  fi
+  compose "${base[@]}" down -v >/dev/null 2>&1
+  local ldap=(-f "$dir/docker-compose.yml" -f "$dir/docker-compose.ldap.yml" -f "$OVERRIDE" --profile ldap-tools)
+  set_out=$(printf 'synthetic-%s\n' "$RANDOM$RANDOM" | compose "${ldap[@]}" run --rm -T ldap-tools set-password --stdin 2>&1); set_code=$?
+  status_out=$(compose "${ldap[@]}" run --rm -T ldap-tools status 2>&1)
+  echo "$set_out" | tail -1; echo "$status_out" | grep ldap_
+  mode=$(docker run --rm -v "${P}_webssh_auth_secrets:/v:ro" "$BUSYBOX" stat -c '%a %u:%g' /v /v/ldap_bind_password 2>&1 | tr '\n' ' ')
+  echo "secret volume: $mode"
+  check "$label: ldap-tools of docker-compose.ldap.yml stores the secret on a fresh volume (0700/0600, 1000:1000)" bash -c \
+    "[ $set_code -eq 0 ] && grep -q 'stored securely' <<<\"\$1\" && grep -q 'ldap_bind_password: present' <<<\"\$2\" && [ \"\$3\" = '700 1000:1000 600 1000:1000 ' ]" _ "$set_out" "$status_out" "$mode"
+  compose "${ldap[@]}" down -v --remove-orphans >/dev/null 2>&1
+}
+compose_set tests/image/compose-3.3 3.3 CMD-SHELL
+compose_set . 3.4 CMD
 
 echo "== 8 production profile, offline backup and restore under the restrictions"
-# The settings check_hardened_container.py starts the Python image with.
+# The settings of a public deployment (docker-compose.production.yml).
 PROD=(-e DEPLOYMENT_PROFILE=production -e CORS_ORIGINS=https://localhost -e ALLOW_CORS_WILDCARD=false
       -e SESSION_COOKIE_SECURE=true -e REGISTRATION_ENABLED=false -e BOOTSTRAP_REGISTRATION_ENABLED=false
       -e BLOCK_INTERNAL_SSH=true -e TRUSTED_PROXIES=1 -e BACKUP_TEMP_DIR=/app/recovery -e BACKUP_RECOVERY_DURABLE=true)

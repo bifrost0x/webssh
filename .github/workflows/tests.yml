@@ -108,15 +108,22 @@ jobs:
         with:
           version-file: uv.toml
 
-      - name: Install LDAP build dependencies
-        run: bash scripts/install_ci_test_system_deps.sh
-
-      - name: Install Python dependencies
+      - name: Install Python tool dependencies
         run: |
           uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt
 
+      - name: Check dependency locks
+        shell: pwsh
+        run: ./scripts/lock_requirements.ps1 -Check
+
       - name: Lint Python
         run: python -m ruff check --output-format=github .
+
+      # The checks of the CI scripts, workflows, policies and the frontend
+      # sources; the golden data set checks need the Python release and run
+      # in python-oracles.yml.
+      - name: Run repository tool and policy tests
+        run: python -m pytest tests -q -p no:cacheprovider
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -137,243 +144,6 @@ jobs:
       - name: Run JavaScript unit tests
         run: npm run test:js
 
-  dependency-locks:
-    needs: dispatch-integrity
-    if: needs.dispatch-integrity.outputs.mode == 'full'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    services:
-      redis7:
-        image: redis:7-alpine@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-      redis8:
-        image: redis:8-alpine@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
-        ports:
-          - 6380:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.11'
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version-file: uv.toml
-
-      - name: Check dependency locks
-        shell: pwsh
-        run: ./scripts/lock_requirements.ps1 -Check
-
-      - name: Install LDAP build dependencies
-        run: bash scripts/install_ci_test_system_deps.sh
-
-      - name: Install dependencies
-        run: |
-          uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt
-
-      - name: Run Python 3.11 minimum compatibility
-        run: >-
-          python -m compileall -q app tests &&
-          python -m pytest
-          tests/test_admin_cli.py
-          tests/test_backup_manager.py
-          tests/test_deployment_compatibility.py
-          tests/test_auth.py
-          tests/test_entrypoint.py
-          tests/test_factor_bootstrap.py
-          tests/test_file_service.py
-          tests/test_gunicorn_command.py
-          tests/test_ldap_auth.py
-          tests/test_network_policy.py
-          tests/test_production_config.py
-          tests/test_sftp_handler.py
-          tests/test_smb_protocol_contract.py
-          tests/test_ssh_manager.py
-          tests/test_storage_migrations.py
-          tests/test_threaded_runtime.py
-          -p scripts.pytest_shard --ci-shard=1/1
-          -q -n 2 --dist=loadscope --durations=30
-          --basetemp="$RUNNER_TEMP/python-minimum"
-
-      - name: Run Redis 7 rate limiter test
-        env:
-          TEST_REDIS_URL: redis://localhost:6379/15
-        run: >-
-          python -m pytest
-          tests/test_rate_limiter.py::test_real_redis_does_not_store_denied_requests
-          -q --basetemp="$RUNNER_TEMP/redis-7"
-
-      - name: Run Redis 8 rate limiter test
-        env:
-          TEST_REDIS_URL: redis://localhost:6380/15
-        run: >-
-          python -m pytest
-          tests/test_rate_limiter.py::test_real_redis_does_not_store_denied_requests
-          -q --basetemp="$RUNNER_TEMP/redis-8"
-
-  pytest-shards:
-    needs: dispatch-integrity
-    if: needs.dispatch-integrity.outputs.mode == 'full'
-    name: ${{ matrix.check_name }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - python_version: '3.15'
-            check_name: pytest (Python 3.15 shard 1/3)
-            pytest_shard: 1/3
-            pytest_targets: tests/
-            pytest_ignores: --ignore=tests/integration --ignore=tests/test_documentation_surface.py
-          - python_version: '3.15'
-            check_name: pytest (Python 3.15 shard 2/3)
-            pytest_shard: 2/3
-            pytest_targets: tests/
-            pytest_ignores: --ignore=tests/integration --ignore=tests/test_documentation_surface.py
-          - python_version: '3.15'
-            check_name: pytest (Python 3.15 shard 3/3)
-            pytest_shard: 3/3
-            pytest_targets: tests/
-            pytest_ignores: --ignore=tests/integration --ignore=tests/test_documentation_surface.py
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          # The documented minimum runs with dependency locks and Redis above.
-          python-version: ${{ matrix.python_version }}
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version-file: uv.toml
-
-      - name: Install LDAP build dependencies
-        run: bash scripts/install_ci_test_system_deps.sh
-
-      - name: Install dependencies
-        run: |
-          uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt
-
-      - name: Run tests
-        run: >-
-          python -m compileall -q app tests &&
-          python -m pytest ${{ matrix.pytest_targets }}
-          ${{ matrix.pytest_ignores }}
-          -p scripts.pytest_shard --ci-shard=${{ matrix.pytest_shard }}
-          -q
-          -n 2
-          --dist=loadscope
-          --durations=30
-
-  pytest:
-    needs: [dispatch-integrity, pytest-shards, dependency-locks]
-    if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Require every Python shard and minimum-version check
-        env:
-          PYTEST_RESULT: ${{ needs.pytest-shards.result }}
-          MINIMUM_RESULT: ${{ needs.dependency-locks.result }}
-        run: test "$PYTEST_RESULT" = success && test "$MINIMUM_RESULT" = success
-
-  redis-rate-limiter:
-    needs: [dispatch-integrity, dependency-locks]
-    if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Require both Redis versions
-        env:
-          REDIS_RESULT: ${{ needs.dependency-locks.result }}
-        run: test "$REDIS_RESULT" = success
-
-  ssh-integration:
-    needs: dispatch-integrity
-    if: needs.dispatch-integrity.outputs.mode == 'full'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          # Mirror the runtime version shipped in the Docker image.
-          python-version: '3.15'
-
-      - name: Set up Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
-          cache: npm
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version-file: uv.toml
-
-      - name: Verify native Docker image tools
-        run: docker buildx version
-
-      - name: Run disposable OpenSSH, SMB and release promotion checks
-        run: python scripts/run_ci_protocol_checks.py
-
-      - name: Upload real-browser integration evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ssh-browser-evidence
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 7
-
-  smb-integration:
-    needs: [dispatch-integrity, ssh-integration]
-    if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-
-    steps:
-      - name: Require encrypted SMB integration success
-        env:
-          SMB_RESULT: ${{ needs.ssh-integration.result }}
-        run: test "$SMB_RESULT" = success
-
   browser-e2e-shards:
     needs: dispatch-integrity
     if: needs.dispatch-integrity.outputs.mode == 'full'
@@ -393,24 +163,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          # Mirror the runtime version shipped in the Docker image.
-          python-version: '3.15'
-
-      - name: Install LDAP build dependencies
-        run: bash scripts/install_ci_test_system_deps.sh
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version-file: uv.toml
-
-      - name: Install Python dependencies
-        run: |
-          uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt
-
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -419,6 +171,18 @@ jobs:
 
       - name: Install locked Node dependencies
         run: npm ci
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # One build for every lane; tests/e2e/go-backend.js starts it.
+      - name: Build the e2e server
+        run: |
+          node -e "console.log(require('./tests/e2e/go-binary').webssh('e2e'))"
+          echo "WEBSSH_E2E_GO_BINARY=$PWD/.test-run.tmp/webssh-e2e" >> "$GITHUB_ENV"
 
       - name: Install locked Playwright Chromium
         run: node scripts/install-ci-chromium.js
@@ -470,19 +234,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.15'
-      - name: Install LDAP build dependencies
-        run: bash scripts/install_ci_test_system_deps.sh
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version-file: uv.toml
-      - name: Install Python dependencies
-        run: |
-          uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -490,6 +241,15 @@ jobs:
           cache: npm
       - name: Install locked Node dependencies
         run: npm ci
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build the e2e server
+        run: |
+          node -e "console.log(require('./tests/e2e/go-binary').webssh('e2e'))"
+          echo "WEBSSH_E2E_GO_BINARY=$PWD/.test-run.tmp/webssh-e2e" >> "$GITHUB_ENV"
       - name: Start pinned Firefox/WebKit browser server
         shell: bash
         run: |
@@ -581,175 +341,31 @@ jobs:
           test "$SHARD_RESULT" = success
           test "$FONT_RESULT" = success
 
-  container-threading-smoke:
+  # tests/image/check.sh builds the release and debug targets of the
+  # Dockerfile and checks them under the restrictions of
+  # docker-compose.hardened.yml: configuration, users, signals, time zones,
+  # command forms, the Compose files of 3.3 and 3.4, the production profile
+  # with offline backup and restore, and the Unraid template.
+  container-image:
     needs: dispatch-integrity
     if: needs.dispatch-integrity.outputs.mode == 'full'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Verify Docker context exclusions and runtime inputs
-        run: python scripts/check_container_context.py
+      - name: Build and check the image of this checkout
+        env:
+          IMG: webssh-ci:${{ github.sha }}
+          DEBUG_IMG: webssh-ci-debug:${{ github.sha }}
+          REVISION: ${{ github.sha }}
+        run: tests/image/check.sh
 
-      - name: Build and start this checkout
-        shell: bash
-        run: |
-          image_tag="webssh-ci:${GITHUB_SHA}"
-          container_name="webssh-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          recovery_volume="webssh-ci-recovery-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          ownership_label="webssh.ci-run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          ownership_value="${ownership_label#*=}"
-          recovery_volume_created=0
-
-          cleanup_start_failure() {
-            status=$?
-            trap - EXIT
-
-            if [ "$status" -ne 0 ] && docker container inspect "$container_name" >/dev/null 2>&1; then
-              if actual_label="$(docker container inspect --format '{{ index .Config.Labels "webssh.ci-run" }}' "$container_name" 2>/dev/null)"; then
-                if [ "$actual_label" = "$ownership_value" ]; then
-                  docker rm --force --volumes "$container_name" || true
-                fi
-              fi
-            fi
-
-            if [ "$status" -ne 0 ] && [ "$recovery_volume_created" = "1" ] \
-              && docker volume inspect "$recovery_volume" >/dev/null 2>&1; then
-              if actual_label="$(docker volume inspect --format '{{ index .Labels "webssh.ci-run" }}' "$recovery_volume" 2>/dev/null)"; then
-                if [ "$actual_label" = "$ownership_value" ]; then
-                  docker volume rm "$recovery_volume" || true
-                fi
-              fi
-            fi
-
-            exit "$status"
-          }
-          trap cleanup_start_failure EXIT
-
-          if docker container inspect "$container_name" >/dev/null 2>&1; then
-            echo "Refusing to reuse pre-existing container $container_name" >&2
-            exit 1
-          fi
-          if docker volume inspect "$recovery_volume" >/dev/null 2>&1; then
-            echo "Refusing to reuse pre-existing volume $recovery_volume" >&2
-            exit 1
-          fi
-
-          docker build --build-arg VCS_REF="${GITHUB_SHA}" --tag "$image_tag" .
-          image_revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_tag")"
-          if [ "$image_revision" != "$GITHUB_SHA" ]; then
-            echo "Built image revision does not match the checkout" >&2
-            exit 1
-          fi
-          docker volume create \
-            --label "$ownership_label" \
-            "$recovery_volume" >/dev/null
-          recovery_volume_created=1
-          docker run --detach --name "$container_name" \
-            --label "$ownership_label" \
-            --env SECRET_KEY="container-smoke-test-secret" \
-            --env BACKUP_TEMP_DIR=/app/recovery \
-            --env BACKUP_RECOVERY_DURABLE=true \
-            --mount type=volume,source="$recovery_volume",target=/app/recovery \
-            --publish 127.0.0.1::5000 \
-            "$image_tag"
-
-          {
-            echo "WEBSSH_CI_CONTAINER=$container_name"
-            echo "WEBSSH_CI_CONTAINER_LABEL_VALUE=$ownership_value"
-            echo "WEBSSH_CI_CONTAINER_CREATED=1"
-            echo "WEBSSH_CI_RECOVERY_VOLUME=$recovery_volume"
-            echo "WEBSSH_CI_RECOVERY_VOLUME_CREATED=1"
-          } >> "$GITHUB_ENV"
-          trap - EXIT
-
-      - name: Verify packaged runtime files
-        run: python scripts/check_container_context.py --container "$WEBSSH_CI_CONTAINER"
-
-      - name: Verify recovery volume, gthread worker and readiness
-        shell: bash
-        run: |
-          binding="$(docker port "$WEBSSH_CI_CONTAINER" 5000/tcp | head --lines=1)"
-          port="${binding##*:}"
-          ready=0
-
-          for _ in {1..30}; do
-            ready_status="$(curl --output /dev/null --silent --show-error --write-out '%{http_code}' "http://127.0.0.1:${port}/ready" || true)"
-            if docker logs "$WEBSSH_CI_CONTAINER" 2>&1 | grep --quiet --fixed-strings "Using worker: gthread" \
-              && [ "$ready_status" = "200" ]; then
-              ready=1
-              break
-            fi
-            sleep 1
-          done
-
-          if [ "$ready" != "1" ]; then
-            docker logs "$WEBSSH_CI_CONTAINER" >&2
-            exit 1
-          fi
-
-          mounted_volume="$(docker inspect --format '{{ range .Mounts }}{{ if eq .Destination "/app/recovery" }}{{ .Name }}{{ end }}{{ end }}' "$WEBSSH_CI_CONTAINER")"
-          if [ "$mounted_volume" != "$WEBSSH_CI_RECOVERY_VOLUME" ]; then
-            echo "Recovery path is not backed by the fresh CI volume" >&2
-            exit 1
-          fi
-          docker exec "$WEBSSH_CI_CONTAINER" sh -eu -c '
-            expected_owner="$(id -u):$(id -g):700"
-            actual_owner="$(stat --format=%u:%g:%a /app/recovery)"
-            test "$actual_owner" = "$expected_owner"
-            test -w /app/recovery
-            probe=/app/recovery/.webssh-ci-write-probe
-            : > "$probe"
-            rm -f "$probe"
-          '
-
-      - name: Verify graceful gthread shutdown
-        shell: bash
-        run: |
-          actual_label="$(docker inspect --format '{{ index .Config.Labels "webssh.ci-run" }}' "$WEBSSH_CI_CONTAINER")"
-          if [ "$actual_label" != "$WEBSSH_CI_CONTAINER_LABEL_VALUE" ]; then
-            echo "Refusing to stop container with unexpected ownership label" >&2
-            exit 1
-          fi
-          docker stop --time 35 "$WEBSSH_CI_CONTAINER"
-          exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$WEBSSH_CI_CONTAINER")"
-          test "$exit_code" = "0"
-
-      - name: Verify production compatibility, hardening and recovery
-        shell: bash
-        run: python scripts/check_hardened_container.py --image "webssh-ci:${GITHUB_SHA}" --revision "$GITHUB_SHA"
-
-      - name: Clean up created container
-        if: always()
-        shell: bash
-        run: |
-          if [ "${WEBSSH_CI_CONTAINER_CREATED:-0}" = "1" ] \
-            && docker container inspect "$WEBSSH_CI_CONTAINER" >/dev/null 2>&1; then
-            actual_label="$(docker container inspect --format '{{ index .Config.Labels "webssh.ci-run" }}' "$WEBSSH_CI_CONTAINER")"
-            if [ "$actual_label" != "$WEBSSH_CI_CONTAINER_LABEL_VALUE" ]; then
-              echo "Refusing to remove container with unexpected ownership label" >&2
-              exit 1
-            fi
-
-            docker rm --force --volumes "$WEBSSH_CI_CONTAINER"
-          fi
-
-          if [ "${WEBSSH_CI_RECOVERY_VOLUME_CREATED:-0}" = "1" ] \
-            && docker volume inspect "$WEBSSH_CI_RECOVERY_VOLUME" >/dev/null 2>&1; then
-            actual_label="$(docker volume inspect --format '{{ index .Labels "webssh.ci-run" }}' "$WEBSSH_CI_RECOVERY_VOLUME")"
-            if [ "$actual_label" != "$WEBSSH_CI_CONTAINER_LABEL_VALUE" ]; then
-              echo "Refusing to remove volume with unexpected ownership label" >&2
-              exit 1
-            fi
-
-            docker volume rm "$WEBSSH_CI_RECOVERY_VOLUME"
-          fi
-
+  # A data volume of the last Python release is upgraded in place and
+  # rolled back (tests/image/upgrade.sh).
   container-upgrade:
     needs: dispatch-integrity
     if: needs.dispatch-integrity.outputs.mode == 'full'
@@ -764,32 +380,28 @@ jobs:
       - name: Build this checkout
         run: docker build --build-arg VCS_REF="${GITHUB_SHA}" --tag "webssh-upgrade:${GITHUB_SHA}" .
 
-      # Published v2.7.0 index (docs/project-history.md). Upgrades its real
-      # data volume with the old and new example Compose, then rolls back.
-      - name: Upgrade a previous-release data volume and roll back
+      - name: Upgrade a 3.3 data volume and roll back
         env:
-          PREVIOUS_RELEASE_IMAGE: ghcr.io/bifrost0x/webssh@sha256:1a9ac06d0aca3e88bb8f48d0395b8f87e39d33cb2f19be437cca2b8e193aa5d2
-        run: >-
-          python scripts/check_container_upgrade.py
-          --old-image "$PREVIOUS_RELEASE_IMAGE"
-          --new-image "webssh-upgrade:${GITHUB_SHA}"
+          IMG: webssh-upgrade:${{ github.sha }}
+        run: tests/image/upgrade.sh
 
   release-contract:
-    needs: [dispatch-integrity, ssh-integration]
-    if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
+    needs: dispatch-integrity
+    if: needs.dispatch-integrity.outputs.mode == 'full'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
-      - name: Require immutable release promotion contract success
-        env:
-          RELEASE_RESULT: ${{ needs.ssh-integration.result }}
-        run: test "$RELEASE_RESULT" = success
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Verify immutable release promotion in an owned registry
+        run: python3 scripts/check_release_promotion.py
 
   # The Go gates of go.yml (builds, vet, staticcheck, race tests, the
-  # security scanners, the go-smb2 fork, page parity, the Python oracles,
-  # network namespace and SSH banner). Their result is the result of this
+  # security scanners, the go-smb2 fork, network namespace and SSH
+  # banner). Their result is the result of this
   # job, so a red Go job fails all-tests.
   go-gates:
     needs: dispatch-integrity
@@ -799,7 +411,7 @@ jobs:
     uses: ./.github/workflows/go.yml
 
   all-tests:
-    needs: [dispatch-integrity, lint, dependency-locks, pytest-shards, pytest, redis-rate-limiter, ssh-integration, smb-integration, browser-e2e-shards, browser-fonts, browser-e2e, container-threading-smoke, container-upgrade, release-contract, go-gates]
+    needs: [dispatch-integrity, lint, browser-e2e-shards, browser-fonts, browser-e2e, container-image, container-upgrade, release-contract, go-gates]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5

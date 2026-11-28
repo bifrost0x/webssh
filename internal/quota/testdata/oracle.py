@@ -1,6 +1,6 @@
 """Answer quota questions with app/quota_manager.py and app/storage_quota.py.
 
-The Go tests start this script with the repository's virtual environment and
+The Go tests start this script with the venv of the Python release and
 send one JSON request per line; each answer is one JSON line. The modules run
 unchanged; only the configuration module they import is replaced by the
 defaults of the Python release.

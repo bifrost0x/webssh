@@ -1,8 +1,8 @@
 """Record the decisions of the Python SSH gateway as test vectors.
 
-Usage (from the repository root, with the project virtual environment):
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
-    .venv/bin/python -I internal/ssh/gateway/testdata/python_vectors.py . \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/ssh/gateway/testdata/python_vectors.py "$WEBSSH_PYTHON_ROOT" \
         > internal/ssh/gateway/testdata/python_vectors.json
 
 app/ssh_gateway.py, app/ssh_gateway_auth.py and

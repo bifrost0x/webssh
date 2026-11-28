@@ -8,16 +8,16 @@ stringprep (Unicode 3.2.0), str.lower() of the running Unicode version
 and the NFKC of unicodedata.ucd_3_2_0, whose combining classes and
 composition pairs come from the current Unicode version.
 
-Usage, from the repository root with the project virtual environment:
+Usage, from the repository root with the venv in $WEBSSH_PYTHON_ROOT:
 
-    .venv/bin/python -I internal/idna2003/testdata/oracle.py tables \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/idna2003/testdata/oracle.py tables \
         > internal/idna2003/tables.go
-    .venv/bin/python -I internal/idna2003/testdata/oracle.py vectors \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/idna2003/testdata/oracle.py vectors \
         tests/golden/fixture/legacy/*.tar \
         > internal/idna2003/testdata/python_vectors.jsonl
-    .venv/bin/python -I internal/idna2003/testdata/oracle.py digests \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/idna2003/testdata/oracle.py digests \
         > internal/idna2003/testdata/python_digests.json
-    .venv/bin/python -I internal/idna2003/testdata/oracle.py serve
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/idna2003/testdata/oracle.py serve
 
 "serve" reads one JSON string per line and answers with the encoded name
 or null for an error; the Go tests use it as a live oracle.

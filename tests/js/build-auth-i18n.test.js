@@ -9,9 +9,11 @@ for (const endings of ['LF', 'CRLF']) {
     test(`authentication bundle check accepts ${endings} checkouts without changing files`, () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'webssh-i18n-'));
         try {
-            for (const name of ['templates', 'static/js']) {
+            for (const name of ['internal/httpapi/pages', 'static/js']) {
                 fs.cpSync(path.resolve(name), path.join(directory, name), {recursive: true});
             }
+            fs.copyFileSync(path.resolve('internal/httpapi/page_tables.go'),
+                path.join(directory, 'internal/httpapi/page_tables.go'));
             fs.mkdirSync(path.join(directory, 'scripts'));
             const script = path.join(directory, 'scripts/build-auth-i18n.js');
             fs.copyFileSync(path.resolve('scripts/build-auth-i18n.js'), script);

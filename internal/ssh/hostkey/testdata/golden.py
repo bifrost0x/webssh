@@ -1,8 +1,8 @@
 """List the golden fixture's known_hosts files with the Python store.
 
-Run from the repository root with the project virtual environment:
+Run from the repository root with the venv in $WEBSSH_PYTHON_ROOT:
 
-    WS=$PWD .venv/bin/python -I internal/ssh/hostkey/testdata/golden.py \
+    WS=$WEBSSH_PYTHON_ROOT $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/ssh/hostkey/testdata/golden.py \
         internal/ssh/hostkey/testdata/golden.json
 """
 import json
@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 
 WS = Path(os.environ['WS'])
+# The golden data sets live in this repository, not in the Python release.
+REPO = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(WS))
 os.environ.setdefault('SECRET_KEY', '0' * 64)
 work = Path(tempfile.mkdtemp(prefix='hostkey-golden-'))
@@ -20,7 +22,7 @@ os.environ['DATA_DIR'] = str(work / 'unused')
 
 from app.host_key_store import HostKeyStore, _LayeredHostKeys  # noqa: E402
 
-with tarfile.open(WS / 'tests/golden/fixture/datadir.tar') as archive:
+with tarfile.open(REPO / 'tests/golden/fixture/datadir.tar') as archive:
     for name in ('data/known_hosts', 'data/users/user_3/known_hosts'):
         archive.extract(name, work, filter='data')
 

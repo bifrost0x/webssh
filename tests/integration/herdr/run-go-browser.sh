@@ -4,15 +4,14 @@
 # and removes the containers, volumes and built image again, also when the
 # spec fails. The password and host keys are created for this run only.
 #
-#   WEBSSH_E2E_M1_SERVER_COMMAND='.test-run.tmp/webssh serve' \
-#   WEBSSH_E2E_M1_ADMIN_COMMAND='.test-run.tmp/webssh' \
 #   tests/integration/herdr/run-go-browser.sh [playwright flags]
 #
+# The server is built from this checkout unless WEBSSH_E2E_M1_SERVER_COMMAND
+# and WEBSSH_E2E_M1_ADMIN_COMMAND name another build (tests/e2e/m1/backend.js).
 # The probe of the spec (herdr_lab_probe.py) needs paramiko: set PYTHON to
-# the interpreter of the repository's virtual environment.
+# the interpreter of the repository's virtual environment
+# (requirements-test.txt).
 set -eu
-: "${WEBSSH_E2E_M1_SERVER_COMMAND:?the Go server command, for example .test-run.tmp/webssh serve}"
-: "${WEBSSH_E2E_M1_ADMIN_COMMAND:?the Go admin command, for example .test-run.tmp/webssh}"
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
 project=${HERDR_LAB_PROJECT:-webssh-herdr-browser}

@@ -39,9 +39,11 @@ test('stderr splits groups and truncated output is never reported as uniform', (
 
 test('the maintenance template runs exactly the probe the server parses', () => {
     const Templates = require('../../static/js/automation-templates.js');
-    const source = fs.readFileSync(path.join(__dirname, '../../app/host_platform.py'), 'utf8').replace(/\r\n/g, '\n');
-    const start = source.indexOf("MAINTENANCE_COMMAND = r'''") + "MAINTENANCE_COMMAND = r'''".length;
-    const probe = source.slice(start, source.indexOf("'''", start));
+    const source = fs.readFileSync(path.join(__dirname, '../../internal/hosts/identity_script.go'), 'utf8').replace(/\r\n/g, '\n');
+    const marker = 'const maintenanceScript = `';
+    const start = source.indexOf(marker) + marker.length;
+    assert.ok(start >= marker.length, 'maintenanceScript not found');
+    const probe = source.slice(start, source.indexOf('`', start));
     assert.ok(probe.startsWith('LC_ALL=C\n'));
     assert.equal(Templates.MAINTENANCE_COMMAND, probe);
     const template = Templates.create('maintenance');

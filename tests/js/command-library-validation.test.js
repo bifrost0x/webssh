@@ -277,7 +277,7 @@ test('unknown command save outcome needs explicit confirmation before a retry', 
 test('default browsing hides known disruptive templates but search and all-tasks retain them', () => {
     const {library} = setup();
     library.renderCommandsList = () => {};
-    const records = JSON.parse(fs.readFileSync(path.join(__dirname, '../../app/resources/commands/system_commands.json'), 'utf8'));
+    const records = JSON.parse(fs.readFileSync(path.join(__dirname, '../../internal/commands/system_commands.json'), 'utf8'));
     library.setCommands(records);
     assert.equal(library.filteredCommands.some(item => item.id === 'file-006'), false);
     assert.equal(library.filteredCommands.some(item => item.id === 'sys-016'), true);
@@ -289,7 +289,7 @@ test('default browsing hides known disruptive templates but search and all-tasks
 });
 
 test('catalog explicitly classifies known effects and provides a correct Windows ping template', () => {
-    const records = JSON.parse(fs.readFileSync(path.join(__dirname, '../../app/resources/commands/system_commands.json'), 'utf8'));
+    const records = JSON.parse(fs.readFileSync(path.join(__dirname, '../../internal/commands/system_commands.json'), 'utf8'));
     for (const record of records) {
         assert.ok(['read-only', 'changes-system', 'deletes-data', 'network-load'].includes(record.safety?.impact), record.id);
         assert.ok(record.safety.tool, record.id);
@@ -304,7 +304,7 @@ test('catalog explicitly classifies known effects and provides a correct Windows
 });
 
 test('GNU-specific templates stay on Linux and Windows receives native netstat arguments', () => {
-    const records = JSON.parse(fs.readFileSync(path.join(__dirname, '../../app/resources/commands/system_commands.json'), 'utf8'));
+    const records = JSON.parse(fs.readFileSync(path.join(__dirname, '../../internal/commands/system_commands.json'), 'utf8'));
     for (const id of ['net-007','perf-011','perf-012','file-038','file-039','file-040']) {
         assert.deepEqual(records.find(item => item.id === id).os, ['linux'], id);
     }

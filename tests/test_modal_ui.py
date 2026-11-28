@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 
-INDEX = Path('templates/index.html')
+INDEX = Path('internal/httpapi/pages/index.gohtml')
 STYLE = Path('static/css/style.css')
 APP_JS = Path('static/js/app.js')
 

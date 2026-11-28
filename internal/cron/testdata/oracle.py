@@ -1,6 +1,6 @@
 """Answer cron questions with app/automation_cron.py of the Python release.
 
-The Go tests start this script with the repository's virtual environment and
+The Go tests start this script with the venv of the Python release and
 send one JSON request per line; each answer is one JSON line. The module runs
 unchanged; only its import of AutomationError is replaced, so the oracle needs
 neither Flask nor a database.

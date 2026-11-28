@@ -1,9 +1,9 @@
 """Record the saved-password rules of the Python release.
 
 Writes a corpus with the expected results so the Go tests replay it without
-Python. Run from the repository root with the project virtual environment:
+Python. Run from the repository root with the venv in $WEBSSH_PYTHON_ROOT:
 
-    WS=$PWD .venv/bin/python -I internal/vault/testdata/credential_oracle.py \
+    WS=$WEBSSH_PYTHON_ROOT $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/vault/testdata/credential_oracle.py \
         internal/vault/testdata/credential-oracle.json
 
 The rules run unchanged: CredentialService._normalize_target, resources(),

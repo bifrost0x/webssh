@@ -16,12 +16,10 @@ const LIFECYCLE = ['connect', 'disconnect'];
 const terminal = read('static/js/realtime-terminal.js');
 const answered = event => Object.hasOwn(catalog.REQUESTS, event) || new RegExp(`\\b${event}: `).test(terminal);
 
+// The handlers of the Python release, recorded when it left the
+// repository; that release no longer changes.
 function pythonEvents() {
-    const events = new Set();
-    for (const file of fs.readdirSync(path.join(ROOT, 'app')).filter(f => f.endsWith('.py'))) {
-        for (const match of read(`app/${file}`).matchAll(/^@socketio\.on\(\s*['"]([a-z0-9_]+)['"]/gm)) events.add(match[1]);
-    }
-    return events;
+    return new Set(JSON.parse(read('tests/js/fixtures/python-socketio-events.json')).events);
 }
 
 // The events the pages send on the socket (socket.emit, socket.timeout(…).emit,

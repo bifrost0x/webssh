@@ -21,28 +21,20 @@ import (
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/admincli"
+	"github.com/bifrost0x/webssh/internal/oracletest"
 )
 
 // The administrator commands are compared with the Python release:
 // app/cli.py run by "flask --app start:app" and
 // deployment/ldap_secret_cli.py. The Python answers are recorded in
 // testdata/cli_python.json, so the comparison runs without Python;
-// -update-cli records them again from the repository's virtual
-// environment (or WEBSSH_PYTHON's). Each case runs in a fresh data
+// -update-cli records them again from the Python release
+// (internal/oracletest, WEBSSH_PYTHON_ROOT). Each case runs in a fresh data
 // directory, step by step, under every form: the deprecated one, which
 // prints the Python program names, and the webssh one.
 var updateCLI = flag.Bool("update-cli", false, "record the Python CLI answers in testdata/cli_python.json")
 
 const cliVectors = "testdata/cli_python.json"
-
-const repoRoot = "../.."
-
-func pythonPath() string {
-	if p := os.Getenv("WEBSSH_PYTHON"); p != "" {
-		return p
-	}
-	return filepath.Join(repoRoot, ".venv", "bin", "python")
-}
 
 type cliStep struct {
 	Args  []string `json:"args"`
@@ -272,11 +264,8 @@ func normalize(s, tmp string) string {
 
 func pythonCLI(t *testing.T, c cliCase, step cliStep, tmp, dataDir string) cliResult {
 	t.Helper()
-	root, err := filepath.Abs(repoRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	venv := filepath.Dir(pythonPath())
+	rel := oracletest.Require(t)
+	root, venv := rel.Root, filepath.Dir(rel.Python)
 	var cmd *exec.Cmd
 	if c.Tool == "flask" {
 		cmd = exec.CommandContext(t.Context(), filepath.Join(venv, "flask"), append([]string{"--app", "start:app"}, substitute(step.Args, tmp)...)...) // #nosec G204 -- test oracle
@@ -291,7 +280,7 @@ func pythonCLI(t *testing.T, c cliCase, step cliStep, tmp, dataDir string) cliRe
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
-	err = cmd.Run()
+	err := cmd.Run()
 	code := 0
 	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 		code = ee.ExitCode()
@@ -339,8 +328,8 @@ func TestCLIMatchesPython(t *testing.T) {
 		if err := json.Unmarshal(raw, &recorded); err != nil {
 			t.Fatal(err)
 		}
-	} else if _, err := os.Stat(pythonPath()); err != nil {
-		t.Fatal("-update-cli needs the Python virtual environment (WEBSSH_PYTHON)")
+	} else {
+		oracletest.Require(t)
 	}
 	for _, c := range cliCases() {
 		t.Run(c.Name, func(t *testing.T) {

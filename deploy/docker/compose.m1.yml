@@ -48,7 +48,7 @@ services:
   webssh-go:
     build:
       context: ../..
-      dockerfile: deploy/docker/Dockerfile
+      dockerfile: Dockerfile
       target: release
       args:
         VERSION: 3.4.0-m1

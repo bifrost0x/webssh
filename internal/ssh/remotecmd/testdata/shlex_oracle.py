@@ -2,7 +2,7 @@
 line of command_for in app/automation_transport.py for a sudo step.
 
 Run from the repository root:
-    .venv/bin/python internal/ssh/remotecmd/testdata/shlex_oracle.py
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python internal/ssh/remotecmd/testdata/shlex_oracle.py
 """
 import json
 import random

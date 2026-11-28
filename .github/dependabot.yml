@@ -1,7 +1,7 @@
 version: 2
 
 updates:
-  # Python-Abhängigkeiten
+  # Python tools of the repository checks (requirements-test, requirements-graph)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -32,7 +32,7 @@ updates:
         update-types:
           - "version-update:semver-major"
 
-  # Node.js-Abhängigkeiten
+  # Node.js tools and vendored frontend assets
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
@@ -63,7 +63,8 @@ updates:
         update-types:
           - "version-update:semver-major"
 
-  # Production container base image
+  # Base images of the release image (golang, alpine with the CA bundle,
+  # busybox for the debug target)
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -72,92 +73,18 @@ updates:
       time: "06:30"
       timezone: "Europe/Berlin"
 
-    open-pull-requests-limit: 2
-
-    labels:
-      - "dependencies"
-      - "docker"
-
-    commit-message:
-      prefix: "deps(docker)"
-
-  # Disposable OpenSSH integration image
-  - package-ecosystem: "docker"
-    directory: "/tests/integration/paramiko5"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:45"
-      timezone: "Europe/Berlin"
-
-    open-pull-requests-limit: 2
-
-    labels:
-      - "dependencies"
-      - "docker"
-
-    commit-message:
-      prefix: "deps(docker)"
-
-  # GitHub Actions
-  # Disposable SMB integration image
-  - package-ecosystem: "docker"
-    directory: "/tests/integration/smb"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "07:00"
-      timezone: "Europe/Berlin"
-
-    open-pull-requests-limit: 2
-
-    labels:
-      - "dependencies"
-      - "docker"
-
-    commit-message:
-      prefix: "deps(docker)"
-
-  # Disposable LDAP integration image
-  - package-ecosystem: "docker-compose"
-    directory: "/tests/integration/ldap"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "07:15"
-      timezone: "Europe/Berlin"
-    open-pull-requests-limit: 2
-    labels:
-      - "dependencies"
-      - "docker"
-    commit-message:
-      prefix: "deps(docker)"
-
-  # Base images of the Go release image (golang, alpine with the CA bundle,
-  # busybox for the debug target), on the integration branch
-  - package-ecosystem: "docker"
-    directory: "/deploy/docker"
-    target-branch: "go"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "07:45"
-      timezone: "Europe/Berlin"
-
     open-pull-requests-limit: 3
 
     labels:
       - "dependencies"
       - "docker"
-      - "go"
 
     commit-message:
       prefix: "deps(docker)"
 
-  # Go modules of the Go backend, which lives on the integration branch
+  # Go modules
   - package-ecosystem: "gomod"
     directory: "/"
-    target-branch: "go"
     schedule:
       interval: "weekly"
       day: "monday"

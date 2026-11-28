@@ -97,7 +97,7 @@ function phasedShardReports() {
         status: 'passed', discovered: 1, shard: `${i + 1}/32`, phase: 'all',
         tests: [{identity: `tests/e2e/normal.spec.js::case-${i + 1}`, durationMs: 1000, attempts: [{status: 'passed'}]}],
     }));
-    for (const [index, transport] of [[5, 'polling'], [6, 'websocket']]) {
+    for (const [index, transport] of [[6, 'websocket']]) {
         reports[index].phase = 'shared';
         reports.push({status: 'passed', discovered: 1, shard: `${index + 1}/32`, phase: 'exclusive',
             tests: [{identity: `tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over ${transport}`,
@@ -111,21 +111,21 @@ function refreshReports(reports) {
 }
 
 test('timing refresh accepts complete phased 32-shard sets and legacy unphased sets', () => {
-    assert.equal(Object.keys(refreshReports(phasedShardReports()).tests).length, 34);
+    assert.equal(Object.keys(refreshReports(phasedShardReports()).tests).length, 33);
     const legacy = phasedShardReports().slice(0, 32).map(({phase, ...report}) => report);
     assert.equal(Object.keys(refreshReports(legacy).tests).length, 32);
 });
 
 test('timing refresh rejects missing phases, duplicate phases, overlaps and wrong resource membership', () => {
     const invalid = [];
-    invalid.push(phasedShardReports().filter(r => !(r.shard === '6/32' && r.phase === 'exclusive')));
-    invalid.push(phasedShardReports().filter(r => !(r.shard === '6/32' && r.phase === 'shared')));
+    invalid.push(phasedShardReports().filter(r => !(r.shard === '7/32' && r.phase === 'exclusive')));
+    invalid.push(phasedShardReports().filter(r => !(r.shard === '7/32' && r.phase === 'shared')));
     const duplicate = phasedShardReports(); duplicate.push({...duplicate[32]}); invalid.push(duplicate);
     const alias = phasedShardReports(); alias.push({...alias[0], shard: '01/32', tests: [{...alias[0].tests[0], identity: 'tests/e2e/normal.spec.js::alias'}]}); invalid.push(alias);
-    const mixed = phasedShardReports(); mixed.push({...mixed[5], phase: 'all'}); invalid.push(mixed);
-    const overlap = phasedShardReports(); overlap[5].tests = overlap[32].tests; invalid.push(overlap);
+    const mixed = phasedShardReports(); mixed.push({...mixed[6], phase: 'all'}); invalid.push(mixed);
+    const overlap = phasedShardReports(); overlap[6].tests = overlap[32].tests; invalid.push(overlap);
     const repeated = phasedShardReports(); repeated[1].tests = repeated[0].tests; invalid.push(repeated);
     const unknown = phasedShardReports(); unknown[0].phase = 'unknown'; invalid.push(unknown);
-    const empty = phasedShardReports(); empty[5].tests = []; empty[5].discovered = 0; invalid.push(empty);
+    const empty = phasedShardReports(); empty[6].tests = []; empty[6].discovered = 0; invalid.push(empty);
     for (const reports of invalid) assert.throws(() => refreshReports(reports));
 });

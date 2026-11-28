@@ -8,23 +8,20 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
 
 import paramiko
 
 HOST = '127.0.0.1'
-# The Python run uses the fixed paramiko5 lab; the Go run starts its own
-# Herdr host (tests/integration/herdr/run-go-browser.sh) and passes its
-# port, password and compose project.
-PORT = int(os.environ.get('WEBSSH_HERDR_PORT', '2225'))
+# The disposable Herdr host of tests/integration/herdr/run-go-browser.sh,
+# which passes its port, password and compose project.
+PORT = int(os.environ.get('WEBSSH_HERDR_PORT', '0'))
 USERNAME = 'agentuser'
-PASSWORD = os.environ.get('WEBSSH_HERDR_PASSWORD', 'Paramiko5-Test-Only!')
+PASSWORD = os.environ.get('WEBSSH_HERDR_PASSWORD', '')
 HERDR = '$HOME/.local/bin/herdr'
 LAB_COMPOSE = (
     'docker', 'compose',
-    '-f', os.environ.get('WEBSSH_HERDR_COMPOSE_FILE',
-                         str(Path(__file__).resolve().parent / 'paramiko5' / 'docker-compose.yml')),
-    '--project-name', os.environ.get('WEBSSH_HERDR_COMPOSE_PROJECT', 'webssh-paramiko5-integration'),
+    '-f', os.environ.get('WEBSSH_HERDR_COMPOSE_FILE', ''),
+    '--project-name', os.environ.get('WEBSSH_HERDR_COMPOSE_PROJECT', ''),
 )
 
 
@@ -67,8 +64,8 @@ def snapshot(client):
 
 
 def main(action, *args):
-    if os.environ.get('PARAMIKO5_DISPOSABLE_LAB') != '1':
-        raise SystemExit('This probe requires the disposable OpenSSH lab')
+    if os.environ.get('PARAMIKO5_DISPOSABLE_LAB') != '1' or not PORT or not PASSWORD or not all(LAB_COMPOSE):
+        raise SystemExit('This probe requires the disposable Herdr host (tests/integration/herdr/run-go-browser.sh)')
     client = connect()
     try:
         if action == 'reset':

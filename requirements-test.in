@@ -1,5 +1,7 @@
-# Direct test dependency. Runtime constraints are included from requirements.in.
--r requirements.in
+# Tools of the repository's own checks; WebSSH itself has no Python.
 pytest==9.2.0
-pytest-xdist==3.8.0
 ruff==0.17.4
+# tests/test_dependency_policy.py reads the lock files with it.
+packaging==26.3
+# tests/integration/herdr_lab_probe.py reads the Herdr host over SSH.
+paramiko==5.1.0

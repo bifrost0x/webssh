@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {LOCALES, localeTable, runI18n} = require('./i18n-locales.js');
 const root = path.join(__dirname, '../..');
-const html = fs.readFileSync(path.join(root,'templates/_automation_workspace.html'),'utf8');
+const html = fs.readFileSync(path.join(root,'internal/httpapi/pages/automation_workspace.gohtml'),'utf8');
 const controller = fs.readFileSync(path.join(root,'static/js/automation.js'),'utf8');
 const keys = new Set([...html.matchAll(/data-auto-(?:i18n|placeholder|label)="([^"]+)"/g), ...controller.matchAll(/\btr\('([^']+)'/g)].map(match=>match[1]));
 for (const status of ['queued','running','succeeded','failed','unknown','cancelled','skipped']) keys.add(`state.${status}`);

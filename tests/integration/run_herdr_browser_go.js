@@ -1,12 +1,12 @@
 // Loopback Go server for the Herdr browser spec. It starts the server
-// under test (WEBSSH_E2E_M1_SERVER_COMMAND) on a new data directory with
+// under test (the Go build of tests/e2e/m1/backend.js) on a new data directory with
 // the administrator the spec signs in as, on WEBSSH_E2E_PORT, and removes
 // the directory when Playwright stops it. Started by
 // playwright.herdr.config.js; herdr/run-go-browser.sh sets the variables.
 const {freshBackend} = require('../e2e/m1/backend');
 
 async function main() {
-    if (!process.env.WEBSSH_E2E_M1_SERVER_COMMAND || !process.env.WEBSSH_HERDR_PORT) {
+    if (!process.env.WEBSSH_HERDR_PORT) {
         throw new Error('run through tests/integration/herdr/run-go-browser.sh');
     }
     const backend = freshBackend('herdr');

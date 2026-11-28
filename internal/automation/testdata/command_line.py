@@ -1,7 +1,7 @@
 """Record the exec request of an automation step as the Python release
 builds it (command_for of app/automation_transport.py, unchanged).
 
-    WS=$PWD .venv/bin/python -I internal/automation/testdata/command_line.py \
+    WS=$WEBSSH_PYTHON_ROOT $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/automation/testdata/command_line.py \
         internal/automation/testdata/command_line.json
 """
 import json

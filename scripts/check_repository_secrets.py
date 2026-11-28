@@ -39,18 +39,23 @@ def canary_value(length=64):
 def check_canaries(binary, config, directory):
     # Generate nonfunctional token-shaped strings at runtime, never commit them.
     paths = [
-        'app/step_up.py', 'static/js/app.js',
-        'static/vendor/xterm/xterm.js',
+        'static/js/app.js', 'static/vendor/xterm/xterm.js',
         'site/vendor/vis-network-9.1.6/vis-network.min.js',
-        'tests/test_key_encryption.py', 'tests/test_key_manager.py',
+        'internal/config/testdata/python_env.jsonl',
+        'internal/ssh/client/keys_test.go', 'internal/vault/parse_test.go',
+        'tests/golden/fixture/manifest.json', 'tests/golden/fixture/legacy/manifest.json',
     ]
     for name in paths:
         target = directory / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('token = "' + 'ghp_' + secrets.token_hex(18) + '"\n'
                           + 'api_key = "' + canary_value() + '"\n')
-    # PEM-shaped blocks must also be detected inside both synthetic-key tests.
-    key_paths = ['tests/test_key_encryption.py', 'tests/test_key_manager.py']
+    # PEM-shaped blocks must also be detected inside the synthetic-key tests
+    # and the golden data sets, whose own keys are allowed by exact value.
+    key_paths = [
+        'internal/ssh/client/keys_test.go', 'internal/vault/parse_test.go',
+        'tests/golden/fixture/manifest.json', 'tests/golden/fixture/legacy/manifest.json',
+    ]
     for name in key_paths:
         pem = directory / name
         pem.write_text(pem.read_text() + '-----BEGIN ' + 'RSA PRIVATE KEY-----\n'

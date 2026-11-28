@@ -7,7 +7,6 @@ import (
 	json "encoding/json/v2"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -36,14 +35,8 @@ func TestLabMigratedProfileReconnect(t *testing.T) {
 	if _, err := os.Stat(labJSON); err != nil {
 		t.Fatalf("lab not available (set WEBSSH_LAB_JSON): %v", err)
 	}
-	python, err := filepath.Abs(pythonPath())
-	if err != nil {
-		t.Fatal(err)
-	}
 	dir := filepath.Join(t.TempDir(), "data")
-	cmd := exec.CommandContext(t.Context(), python, "-m", "tests.golden.lab_variant", "--out", dir, "--lab", labJSON)
-	cmd.Dir = repoRoot
-	cmd.Env = append(os.Environ(), helperTempDir(t)...)
+	cmd := labVariantCommand(t, dir, labJSON)
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Python lab data: %v\n%s", err, out)

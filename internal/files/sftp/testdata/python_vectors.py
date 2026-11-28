@@ -1,9 +1,9 @@
 """Record the SFTP metadata decisions of the Python release as test vectors.
 
-Usage (from the repository root, with the project virtual environment):
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
     SECRET_KEY=$(openssl rand -hex 32) DATA_DIR=$(mktemp -d) \
-        .venv/bin/python -I internal/files/sftp/testdata/python_vectors.py . \
+        $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/files/sftp/testdata/python_vectors.py "$WEBSSH_PYTHON_ROOT" \
         internal/files/sftp/testdata/python_vectors.json.gz
 
 app/sftp_metadata.py, app/paramiko_channels.py and app/sftp_handler.py are

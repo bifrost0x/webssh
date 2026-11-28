@@ -15,9 +15,7 @@ module.exports = {
     webServer: {
         ...base.webServer,
         cwd: path.resolve(__dirname, '../..'),
-        // The Go server under test comes from run-go-browser.sh.
-        command: process.env.WEBSSH_E2E_M1_SERVER_COMMAND
-            ? `"${process.execPath}" tests/integration/run_herdr_browser_go.js`
-            : base.webServer.command.replace('tests/e2e/run_app.py', 'tests/integration/run_herdr_browser_app.py'),
+        // The Go server under test, on the Herdr host of run-go-browser.sh.
+        command: `"${process.execPath}" tests/integration/run_herdr_browser_go.js`,
     },
 };

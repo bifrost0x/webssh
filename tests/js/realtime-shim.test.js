@@ -328,16 +328,6 @@ test('a throwing listener does not stop the other listeners', async () => {
     socket.disconnect();
 });
 
-test('the Python pages keep loading Socket.IO and never the shim', () => {
-    for (const file of fs.readdirSync(path.join(ROOT, 'templates'))) {
-        if (!file.endsWith('.html')) continue;
-        const source = fs.readFileSync(path.join(ROOT, 'templates', file), 'utf8');
-        assert.doesNotMatch(source, /realtime-|preview-notice/, file);
-    }
-    const index = fs.readFileSync(path.join(ROOT, 'templates/index.html'), 'utf8');
-    assert.match(index, /vendor\/socketio\/socket\.io\.min\.js/);
-});
-
 // A browser cannot read why an upgrade was refused. After repeated
 // failures the shim asks the session status endpoint (same origin,
 // no-store) and goes to the sign-in at once on 401.

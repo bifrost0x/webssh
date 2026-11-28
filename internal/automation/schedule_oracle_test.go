@@ -21,7 +21,7 @@ import (
 // app/automation_cron.py over a whole year with daylight-saving changes in
 // several zones (northern and southern hemisphere, a 30-minute shift,
 // zones without DST). The oracle is the cron oracle of internal/cron, run
-// by the repository's virtual environment (or WEBSSH_PYTHON); its answers
+// with the Python release (internal/oracletest); its answers
 // are checked in as testdata/next_due_year.jsonl, so the comparison also
 // runs without Python. -update-next rewrites the file.
 var updateNext = flag.Bool("update-next", false, "rewrite testdata/next_due_year.jsonl from the Python oracle")
@@ -108,17 +108,8 @@ func pythonYear(t *testing.T) []yearAnswer {
 	var python, root string
 	switch {
 	case *updateNext:
-		python = os.Getenv("WEBSSH_PYTHON")
-		if python == "" {
-			python = filepath.Join("..", "..", ".venv", "bin", "python")
-		}
-		if _, err := os.Stat(python); err != nil {
-			t.Fatalf("-update-next needs the Python oracle: %v", err)
-		}
-		var err error
-		if root, err = filepath.Abs(filepath.Join("..", "..")); err != nil {
-			t.Fatal(err)
-		}
+		rel := oracletest.Require(t)
+		python, root = rel.Python, rel.Root
 	case oracletest.CurrentMode(t) != oracletest.Replay:
 		rel := oracletest.RequireLive(t)
 		python, root = rel.Python, rel.Root

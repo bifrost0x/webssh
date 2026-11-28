@@ -4,7 +4,7 @@ Writes a corpus with the results of evaluate_oidc_assurance so the Go test
 replays it without Python. Run from the repository root with the project
 virtual environment:
 
-    WS=$PWD .venv/bin/python -I internal/auth/oidc/testdata/assurance_oracle.py \
+    WS=$WEBSSH_PYTHON_ROOT $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/auth/oidc/testdata/assurance_oracle.py \
         internal/auth/oidc/testdata/assurance_oracle.json.gz
 """
 import gzip

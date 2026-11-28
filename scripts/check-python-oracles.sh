@@ -4,18 +4,23 @@
 # recordings come out byte for byte as they are checked in, and runs the
 # differential tests against the live release (WEBSSH_PYTHON_ORACLE=live).
 #
-#   PYTHON              interpreter with requirements-test.txt
-#                       (default: .venv/bin/python)
-#   WEBSSH_PYTHON_ROOT  checkout of the Python release (default: this
-#                       repository)
+#   WEBSSH_PYTHON_ROOT  worktree of the Python release (required; see
+#                       scripts/record-python-oracles.sh)
+#   PYTHON              interpreter with that release's requirements-test.txt
+#                       (default: .venv/bin/python in WEBSSH_PYTHON_ROOT)
 #
 # The host-key oracle uses fresh random keys, so only the Go tests judge
 # its new recording, which is reverted afterwards.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
-PYTHON=${PYTHON:-$root/.venv/bin/python}
-export PYTHON
+if [ -z "${WEBSSH_PYTHON_ROOT:-}" ]; then
+	echo "check-python-oracles: set WEBSSH_PYTHON_ROOT (scripts/record-python-oracles.sh)" >&2
+	exit 1
+fi
+WEBSSH_PYTHON_ROOT=$(cd "$WEBSSH_PYTHON_ROOT" && pwd)
+PYTHON=${PYTHON:-$WEBSSH_PYTHON_ROOT/.venv/bin/python}
+export PYTHON WEBSSH_PYTHON_ROOT
 
 random="internal/ssh/hostkey/testdata/oracle.json"
 trap 'git checkout -- $random' EXIT

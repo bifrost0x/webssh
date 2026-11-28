@@ -1,5 +1,8 @@
 """Start the Python application on an existing DATA_DIR for the M1 specs.
 
+The application comes from WEBSSH_PYTHON_ROOT, a worktree of the last
+Python release (tests/e2e/m1/python-release.js); this repository has none.
+
 ``serve`` runs the server on 127.0.0.1:$PORT, ``cli <args>`` runs the Flask
 maintenance commands (``create-admin`` and others). Both resolve SECRET_KEY
 like ``entrypoint.sh``: the environment wins, otherwise ``DATA_DIR/secret_key``
@@ -50,7 +53,12 @@ def _resolve_secret(data_dir):
 def main(argv):
     if not argv or argv[0] not in {'serve', 'cli'}:
         raise SystemExit('usage: python_backend.py serve | cli <flask command> ...')
-    project_root = Path(__file__).resolve().parents[3]
+    release = os.environ.get('WEBSSH_PYTHON_ROOT', '')
+    if not release:
+        raise SystemExit('WEBSSH_PYTHON_ROOT must name a worktree of the Python release.')
+    project_root = Path(release).resolve()
+    if not (project_root / 'app' / '__init__.py').is_file():
+        raise SystemExit(f'No Python release in {project_root} (WEBSSH_PYTHON_ROOT).')
     os.chdir(project_root)
     sys.path.insert(0, str(project_root))
     _resolve_secret(_data_dir())

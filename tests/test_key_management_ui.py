@@ -2,7 +2,7 @@ from pathlib import Path
 from tests.i18n_sources import translation_source
 
 
-TEMPLATE = Path('templates/index.html').read_text(encoding='utf-8')
+TEMPLATE = Path('internal/httpapi/pages/index.gohtml').read_text(encoding='utf-8')
 PROFILE_MANAGER = Path('static/js/profile-manager.js').read_text(encoding='utf-8')
 APP = Path('static/js/app.js').read_text(encoding='utf-8')
 STYLE = Path('static/css/style.css').read_text(encoding='utf-8')

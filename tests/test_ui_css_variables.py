@@ -20,7 +20,7 @@ def _sources(*patterns):
 
 def test_unguarded_custom_properties_are_defined():
     defined = set()
-    for path in _sources('static/css/*.css', 'templates/**/*.html', 'static/js/*.js'):
+    for path in _sources('static/css/*.css', 'internal/httpapi/pages/*.gohtml', 'static/js/*.js'):
         text = path.read_text(encoding='utf-8')
         defined.update(DEFINITION.findall(text))
         defined.update(SCRIPT_DEFINITION.findall(text))

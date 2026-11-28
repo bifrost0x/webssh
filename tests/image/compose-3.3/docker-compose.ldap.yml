@@ -1,0 +1,42 @@
+# LDAP / Active Directory overlay. Fill every empty value first, then follow
+# the secret-helper and startup steps in docs/ldap-authentication.md.
+services:
+  webssh:
+    environment:
+      LDAP_ENABLED: "true"
+      LDAP_AUTO_PROVISION: "false"
+      LDAP_PROVIDER_ID: default
+      LDAP_URL: ""
+      # Optional failover endpoint for the same directory and CA trust.
+      LDAP_BACKUP_URL: ""
+      LDAP_BASE_DN: ""
+      LDAP_BIND_DN: ""
+      LDAP_USER_FILTER: ""
+      LDAP_UNIQUE_ID_ATTRIBUTE: ""
+      # Optional overrides; bounded defaults are built in.
+      # LDAP_CONNECT_TIMEOUT: "5"
+      # LDAP_OPERATION_TIMEOUT: "5"
+      # LDAP_SESSION_REVALIDATION_SECONDS: "300"
+      # LDAP_LOGIN_RATE_LIMIT: 5 per minute
+    volumes:
+      - webssh_auth_secrets:/run/webssh-auth:ro
+
+  # Isolated helper with exclusive write access to LDAP secrets.
+  ldap-tools:
+    image: ghcr.io/bifrost0x/webssh:latest
+    profiles: ["ldap-tools"]
+    restart: "no"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    entrypoint: ["python", "/app/deployment/ldap_secret_cli.py"]
+    command: ["status"]
+    volumes:
+      - webssh_auth_secrets:/run/webssh-auth
+
+volumes:
+  webssh_auth_secrets:
+    driver: local

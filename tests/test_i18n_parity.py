@@ -153,7 +153,7 @@ def test_saved_connection_and_quick_connect_terms_are_consistent():
 
 
 def test_new_tab_accessible_name_describes_the_connection_launcher():
-    source = Path('templates/index.html').read_text(encoding='utf-8')
+    source = Path('internal/httpapi/pages/index.gohtml').read_text(encoding='utf-8')
     new_tab = re.search(r'<button[^>]+id="newTabBtn"[^>]*>', source)
 
     assert new_tab is not None
@@ -167,7 +167,7 @@ def test_english_visible_fallbacks_avoid_legacy_connection_terms():
     sources = '\n'.join(
         Path(path).read_text(encoding='utf-8')
         for path in (
-            'templates/index.html',
+            'internal/httpapi/pages/index.gohtml',
             'static/js/app.js',
             'static/js/file-preview.js',
             'static/js/terminal-search.js',
@@ -247,27 +247,21 @@ def test_english_command_set_copy_explains_execution_boundaries():
 def test_all_popup_translation_references_exist_in_every_locale():
     i18n_source = translation_source()
     source_paths = (
-        sorted(Path('templates').glob('*.html'))
+        sorted(Path('internal/httpapi/pages').glob('*.gohtml'))
         + sorted(Path('static/js').glob('*.js'))
     )
-    referenced_keys = set()
+    # The flash messages and sign-in methods the pages translate by key.
+    referenced_keys = set(re.findall(
+        r'"((?:auth|security)\.[a-zA-Z0-9_.]+)"',
+        Path('internal/httpapi/page_tables.go').read_text(encoding='utf-8'),
+    ))
+    assert referenced_keys
     for source_path in source_paths:
         source = source_path.read_text(encoding='utf-8')
-        if source_path.name == 'terminal_appearance.html':
-            from jinja2 import Template
-
-            source = Template(source).render()
-        elif source_path.name == '_auth_messages.html':
-            from jinja2 import Template
-
-            module = Template(source).make_module({
-                'get_flashed_messages': lambda **kwargs: [],
-            })
-            referenced_keys.update(module.flash_message_keys.values())
-            source = str(module.render_auth_messages())
         referenced_keys.update(
             re.findall(
-                r'data-i18n(?:-placeholder|-title|-label|-aria-label|-alt)?="([^"]+)"',
+                # Keys filled in by the template (page_tables.go) are added above.
+                r'data-i18n(?:-placeholder|-title|-label|-aria-label|-alt)?="([^"{}]+)"',
                 source,
             )
         )
@@ -324,8 +318,8 @@ def test_all_popup_translation_references_exist_in_every_locale():
 
 
 def test_recent_settings_and_github_surfaces_are_runtime_localized():
-    admin_template = Path('templates/admin.html').read_text(encoding='utf-8')
-    security_template = Path('templates/security.html').read_text(encoding='utf-8')
+    admin_template = Path('internal/httpapi/pages/admin.gohtml').read_text(encoding='utf-8')
+    security_template = Path('internal/httpapi/pages/security.gohtml').read_text(encoding='utf-8')
     admin_source = Path('static/js/admin.js').read_text(encoding='utf-8')
     settings_source = Path('static/js/settings-center.js').read_text(encoding='utf-8')
     file_manager_source = Path('static/js/sftp-file-manager.js').read_text(
@@ -364,7 +358,7 @@ def test_recent_settings_and_github_surfaces_are_runtime_localized():
 
 
 def test_popup_inputs_use_explicit_placeholder_translation_attribute():
-    source = Path('templates/index.html').read_text(encoding='utf-8')
+    source = Path('internal/httpapi/pages/index.gohtml').read_text(encoding='utf-8')
     popup_source = source[source.index('<div class="modal'):source.index(
         '<script src=',
     )]
@@ -410,10 +404,10 @@ def test_webssh2_pages_use_explicit_placeholder_and_accessible_text_translations
     source = '\n'.join(
         Path(path).read_text(encoding='utf-8')
         for path in (
-            'templates/login.html',
-            'templates/register.html',
-            'templates/change_password.html',
-            'templates/security.html',
+            'internal/httpapi/pages/login.gohtml',
+            'internal/httpapi/pages/register.gohtml',
+            'internal/httpapi/pages/change_password.gohtml',
+            'internal/httpapi/pages/security.gohtml',
         )
     )
 
@@ -425,7 +419,7 @@ def test_webssh2_pages_use_explicit_placeholder_and_accessible_text_translations
 
 
 def test_admin_authentication_feature_controls_are_fully_translatable():
-    template = Path('templates/admin.html').read_text(encoding='utf-8')
+    template = Path('internal/httpapi/pages/admin.gohtml').read_text(encoding='utf-8')
     script = '\n'.join(
         Path(path).read_text(encoding='utf-8')
         for path in ('static/js/admin.js', 'static/js/security-ui.js')
@@ -457,7 +451,7 @@ def test_admin_authentication_feature_controls_are_fully_translatable():
 
 
 def test_workspace_native_controls_are_fully_translatable():
-    source = Path('templates/index.html').read_text(encoding='utf-8')
+    source = Path('internal/httpapi/pages/index.gohtml').read_text(encoding='utf-8')
 
     for key in (
         'workspace.closeBroadcast',
@@ -474,8 +468,8 @@ def test_workspace_native_controls_are_fully_translatable():
 
 
 def test_auth_validation_hints_match_the_shared_controller_contract():
-    register = Path('templates/register.html').read_text(encoding='utf-8')
-    change = Path('templates/change_password.html').read_text(encoding='utf-8')
+    register = Path('internal/httpapi/pages/register.gohtml').read_text(encoding='utf-8')
+    change = Path('internal/httpapi/pages/change_password.gohtml').read_text(encoding='utf-8')
 
     for field_id in (
         'registerUsernameHint',
@@ -492,5 +486,5 @@ def test_auth_validation_hints_match_the_shared_controller_contract():
 
     assert 'function toggleLangDropdown()' not in register
     assert 'function toggleLangDropdown()' not in Path(
-        'templates/login.html'
+        'internal/httpapi/pages/login.gohtml'
     ).read_text(encoding='utf-8')

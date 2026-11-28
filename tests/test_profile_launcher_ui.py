@@ -7,32 +7,32 @@ def read(path):
 
 
 def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     assert 'id="noSessions"' not in template
-    assert "filename='js/profile-launcher-utils.js'" in template
-    assert "filename='js/connection-launcher.js'" in template
-    assert template.index("filename='js/profile-launcher-utils.js'") < template.index(
-        "filename='js/connection-launcher.js'"
+    assert '$.Asset "js/profile-launcher-utils.js"' in template
+    assert '$.Asset "js/connection-launcher.js"' in template
+    assert template.index('$.Asset "js/profile-launcher-utils.js"') < template.index(
+        '$.Asset "js/connection-launcher.js"'
     )
-    assert template.index("filename='js/connection-launcher.js'") < template.index(
-        "filename='js/profile-manager.js'"
+    assert template.index('$.Asset "js/connection-launcher.js"') < template.index(
+        '$.Asset "js/profile-manager.js"'
     )
 
 
 def test_saved_connection_context_precedes_authentication_method():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     context = template.index('id="connectionProfileContext"')
     auth_method = template.index('id="authTypeSelect"')
     host = template.index('id="hostInput"')
     # Destination first, then credentials; the saved-profile context precedes both.
     assert context < host < auth_method
-    assert template.index("filename='js/profile-launcher-utils.js'") < template.index(
-        "filename='js/profile-manager.js'"
+    assert template.index('$.Asset "js/profile-launcher-utils.js"') < template.index(
+        '$.Asset "js/profile-manager.js"'
     )
 
 
 def test_merged_profile_frontend_assets_use_content_addressed_urls():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     expected_assets = (
         'css/style.css',
         'css/sftp-file-manager.css',
@@ -58,23 +58,23 @@ def test_merged_profile_frontend_assets_use_content_addressed_urls():
         'js/app.js',
     )
     for asset in expected_assets:
-        assert f"static_asset_url(filename='{asset}')" in template
+        assert f'$.Asset "{asset}"' in template
 
 
 def test_preview_and_search_modules_load_before_application_code():
-    template = read('templates/index.html')
-    application = template.index("filename='js/app.js'")
+    template = read('internal/httpapi/pages/index.gohtml')
+    application = template.index('$.Asset "js/app.js"')
 
-    assert template.index("filename='js/terminal-search.js'") < application
-    assert template.index("filename='js/file-preview.js'") < application
+    assert template.index('$.Asset "js/terminal-search.js"') < application
+    assert template.index('$.Asset "js/file-preview.js"') < application
 
 
 def test_index_exposes_only_bounded_numeric_transfer_limits():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
 
-    assert "{'transfer': transfer_limits, 'sshInput': ssh_input_limits} | tojson" in template
-    assert template.index('id="websshRuntimeLimits"') < template.index("filename='js/runtime-limits.js'")
-    assert template.index("filename='js/runtime-limits.js'") < template.index("filename='js/i18n.js'")
+    assert '<script id="websshRuntimeLimits" type="application/json">{{$.RuntimeLimits}}</script>' in template
+    assert template.index('id="websshRuntimeLimits"') < template.index('$.Asset "js/runtime-limits.js"')
+    assert template.index('$.Asset "js/runtime-limits.js"') < template.index('$.Asset "js/i18n.js"')
     loader = read('static/js/runtime-limits.js')
     assert 'window.WEBSSH_TRANSFER_LIMITS = Object.freeze(limits.transfer)' in loader
     assert 'window.WEBSSH_SSH_INPUT_LIMITS = Object.freeze(limits.sshInput)' in loader
@@ -105,7 +105,7 @@ def test_quick_connect_keeps_one_visual_treatment_for_every_profile_state():
 
 
 def test_saved_connections_uses_the_shared_management_panel_hierarchy():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     start = template.index('id="profileManagementView"')
     end = template.index('id="profileEditorView"', start)
     panel = template[start:end]
@@ -189,20 +189,20 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 
 
 def test_active_session_command_launcher_is_loaded_after_command_data_managers():
-    template = read('templates/index.html')
-    launcher = "filename='js/session-command-launcher.js'"
+    template = read('internal/httpapi/pages/index.gohtml')
+    launcher = '$.Asset "js/session-command-launcher.js"'
 
     assert launcher in template
-    assert template.index("filename='js/command-library.js'") < template.index(launcher)
-    assert template.index("filename='js/command-set-manager.js'") < template.index(launcher)
-    assert template.index(launcher) < template.index("filename='js/app.js'")
+    assert template.index('$.Asset "js/command-library.js"') < template.index(launcher)
+    assert template.index('$.Asset "js/command-set-manager.js"') < template.index(launcher)
+    assert template.index(launcher) < template.index('$.Asset "js/app.js"')
 
 
 def test_command_palette_loads_safe_model_before_application_code():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
 
-    utility = "filename='js/command-palette-utils.js'"
-    application = "filename='js/app.js'"
+    utility = '$.Asset "js/command-palette-utils.js"'
+    application = '$.Asset "js/app.js"'
     assert utility in template
     assert template.index(utility) < template.index(application)
     assert 'data-i18n-placeholder="palette.searchPlaceholder"' in template
@@ -229,7 +229,7 @@ def test_command_palette_uses_safe_rendering_and_existing_activation_paths():
 
 
 def test_profile_management_exposes_search_group_and_favorite_controls():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     source = read('static/js/profile-manager.js')
 
     assert 'id="profileSearchInput"' in template
@@ -241,7 +241,7 @@ def test_profile_management_exposes_search_group_and_favorite_controls():
 
 
 def test_profile_management_uses_precise_ordering_and_custom_group_confirmation():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     source = read('static/js/profile-manager.js')
     styles = read('static/css/style.css')
 
@@ -276,7 +276,7 @@ def test_profile_launch_uses_shared_executor_and_review_callback():
 
 
 def test_auto_launch_has_no_coupled_save_profile_state():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     source = read('static/js/app.js')
     assert 'saveProfileCheck' not in template
     assert 'profileNameInput' not in template
@@ -311,7 +311,7 @@ def test_submit_keeps_target_pane_until_all_passwords_are_validated():
 
 def test_review_launcher_uses_profile_selection_logic_without_a_dropdown():
     source = read('static/js/app.js')
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     assert 'function selectConnectionProfile(profileId)' in source
     review_start = source.index('function openProfileForReview')
     review_body = source[review_start:review_start + 700]
@@ -327,7 +327,7 @@ def test_profile_management_connect_uses_only_the_central_launcher():
 
 
 def test_visible_connection_copy_uses_hosts_and_quick_connect():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     profiles = read('static/js/profile-manager.js')
     sessions = read('static/js/session-manager.js')
     affected_source = '\n'.join((template, profiles, sessions))
@@ -347,7 +347,7 @@ def test_visible_connection_copy_uses_hosts_and_quick_connect():
 
 
 def test_quick_connect_hides_optional_connection_features_in_native_details():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     start = template.index('id="connectionAdvancedSettings"')
     end = template.index('</details>', start)
     advanced = template[start:end]
@@ -372,13 +372,13 @@ def test_quick_connect_resets_advanced_state_and_expands_saved_advanced_profiles
 
 
 def test_saved_connection_editor_exposes_and_persists_tmux_preference():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     profiles = read('static/js/profile-manager.js')
 
     assert 'id="profileEditorUseTmux"' in template
-    assert '{% if tmux_enabled %}' in template
+    assert '{{if $.TmuxEnabled}}' in template
     assert 'data-i18n="session.persistentTmux"' in template
-    assert 'data-default="{{ \'true\' if tmux_default else \'false\' }}"' in template
+    assert 'data-default="{{if $.TmuxDefault}}true{{else}}false{{end}}"' in template
     assert 'profile.use_tmux === true' in profiles
     assert "useTmux.dataset.default === 'true'" in profiles
     assert 'payload.use_tmux = useTmux.checked' in profiles
@@ -396,7 +396,7 @@ def test_profile_groups_render_as_accessible_session_collapsibles():
 
 
 def test_profile_management_keeps_toolbar_controls_outside_the_scroll_region():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     source = read('static/css/style.css')
 
     toolbar_start = template.index(

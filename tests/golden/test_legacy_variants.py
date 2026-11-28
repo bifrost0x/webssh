@@ -21,7 +21,8 @@ from tests.golden.legacy.harness import (
 VARIANTS = MANIFEST['variants']
 BACKUPS = MANIFEST['backups']
 SECRET = MANIFEST['secret_key']['value']
-ENTRYPOINT = Path(__file__).resolve().parents[2] / 'entrypoint.sh'
+# The entrypoint of the Python release (tests/conftest.py, WEBSSH_PYTHON_ROOT).
+ENTRYPOINT = Path(os.environ['WEBSSH_PYTHON_ROOT']) / 'entrypoint.sh'
 
 
 @pytest.fixture

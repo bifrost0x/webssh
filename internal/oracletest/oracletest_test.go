@@ -137,7 +137,7 @@ func TestHelper(t *testing.T) {
 		Ask(t, Open(t, path), "case", "another request", ask)
 	case "key":
 		Ask(t, Open(t, path), "another key", "request", ask)
-	case "live-differs", "live-without-python", "mode", "record-without-source":
+	case "live-differs", "live-without-python", "live-without-root", "mode", "record-without-source":
 		Ask(t, Open(t, path), "case", "request", ask)
 	case "require-live":
 		RequireLive(t)
@@ -151,20 +151,26 @@ func TestFailures(t *testing.T) {
 	record(t, filepath.Join(dir, "rec.json"), python, root, answer{Values: []string{"a"}})
 	for _, tc := range []struct {
 		scenario, mode, python, want string
+		noRoot                       bool
 	}{
-		{"missing", "", "", "record it with"},
-		{"request", "", "", "changed since it was recorded"},
-		{"key", "", "", "has no answer"},
-		{"live-differs", "live", python, "answers \"case\" differently"},
-		{"live-without-python", "live", filepath.Join(dir, "no-python"), "needs the Python release"},
-		{"mode", "replay", "", "want unset, live or record"},
-		{"record-without-source", "record", python, "recording needs"},
-		{"require-live", "live", filepath.Join(dir, "no-python"), "needs the Python release"},
+		{"missing", "", "", "record it with", false},
+		{"request", "", "", "changed since it was recorded", false},
+		{"key", "", "", "has no answer", false},
+		{"live-differs", "live", python, "answers \"case\" differently", false},
+		{"live-without-python", "live", filepath.Join(dir, "no-python"), "needs the Python release", false},
+		{"live-without-root", "live", python, "needs the Python release in " + RootEnv, true},
+		{"mode", "replay", "", "want unset, live or record", false},
+		{"record-without-source", "record", python, "recording needs", false},
+		{"require-live", "live", filepath.Join(dir, "no-python"), "needs the Python release", false},
 	} {
 		t.Run(tc.scenario, func(t *testing.T) {
 			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestHelper$", "-test.count=1", "-test.v") // #nosec G204 -- the test binary itself
+			rootValue := root
+			if tc.noRoot {
+				rootValue = ""
+			}
 			cmd.Env = append(os.Environ(), helperEnv+"="+tc.scenario, "ORACLETEST_DIR="+dir, ModeEnv+"="+tc.mode,
-				PythonEnv+"="+tc.python, RootEnv+"="+root, SourceEnv+"=", VersionEnv+"=")
+				PythonEnv+"="+tc.python, RootEnv+"="+rootValue, SourceEnv+"=", VersionEnv+"=")
 			out, err := cmd.CombinedOutput()
 			if err == nil || !strings.Contains(string(out), tc.want) || strings.Contains(string(out), "--- SKIP") {
 				t.Fatalf("want a failure with %q, got %v:\n%s", tc.want, err, out)
@@ -180,5 +186,23 @@ func TestRequireLiveSkipsInReplay(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "--- SKIP") || !strings.Contains(string(out), ModeEnv+"=live") {
 		t.Fatalf("want a skip that names %s=live, got %v:\n%s", ModeEnv, err, out)
+	}
+}
+
+// Without WEBSSH_PYTHON the interpreter is the one of the release's own
+// virtual environment, not one of this repository.
+func TestRequireDefaultsToTheReleaseInterpreter(t *testing.T) {
+	_, root := fakeRelease(t)
+	venv := filepath.Join(root, ".venv", "bin")
+	if err := os.MkdirAll(venv, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(venv, "python"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil { // #nosec G306 -- an executable stand-in
+		t.Fatal(err)
+	}
+	t.Setenv(PythonEnv, "")
+	t.Setenv(RootEnv, root)
+	if r := Require(t); r.Python != filepath.Join(venv, "python") || r.Root != root {
+		t.Fatalf("release %+v", r)
 	}
 }

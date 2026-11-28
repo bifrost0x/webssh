@@ -338,7 +338,6 @@ test('exclusive cases finish serially before all four shared remainders, preserv
 test('exclusive lane selection follows discovery and the same weighted assignment, never fixed shard numbers', () => {
     const { classifyExclusiveShards } = require(modulePath);
     const tests = [
-        'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over polling',
         'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over websocket',
         'tests/e2e/a.spec.js::normal a', 'tests/e2e/b.spec.js::normal b',
         'tests/e2e/c.spec.js::normal c', 'tests/e2e/d.spec.js::normal d',
@@ -363,7 +362,6 @@ test('exclusive lane selection follows discovery and the same weighted assignmen
 test('the production CLI always classifies the discovered inventory before launching lanes', async () => {
     const { main } = require(modulePath);
     const inventory = [
-        'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over polling',
         'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over websocket',
     ].map(identity => ({ identity, selector: identity }));
     let discoveries = 0;
@@ -373,14 +371,14 @@ test('the production CLI always classifies the discovered inventory before launc
         runGroup(config, options) {
             executions++;
             assert.equal(config.groups * config.lanes, 2);
-            assert.deepEqual(options.exclusiveShards, ['1/2', '2/2']);
+            assert.equal(options.exclusiveShards.length, 1);
             return 0;
         },
     }), 0);
     assert.equal(discoveries, 1);
     assert.equal(executions, 1);
     await assert.rejects(main(['--group=1/1', '--lanes=2'], {
-        discover: () => inventory.slice(1),
+        discover: () => [],
         runGroup() { throw new Error('must not launch an unclassified inventory'); },
     }), /Missing exclusive resource test/);
 });
@@ -397,16 +395,15 @@ test('weighted runner phase flags are finite and shared/exclusive exactly partit
         ['--shard=1/2', '--phase=all', '--phase=shared'], ['--shard=1/2', '--unknown'],
     ]) assert.throws(() => parseArguments(args));
     const tests = [
-        'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over polling',
         'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over websocket',
-        'tests/e2e/a.spec.js::normal a', 'tests/e2e/b.spec.js::normal b',
+        'tests/e2e/a.spec.js::normal a', 'tests/e2e/b.spec.js::normal b', 'tests/e2e/c.spec.js::normal c',
     ].map(identity => ({ identity, selector: identity }));
     const shard = {current: 1, total: 1};
     const all = selectAssignedTests(tests, shard, 'all').selected;
     const exclusive = selectAssignedTests(tests, shard, 'exclusive').selected;
     const shared = selectAssignedTests(tests, shard, 'shared').selected;
-    assert.equal(exclusive.length, 2);
-    assert.equal(shared.length, 2);
+    assert.equal(exclusive.length, 1);
+    assert.equal(shared.length, 3);
     assert.deepEqual([...exclusive, ...shared].map(t => t.identity).sort(), all.map(t => t.identity).sort());
     assert.equal(new Set([...exclusive, ...shared].map(t => t.identity)).size, all.length);
     assert.throws(() => selectAssignedTests(tests, {current: 1, total: 4}, 'exclusive'), /has no assigned tests/);

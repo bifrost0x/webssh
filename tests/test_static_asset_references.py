@@ -4,16 +4,20 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 
+PAGES = Path('internal/httpapi/pages')
+
+
 def test_direct_template_static_references_use_content_addressed_urls():
     invalid_references = []
-    pattern = re.compile(r"static_asset_url\(filename='([^']+)'\)")
-    legacy_pattern = re.compile(r"url_for\('static'")
+    pattern = re.compile(r'\.Asset "([^"]+)"')
+    # A literal static path bypasses the content-addressed URL.
+    unversioned_pattern = re.compile(r'["\'(]/static/')
     reference_count = 0
 
-    for template_path in sorted(Path('templates').glob('*.html')):
+    for template_path in sorted(PAGES.glob('*.gohtml')):
         source = template_path.read_text(encoding='utf-8')
-        if legacy_pattern.search(source):
-            invalid_references.append(f'{template_path}:legacy-url-for')
+        if unversioned_pattern.search(source):
+            invalid_references.append(f'{template_path}:unversioned-static-path')
         for asset in pattern.findall(source):
             reference_count += 1
             if not (Path('static') / asset).is_file():
@@ -51,12 +55,12 @@ def test_local_css_asset_references_use_current_content_hashes():
 
 
 def test_auth_pages_use_the_generated_authentication_translation_bundle():
-    for template_name in ('login.html', 'register.html', 'change_password.html'):
-        source = (Path('templates') / template_name).read_text(encoding='utf-8')
-        assert "static_asset_url(filename='js/i18n-auth.js')" in source
-        assert "static_asset_url(filename='js/i18n.js')" not in source
+    for template_name in ('login.gohtml', 'register.gohtml', 'change_password.gohtml'):
+        source = (PAGES / template_name).read_text(encoding='utf-8')
+        assert '$.Asset "js/i18n-auth.js"' in source
+        assert '$.Asset "js/i18n.js"' not in source
         assert 'data-defer-theme-background' in source
-        assert "static_asset_url(filename='js/theme-preference.js')" in source
+        assert '$.Asset "js/theme-preference.js"' in source
 
 
 def test_authentication_translation_bundle_stays_within_its_page_load_budget():

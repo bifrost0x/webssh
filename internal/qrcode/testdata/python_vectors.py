@@ -1,9 +1,9 @@
 """Write python_vectors.json: QR matrices of the Python release's library.
 
-Run with the repository's virtual environment (qrcode as pinned in
+Run with the venv of the Python release (qrcode as pinned in
 requirements.txt):
 
-    .venv/bin/python -I internal/qrcode/testdata/python_vectors.py
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/qrcode/testdata/python_vectors.py
 """
 
 import hashlib

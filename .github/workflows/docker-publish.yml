@@ -59,9 +59,11 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           if [ "$GITHUB_REF_TYPE" = tag ]; then
-            version="$(python3 -c "import runpy; print(runpy.run_path('app/version.py')['VERSION'])")"
+            # The release version is the default of ARG VERSION in the
+            # Dockerfile (both stages); the binary reports it.
+            version="$(sed -n 's/^ARG VERSION=//p' Dockerfile | sort -u)"
             if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-              echo "Tag $GITHUB_REF_NAME does not match app/version.py ($version)" >&2
+              echo "Tag $GITHUB_REF_NAME does not match ARG VERSION of the Dockerfile ($version)" >&2
               exit 1
             fi
           fi
@@ -139,12 +141,18 @@ jobs:
           scanners: vuln
           trivyignores: .trivyignore.yaml
 
+      # The debug target of the same revision only lends BusyBox to the
+      # checks that inspect files; every container under test runs the
+      # exact candidate.
       - name: Verify compatible and hardened runtime of exact native candidate
         env:
-          CANDIDATE_PLATFORM: linux/${{ matrix.arch }}
+          DEBUG_IMG: webssh-candidate-debug:${{ github.sha }}
+          REVISION: ${{ github.sha }}
         run: |
-          python scripts/check_hardened_container.py --image "$RUNTIME_REF" \
-            --revision "$GITHUB_SHA" --platform "$CANDIDATE_PLATFORM"
+          docker buildx build --load --target debug --platform "linux/${{ matrix.arch }}" \
+            --build-arg VCS_REF="$GITHUB_SHA" --tag "$DEBUG_IMG" .
+          docker pull "$RUNTIME_REF"
+          BUILD=0 IMG="$RUNTIME_REF" tests/image/check.sh
 
       # This success-only artifact is the handoff: failed scans/runtime checks
       # never produce promotable evidence. Each matrix leg owns a distinct name.

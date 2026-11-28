@@ -1,0 +1,71 @@
+name: Python oracles
+
+# The differential oracles against the last Python release, on request:
+# every recorded answer is recorded again from a worktree of
+# PYTHON_RELEASE (scripts/record-python-oracles.sh) and must match, the Go
+# differential tests run against the live interpreter
+# (scripts/check-python-oracles.sh) and the golden data set checks run
+# against the release. Every other job replays the recordings without
+# Python.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+  GOFLAGS: -mod=readonly
+  GOWORK: "off"
+
+jobs:
+  python-oracles:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check out the Python release beside it
+        run: |
+          release="$(sed -n 's/^PYTHON_RELEASE=//p' scripts/record-python-oracles.sh)"
+          git worktree add --detach "$RUNNER_TEMP/python-release" "$release"
+          echo "WEBSSH_PYTHON_ROOT=$RUNNER_TEMP/python-release" >> "$GITHUB_ENV"
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Stage static assets for embedding
+        run: scripts/stage-webassets.sh
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.15'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version-file: uv.toml
+
+      - name: Install LDAP build dependencies
+        run: bash scripts/install_ci_test_system_deps.sh
+
+      # The release's own lock, in its own virtual environment.
+      - name: Install the Python release's dependencies
+        working-directory: ${{ env.WEBSSH_PYTHON_ROOT }}
+        run: |
+          uv venv --python "$(command -v python)" .venv
+          uv pip install --python .venv/bin/python --require-hashes -r requirements-test.txt
+
+      - name: Record and compare the Python oracles
+        run: scripts/check-python-oracles.sh
+
+      - name: Check the golden data sets against the Python release
+        run: '"$WEBSSH_PYTHON_ROOT/.venv/bin/python" -m pytest tests/golden -q -p no:cacheprovider'
