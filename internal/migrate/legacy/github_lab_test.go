@@ -83,6 +83,9 @@ func (a labAccounts) AccountTx(ctx context.Context, tx *store.Tx, id int64) (git
 func (a labAccounts) ProvisionTx(ctx context.Context, tx *store.Tx, name, manager string) (int64, error) {
 	return a.s.ProvisionTx(ctx, tx, name, manager)
 }
+func (a labAccounts) HasAccountsTx(ctx context.Context, tx *store.Tx) (bool, error) {
+	return a.s.HasAccountsTx(ctx, tx)
+}
 func (a labAccounts) ReleaseTx(ctx context.Context, tx *store.Tx, id int64, hash string) error {
 	return a.s.ReleaseTx(ctx, tx, id, hash)
 }
