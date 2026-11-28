@@ -234,6 +234,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | # | Change | Kind | What to do |
 |---|---|---|---|
 | U97 | In the Glass theme, primary buttons turn a darker blue on hover (`#0866b0` instead of `#087dcf`), so white text keeps a contrast of at least 4.5:1; 3.3 reached 4.3:1. | fix | Nothing. |
+| U100 | Overview host cards form an even grid: the cards of a row have the same height and their status and actions sit at the bottom on one line. The machine badge (VM, LXC, Bare Metal) hangs below the platform tile instead of covering its edge. Host profile and Configuration readiness no longer unfold inside the card; a click on the logo or name of a card opens them as a popover, on a phone as a sheet at the bottom. A panel with a stored height draws a rule under its heading while its content scrolls. | fix | Nothing. |
 
 ### HTTP API
 

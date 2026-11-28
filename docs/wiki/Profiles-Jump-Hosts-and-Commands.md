@@ -220,19 +220,23 @@ the system colours.
 The overview shows, per host:
 
 - a role pill, a card edge and tint in the role colour, and the platform icon
-  on a role-tinted tile with a badge for the virtualization kind;
+  on a role-tinted tile with a badge for the virtualization kind below it;
 - the system line (for example `Debian 12`, or the distribution and its
   family for a derived one);
 - up to five service logos with `+n` for the rest, the role's own service
   first; a name or hover text names each logo;
 - a guest count on hypervisors and a hint when running containers could not be
   read because the SSH user may not use the Docker socket;
-- **Host profile**, an expandable section with system, machine, services,
-  role and how it was reached (manual, derived from a platform or service, the
-  graphical desktop, or default) and the detection source with its date. It
-  says when the facts are older than seven days; they are refreshed on the
-  next connection. With a manual platform icon it says that detection is off
-  instead, since such a host is not probed again.
+- status and actions at the bottom of the card; the cards of a row have the
+  same height, so they line up across the row;
+- the details of the host, opened by a click on its logo or name: a popover
+  (on a phone a sheet at the bottom) with the **Host profile** (system,
+  machine, services, role and how it was reached: manual, derived from a
+  platform or service, the graphical desktop, or default; the detection
+  source with its date) and the **Configuration readiness** notes. The
+  profile says when the facts are older than seven days; they are refreshed
+  on the next connection. With a manual platform icon it says that detection
+  is off instead, since such a host is not probed again.
 
 Search in the overview also matches role, platform and service names. The
 classic overview layout keeps its compact rows: platform icon, virtualization

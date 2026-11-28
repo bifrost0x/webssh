@@ -42,6 +42,13 @@ const PROXMOX = {detected_platform: 'proxmox', detected_os_version: '8.2', detec
 const PAPERLESS = {detected_platform: 'ubuntu', detected_os_version: '24.04', detected_virt: 'vm',
     detected_services: ['postgresql', 'redis', 'paperless'], detection_state: 'detected', platform_checked_at: 'NOW'};
 const card = (page, index) => page.locator(`#overviewHostList .od-host[data-host-id="identity-${index}"]`);
+// The host profile opens in the details popover of the card menu.
+async function openProfile(page, host) {
+    await host.locator('[data-key^="head:"]').click();
+    const details = page.locator('#odHostDetails');
+    await expect(details).toBeVisible();
+    return details.locator('.od-host-profile');
+}
 
 test('host cards show the role, machine, system and service logos of each host', async ({page}) => {
     await openOverview(page);
@@ -77,24 +84,19 @@ test('host cards show the role, machine, system and service logos of each host',
     await expect(plain.locator('.od-role')).toHaveText(/Server/);
     await expect(plain.locator('.od-host-os')).toHaveCount(0);
     await expect(plain.locator('.od-virt')).toHaveCount(0);
-    await expect(plain.locator('.od-host-profile > summary')).toHaveAttribute('aria-label', 'Host profile: identity-2');
-    await expect(plain.locator('.od-host-profile > summary')).toHaveText('Host profile');
-    // Cards keep their own height: opening one profile leaves its row neighbours alone.
-    // The layout position is read without transforms: the opened card keeps
-    // focus and lifts by its hover and focus accent (translateY(-2px)).
+    await expect(plain.locator('[data-key^="head:"]')).toHaveAttribute('aria-haspopup', 'dialog');
+    await expect(plain.locator('.od-host-profile')).toHaveCount(0);
+    // The profile opens outside the card: no card of the row changes its place or height.
     const rows = () => page.evaluate(() => ['identity-0', 'identity-1'].map(id => {
         const element = document.querySelector(`#overviewHostList .od-host[data-host-id="${id}"]`);
         return {top: element.offsetTop, height: element.getBoundingClientRect().height};
     }));
-    const [, before] = await rows();
-    await proxmox.locator('.od-host-profile > summary').click();
-    await expect(proxmox.locator('.od-host-profile')).toHaveAttribute('open', '');
-    const [opened, after] = await rows();
-    expect(opened.top).toBe(after.top);
-    expect(opened.height).toBeGreaterThan(after.height + 40);
-    expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1);
-    await plain.locator('.od-host-profile > summary').click();
-    const profile = plain.locator('.od-host-profile');
+    const before = await rows();
+    await openProfile(page, proxmox);
+    await expect(page.getByRole('dialog', {name: 'identity-0'}).getByRole('heading', {name: 'Host profile'})).toBeVisible();
+    expect(await rows()).toEqual(before);
+    await page.keyboard.press('Escape');
+    const profile = await openProfile(page, plain);
     await expect(profile).toContainText('Not detected yet');
     await expect(profile).toContainText('default');
     await expect(profile).not.toContainText(/undefined|NaN|null/);
@@ -113,7 +115,8 @@ test('host cards show the role, machine, system and service logos of each host',
     // Replacement patterns in a host name are text, not instructions.
     await page.evaluate(() => ProfileManager.setProfiles(ProfileManager.profiles.map(profile => (profile.id === 'identity-2'
         ? {...profile, name: "db $& box $' $$"} : profile))));
-    await expect(plain.locator('.od-host-profile > summary')).toHaveAttribute('aria-label', "Host profile: db $& box $' $$");
+    await expect(plain.locator('[data-key^="head:"]')).toHaveAttribute('aria-label', /^db \$& box \$' \$\$, /);
+    await expect(page.getByRole('dialog')).toHaveAccessibleName("db $& box $' $$");
     expect(await sshAttempts(page)).toEqual([]);
     await assertNoExternalRequests(page);
 });
@@ -125,10 +128,7 @@ test('the host profile explains the role and the detection, and stays open acros
         {...PAPERLESS, platform_icon: 'ubuntu', platform_checked_at: 1700000000}, {platform_icon: 'debian'}]);
 
     const derived = card(page, 0);
-    const summary = derived.locator('.od-host-profile > summary');
-    await summary.click();
-    const profile = derived.locator('.od-host-profile');
-    await expect(profile).toHaveAttribute('open', '');
+    const profile = await openProfile(page, derived);
     await expect(profile.locator('dt')).toHaveText(['System', 'Machine', 'Services', 'Role', 'Detection']);
     await expect(profile.locator('dd').nth(0)).toHaveText('Ubuntu 24.04');
     await expect(profile.locator('dd').nth(1)).toHaveText('VM');
@@ -139,49 +139,51 @@ test('the host profile explains the role and the detection, and stays open acros
     await expect(profile).not.toHaveClass(/od-stale/);
 
     // A profile update rebuilds the card; the open profile and the focus survive it.
-    await summary.focus();
+    const close = page.locator('#odHostDetails .od-host-details-close');
+    await close.focus();
     await page.evaluate(() => {
         ProfileManager.setProfiles(ProfileManager.profiles.map(item => item.id === 'identity-0'
             ? {...item, detected_services: [...item.detected_services, 'grafana']} : item));
     });
     await expect(derived.locator('.od-service-chip')).toHaveCount(4);
-    await expect(derived.locator('.od-host-profile')).toHaveAttribute('open', '');
-    await expect(derived.locator('.od-host-profile > summary')).toBeFocused();
+    await expect(profile.locator('dd').nth(2)).toContainText('Grafana');
+    await expect(close).toBeFocused();
+    await page.keyboard.press('Escape');
 
     const manual = card(page, 1);
     await expect(manual).toHaveAttribute('data-role', 'backup');
     await expect(manual.locator('.od-role')).toHaveText(/Backup/);
     await expect(manual.locator('.od-fact-chip[data-kind="guests"]')).toHaveCount(0);
-    await manual.locator('.od-host-profile > summary').click();
-    await expect(manual.locator('.od-host-profile dd').nth(2)).toHaveText(/Backup.*manual/);
-    await expect(manual.locator('.od-host-profile dd').nth(1)).toHaveText('Bare Metal · 7 guests');
+    const manualProfile = await openProfile(page, manual);
+    await expect(manualProfile.locator('dd').nth(2)).toHaveText(/Backup.*manual/);
+    await expect(manualProfile.locator('dd').nth(1)).toHaveText('Bare Metal · 7 guests');
 
     // A chosen platform is named in the system row; detection keeps its own wording
     // and says that it no longer runs, so no next check is announced.
     const manualPlatform = card(page, 3);
     await expect(manualPlatform.locator('.od-host-os')).toHaveText('Ubuntu (manual choice)');
-    await manualPlatform.locator('.od-host-profile > summary').click();
-    const detection = manualPlatform.locator('.od-host-profile dd').last();
+    const detection = (await openProfile(page, manualPlatform)).locator('dd').last();
     await expect(detection).toContainText('Detected after SSH connection');
     await expect(detection).not.toContainText(/manual choice/i);
     await expect(detection.locator('small')).toHaveText('Detection off (manual platform)');
     await expect(detection).not.toContainText('next check');
     for (const index of [4, 5]) {
         const host = card(page, index);
-        await host.locator('.od-host-profile > summary').click();
-        const row = host.locator('.od-host-profile dd').last();
+        const row = (await openProfile(page, host)).locator('dd').last();
         await expect(row.locator('small')).toHaveText('Detection off (manual platform)');
         await expect(row).not.toContainText(/refreshed|next check/);
     }
-    await expect(card(page, 5).locator('.od-host-profile dd').last()).toContainText('Not detected yet');
+    await expect(page.locator('#odHostDetails .od-host-profile dd').last()).toContainText('Not detected yet');
+    // The open popover follows the language like the card.
+    const translated = (await openProfile(page, manualPlatform)).locator('dd').last();
     await page.evaluate(() => window.i18n.setLanguage('de'));
-    await expect(detection.locator('small')).toHaveText('Erkennung aus (Plattform manuell gewählt)');
+    await expect(translated.locator('small')).toHaveText('Erkennung aus (Plattform manuell gewählt)');
     await page.evaluate(() => window.i18n.setLanguage('en'));
+    await page.keyboard.press('Escape');
 
-    const stale = card(page, 2);
-    await stale.locator('.od-host-profile > summary').click();
-    await expect(stale.locator('.od-host-profile')).toHaveClass(/od-stale/);
-    await expect(stale.locator('.od-host-profile')).toContainText('Older than 7 days');
+    const stale = await openProfile(page, card(page, 2));
+    await expect(stale).toHaveClass(/od-stale/);
+    await expect(stale).toContainText('Older than 7 days');
     expect(await sshAttempts(page)).toEqual([]);
 });
 
@@ -199,7 +201,12 @@ test('more than five services fold into a counter and the card fits at 360px', a
     const rest = await page.evaluate(ids => HostPlatform.services({detected_services: ids}), services);
     expect((await chips.last().getAttribute('title')).split(', ')).toHaveLength(rest.length - 5);
     await expect(host.locator('.od-host-os')).toHaveText('Omarchy · Arch Linux-based');
-    await host.locator('.od-host-profile > summary').click();
+    await openProfile(page, host);
+    // The details popover fits the phone screen as well.
+    expect(await page.locator('#odHostDetails').evaluate(element => {
+        const rect = element.getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= window.innerWidth && element.scrollWidth <= element.clientWidth + 1;
+    })).toBe(true);
     const escaped = await host.evaluate(item => {
         const bounds = item.getBoundingClientRect();
         return [...item.querySelectorAll('*')].filter(element => {

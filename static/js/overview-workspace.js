@@ -46,8 +46,7 @@
 
         const wf = (key, fallback, values) => t(`workFirst.${key}`, fallback, values);
         const fileSessions = new Set();
-        const openHostContexts = new Set();
-        const openHostProfiles = new Set();
+        let details = null;
         const search = $('overviewSearch');
         const hostList = $('overviewHostList');
         const mode = () => view.dataset.reachability || 'manual';
@@ -507,12 +506,9 @@
         /** The host profile: what was detected, how the role came about, and when. */
         function hostProfile(host, identity) {
             const {role, facts} = identity;
-            const details = node('details', 'od-host-profile');
-            details.dataset.profileHostId = host.id;
-            details.open = openHostProfiles.has(host.id);
-            const summary = node('summary', '', tw('profileTitle', 'Host profile'));
-            summary.dataset.key = `profile:${host.id}`;
-            summary.setAttribute('aria-label', tw('profileFor', 'Host profile: {name}', {name: host.name}));
+            const section = node('section', 'od-host-profile');
+            section.dataset.profileHostId = host.id;
+            const heading = node('h3', '', tw('profileTitle', 'Host profile'));
             const list = node('dl');
             const row = (label, ...values) => {
                 const value = node('dd');
@@ -542,9 +538,20 @@
             } else {
                 row(tw('profileDetection', 'Detection'), source || sentence(t('platform.pending', 'not detected yet')), schedule);
             }
-            if (facts?.stale) details.classList.add('od-stale');
-            details.append(summary, list, node('small', 'od-host-profile-note', tw('profileNote', 'Only facts read when connecting. No monitoring, no sudo.')));
-            return details;
+            if (facts?.stale) section.classList.add('od-stale');
+            section.append(heading, list, node('small', 'od-host-profile-note', tw('profileNote', 'Only facts read when connecting. No monitoring, no sudo.')));
+            return section;
+        }
+        /** What the details of a card show: the host profile and the configuration checks. */
+        function hostDetails(host) {
+            const context = node('section', 'od-host-context');
+            context.dataset.contextHostId = host.id;
+            context.append(node('h3', '', wf('configTitle', 'Configuration readiness')),
+                node('small', '', wf('configHint', 'Configuration checks do not test login or permissions.')));
+            if (state.readinessAt) context.append(node('small', '', wf('configChecked', 'Configuration checked {time}', {time: new Date(state.readinessAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
+            if (host.reach && state.checkedAt) context.append(node('small', '', wf('tcpChecked', 'TCP {state} · {time}', {state: wf(host.reach.state, host.reach.state), time: new Date(state.checkedAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
+            if (host.reach) context.append(node('small', '', host.reach.via_socks ? t('connection.socksProxyProbeHint', 'Only the SOCKS5 proxy endpoint was checked, not the target.') : wf('tcpHint', 'TCP checks do not authenticate. For jump routes only the jump host is checked.')));
+            return [hostProfile(host, identityOf(host)), context];
         }
         function hostCard(host) {
             const identity = identityOf(host);
@@ -559,7 +566,7 @@
             const logo = node('span', 'od-host-logo');
             logo.append(win.HostPlatform?.render(host.profile, doc) || icon('dns'));
             if (identity.virt) logo.append(node('span', 'od-virt', identity.virt));
-            const copy = node('div', 'od-host-copy');
+            const copy = node('span', 'od-host-copy');
             copy.append(node('span', 'od-host-name', host.name), node('span', 'od-host-destination', host.destination));
             if (identity.system) copy.append(node('span', 'od-host-os', identity.system));
             // What runs on the host, as detected when connecting: logos, the role's service first.
@@ -644,7 +651,23 @@
             favorite.dataset.key = `favorite:${host.id}`;
             favorite.setAttribute('aria-pressed', String(host.favorite));
             favorite.append(icon(host.favorite ? 'star' : 'star_border'));
-            top.append(rolePill, logo, copy, favorite);
+            // Logo, name and address open the details of the host.
+            const head = node('button', 'od-host-head');
+            head.type = 'button';
+            head.dataset.key = `head:${host.id}`;
+            head.setAttribute('aria-haspopup', 'dialog');
+            head.setAttribute('aria-expanded', String(Boolean(details?.isOpen(host.id))));
+            head.setAttribute('aria-label', `${host.name}, ${host.destination}`);
+            head.title = tw('hostDetails', 'Show details');
+            head.append(logo, copy);
+            // A press on the card of open details dismisses them before the click arrives.
+            let wasOpen = false;
+            head.addEventListener('pointerdown', () => { wasOpen = Boolean(details?.isOpen(host.id)); });
+            head.addEventListener('click', () => {
+                if (!wasOpen) details?.toggle(host.id);
+                wasOpen = false;
+            });
+            top.append(rolePill, head, favorite);
             const bottom = node('div', 'od-host-bottom');
             const badge = node('span', 'od-state');
             badge.dataset.state = host.state;
@@ -659,17 +682,8 @@
             connectButton.dataset.key = `connect:${host.id}`;
             connectButton.append(icon(host.sessionId ? 'east' : 'terminal'), node('span', '', primary));
             bottom.append(badge, editButton, connectButton);
-            const context = node('details', 'od-host-context');
-            context.dataset.contextHostId = host.id;
-            context.open = openHostContexts.has(host.id);
-            const summary = node('summary', '', wf('configTitle', 'Configuration readiness'));
-            summary.dataset.key = `context:${host.id}`;
-            context.append(summary,
-                node('small', '', wf('configHint', 'Configuration checks do not test login or permissions.')));
-            if (state.readinessAt) context.append(node('small', '', wf('configChecked', 'Configuration checked {time}', {time: new Date(state.readinessAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
-            if (host.reach && state.checkedAt) context.append(node('small', '', wf('tcpChecked', 'TCP {state} · {time}', {state: wf(host.reach.state, host.reach.state), time: new Date(state.checkedAt).toLocaleString(win.i18n?.getLanguage?.() || undefined)})));
-            if (host.reach) context.append(node('small', '', host.reach.via_socks ? t('connection.socksProxyProbeHint', 'Only the SOCKS5 proxy endpoint was checked, not the target.') : wf('tcpHint', 'TCP checks do not authenticate. For jump routes only the jump host is checked.')));
-            item.append(top, ...(servicesRow.childElementCount ? [servicesRow] : []), meta, bottom, hostProfile(host, identity), context);
+            // Details open in a popover from the card head, so every card keeps the height of its row.
+            item.append(top, ...(servicesRow.childElementCount ? [servicesRow] : []), meta, bottom);
             return item;
         }
         function identitySignature(host) {
@@ -693,14 +707,6 @@
             state.hostSignature = signature;
             const focusedKey = hostList.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
             hostList.setAttribute('aria-busy', String(!loaded));
-            hostList.querySelectorAll('.od-host-context').forEach(context => {
-                if (context.open) openHostContexts.add(context.dataset.contextHostId);
-                else openHostContexts.delete(context.dataset.contextHostId);
-            });
-            hostList.querySelectorAll('.od-host-profile').forEach(profile => {
-                if (profile.open) openHostProfiles.add(profile.dataset.profileHostId);
-                else openHostProfiles.delete(profile.dataset.profileHostId);
-            });
             hostList.replaceChildren();
             if (!loaded) {
                 for (let index = 0; index < 6; index += 1) hostList.append(node('li', 'od-host od-skeleton'));
@@ -708,6 +714,7 @@
             }
             visible.forEach(host => hostList.append(hostCard(host)));
             if (focusedKey) [...hostList.querySelectorAll('[data-key]')].find(item => item.dataset.key === focusedKey)?.focus({preventScroll: true});
+            details?.refresh();
         }
 
         function renderAttention(items, hiddenCount) {
@@ -1182,6 +1189,11 @@
         }
 
         function init() {
+            const hostsPanel = view.querySelector('[data-panel="hosts"]');
+            if (win.OverviewHostDetails && hostsPanel) {
+                details = win.OverviewHostDetails.create({window: win, document: doc, list: hostList, panel: hostsPanel,
+                    hosts: hostModel, sections: hostDetails, tw});
+            }
             state.dismissed = preferences().dismissed;
             state.board = createBoard();
             $('overviewCustomize')?.addEventListener('click', () => setEditing(!state.board?.isEditing()));
@@ -1252,6 +1264,13 @@
                 if (event.animationName === 'od-panel-flash') event.currentTarget.classList.remove('od-panel-flash');
             });
             $('overviewSetupHost')?.addEventListener('change', schedule);
+            // A panel that scrolls its own body sets its heading off from what passes under it.
+            view.addEventListener('scroll', event => {
+                const body = event.target;
+                if (!body.matches?.('[data-panel] > .od-panel-body')) return;
+                const scrolled = String(body.scrollTop > 0);
+                if (body.parentElement.dataset.scrolled !== scrolled) body.parentElement.dataset.scrolled = scrolled;
+            }, {capture: true, passive: true});
             view.addEventListener('wheel', event => {
                 if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.shiftKey || !event.deltaY || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
                 const body = event.target.closest?.('[data-panel][data-fixed-height="true"] > .od-panel-body');

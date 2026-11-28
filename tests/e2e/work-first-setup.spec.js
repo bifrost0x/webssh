@@ -110,30 +110,32 @@ test('mobile saved-host fallback retains explicit launch below the overview pane
 });
 
 
-test('host context keeps disclosure and keyboard focus after profile updates', async ({page}) => {
+test('host details keep their popover and keyboard focus after profile updates', async ({page}) => {
     await login(page, 'e2e_admin', {workspace:false});
     await page.evaluate(() => {
         ProfileManager.setProfiles([{id:'context-host', name:'Context host', host:'192.0.2.31', username:'operator'}]);
     });
-    const summary = page.locator('[data-key="context:context-host"]');
-    const details = page.locator('.od-host-context[data-context-host-id="context-host"]');
-    await summary.click();
-    await expect(details).toHaveAttribute('open', '');
-    await summary.focus();
+    const head = page.locator('[data-key="head:context-host"]');
+    const details = page.locator('#odHostDetails');
+    await head.click();
+    await expect(details.locator('.od-host-context[data-context-host-id="context-host"]')).toContainText('Configuration checks do not test login or permissions.');
+    const close = details.locator('.od-host-details-close');
+    await expect(close).toBeFocused();
     await page.evaluate(() => {
         ProfileManager.setProfiles([{id:'context-host', name:'Renamed context host', host:'192.0.2.31', username:'operator'}]);
     });
     await expect(page.locator('#overviewHostList')).toContainText('Renamed context host');
-    await expect(details).toHaveAttribute('open', '');
-    await expect(summary).toBeFocused();
+    await expect(page.getByRole('dialog', {name: 'Renamed context host'})).toBeVisible();
+    await expect(close).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(details).not.toHaveAttribute('open');
+    await expect(details).toBeHidden();
+    await expect(head).toBeFocused();
     await page.evaluate(() => {
         ProfileManager.setProfiles([{id:'context-host', name:'Updated context host', host:'192.0.2.31', username:'operator'}]);
     });
     await expect(page.locator('#overviewHostList')).toContainText('Updated context host');
-    await expect(details).not.toHaveAttribute('open');
-    await expect(summary).toBeFocused();
+    await expect(details).toBeHidden();
+    await expect(head).toBeFocused();
 });
 
 test('mobile setup exposes completion status to assistive technology', async ({page}) => {

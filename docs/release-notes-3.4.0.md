@@ -35,6 +35,9 @@ how to remove the 3.3 data later.
   `<APPLICATION_ROOT>/ws` instead of Socket.IO; long polling is gone
   (`U29`). Reverse proxies must forward WebSocket upgrades and the `Origin`
   header for that path.
+- **Overview host cards.** The cards of a row line up with their status and
+  actions at the bottom, and the host details open as a popover instead of
+  unfolding inside the card (`U100`).
 - **Command line.** `webssh <command>` replaces `flask --app start:app`.
   The 3.3 command forms and health checks of the shipped Compose files keep
   working until the next major release (`U16`, `U18`).
