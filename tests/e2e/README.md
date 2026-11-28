@@ -22,6 +22,8 @@ npx playwright test --trace off       # same, without traces
 | `PYTHON` | `python` (`.venv\Scripts\python.exe` on Windows) | Interpreter for the default command. |
 | `WEBSSH_E2E_FAST_HASHING` | unset | `1` uses cheap password hashing for the seeded accounts (CI). |
 | `WEBSSH_E2E_OUTPUT_DIR`, `WEBSSH_E2E_TIMING_FILE` | new directory under `.test-run.tmp/playwright/` (`test-results` in CI) / `e2e-timing-full.json` | Playwright artifacts and the timing report. |
+| `WEBSSH_E2E_JSON_REPORT` | unset | Also write the Playwright JSON report to this file; `run-go-suite.js` sets it per shard. |
+| `WEBSSH_E2E_REVIEW_SCREENSHOTS` | unset | `0` leaves out review screenshots that are never compared; `run-go-suite.js` sets it unless `--screenshots`. |
 
 There is no base URL variable. Specs and `helpers.js` build
 `http://127.0.0.1:<port>` and the WebAuthn origin `http://localhost:<port>`
@@ -79,6 +81,71 @@ has (`overview-host-order`, `record-unique-names`). `playwright.config.js`
 leaves it out when the default Python backend runs (no
 `WEBSSH_E2E_SERVER_COMMAND`), because Python is no longer part of main
 after the switch to Go.
+
+### Shorter runs: shards and the smoke tier
+
+On one worker the full Go suite takes well over an hour. Three ways to get
+the same verdict faster, or a quick signal while working:
+
+```sh
+export WEBSSH_E2E_SERVER_COMMAND='.test-run.tmp/webssh-e2e e2e' WEBSSH_E2E_FAST_HASHING=1
+# while developing: one journey per core area, about 5 minutes
+node tests/e2e/run-go-suite.js --with passkeys,e2e_hooks --tier smoke
+# ... plus the specs of the areas a branch changed
+node tests/e2e/run-go-suite.js --with passkeys,e2e_hooks --changed origin/go...HEAD
+# before a merge: the full suite on 4 isolated shards
+node tests/e2e/run-go-suite.js --with passkeys,e2e_hooks --shards 4
+# CI: one job per shard; the jobs 1/8 to 8/8 together are the full suite
+node tests/e2e/run-go-suite.js --with passkeys,e2e_hooks --shard 3/8
+```
+
+`--shards N` splits the specs into N groups of about the same measured
+duration and runs them in parallel. Each shard is its own Playwright run
+with its own backend: a fresh data directory with the seed applied, port
+`WEBSSH_E2E_PORT + index` (from 4173 by default), its own `TMPDIR` and its
+own output directory. Specs that change installation-wide settings
+therefore only affect the other specs of their shard, which run one after
+another on one worker as before (`--workers` still applies within a
+shard). `--shard i/N` computes the same split and runs only shard i, on
+`WEBSSH_E2E_PORT`; the split depends only on the selection and
+`go-suite-timing.json`, so every job of a CI matrix gets a disjoint part. The unit is the spec file, so the longest spec
+(`session-workspace.spec.js`) sets the lower bound of a shard; beyond
+about eight shards the run gets no shorter. Every shard needs a browser
+and a backend; on a machine with fewer than two cores per shard the
+specs with timing budgets (`terminal-load`, `workspace-performance`) get
+less reliable.
+
+Each run writes `summary.txt` and `summary.json` into its output
+directory and prints the summary: passed, failed, flaky and skipped
+tests, the duration of each shard, and every failed test with its
+location, first error line and the shard log
+(`shard-<n>/output.log`, only with more than one shard). A shard that
+left no report counts as broken, so a backend that did not start never
+looks like a pass. Ctrl-C or `timeout` stops all shards and frees their
+ports; the scratch directories are removed afterwards.
+
+`--tier smoke` runs the curated list in `go-suite-tiers.json` (sign-in
+and step-up, saved hosts and connecting, terminal, files, Overview and
+workspace, admin settings, the migration notice); every entry names why
+it is there. `--changed <git range>` adds the specs of every area whose
+paths the range touched (`areas` in the same file; a changed spec selects
+itself) and prints the changed paths no area claims. Neither replaces
+the full suite before a merge. A path pattern uses `*` within one path
+segment and `**` across segments; `tests/js/go-suite-shards.test.js`
+fails when a pattern no longer matches a file.
+
+The durations come from `go-suite-timing.json`. Refresh it from the
+output directory of a full run, preferably a quiet one:
+
+```sh
+node scripts/refresh-go-suite-timing.js .test-run.tmp/playwright/run-XXXXXX
+```
+
+A spec without a measurement is weighted with the median.
+Screenshots that only serve a visual review and are never compared
+(`reviewScreenshot` in `helpers.js`) are left out of these runs;
+`--screenshots` keeps them. Playwright still captures a screenshot of
+every failure.
 
 `go run -tags e2e ./cmd/webssh e2e` works as well but compiles on every
 start. The Go applier is stricter than `run_app.py`: unknown members, a

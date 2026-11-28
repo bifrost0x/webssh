@@ -32,6 +32,20 @@ the import rules and the size limit of production files.
   environment from **Development setup** below.
 - Lab tests (`-tags lab`) run against the containers of the test lab; the
   browser suite runs against the Go server with `tests/e2e/go-suite.json`.
+- Browser suite against Go (details and the build in
+  [tests/e2e/README.md](https://github.com/bifrost0x/webssh/blob/main/tests/e2e/README.md)),
+  with `WEBSSH_E2E_SERVER_COMMAND` pointing at the e2e build:
+  - while developing, `node tests/e2e/run-go-suite.js --with passkeys,e2e_hooks --tier smoke`
+    (about 5 minutes), optionally with `--changed origin/go...HEAD` for the
+    specs of the changed areas;
+  - before a merge, the full suite on isolated shards,
+    `node tests/e2e/run-go-suite.js --with passkeys,e2e_hooks --shards 4`
+    (more shards on machines with more cores; every shard runs its own
+    backend and browser);
+  - in CI, one job per shard with `--shard 1/8` to `--shard 8/8`; together
+    the eight jobs run the full suite.
+  Every run ends with a summary of passed and failed tests per shard in
+  `summary.txt` of its output directory.
 - `go run -tags devfs ./cmd/webssh serve` serves `static/` directly while
   working on the frontend.
 
