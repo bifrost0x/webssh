@@ -84,10 +84,13 @@ func (s *Service) SetOnboarding(ctx context.Context, userID int64, tour string, 
 	}))
 }
 
-// DeleteUser removes the settings of an account; the account lifecycle
-// calls it in the transaction that removes the account.
+// DeleteUser removes the settings and notices of an account; the account
+// lifecycle calls it in the transaction that removes the account.
 func DeleteUser(ctx context.Context, tx *store.Tx, userID int64) error {
-	_, err := tx.ExecContext(ctx, `DELETE FROM settings_user WHERE user_id = ?`, userID)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM settings_user WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `DELETE FROM settings_notices WHERE user_id = ?`, userID)
 	return err
 }
 

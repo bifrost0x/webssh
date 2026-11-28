@@ -28,6 +28,7 @@ GET /admin/api/users	admin
 GET /admin/api/users/{user_id}/ldap-identity	admin
 GET /admin/api/users/{user_id}/oidc-identities	admin
 GET /api/account/github	user
+GET /api/account/notices	user
 GET /api/account/oidc	user
 GET /api/account/recovery-check	user
 GET /api/account/security-state	repair
@@ -93,6 +94,7 @@ POST /admin/api/users/{user_id}/recovery	admin
 POST /admin/api/users/{user_id}/{action}	admin
 POST /api/account/github/link/start	user
 POST /api/account/mfa/disable	user
+POST /api/account/notices/acknowledge	user
 POST /api/account/oidc/link/start	user
 POST /api/account/preferences	user
 POST /api/account/recovery-check	user
