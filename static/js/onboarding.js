@@ -69,10 +69,14 @@
             const notice = node('dialog', '', 'upgrade-notice');
             notice.setAttribute('aria-labelledby', 'upgradeNoticeTitle'); notice.setAttribute('aria-describedby', 'upgradeNoticeBody');
             let saving = false;
-            const external = (text, href) => {
+            const icon = name => { const el = node('span', name, 'material-icons'); el.setAttribute('aria-hidden', 'true'); return el; };
+            const external = (text, href, leading) => {
                 const link = node('a'); link.href = href; link.target = '_blank'; link.rel = 'noopener noreferrer';
-                const icon = node('span', 'open_in_new', 'material-icons'); icon.setAttribute('aria-hidden', 'true'); link.append(node('span', text), icon); return link;
+                if (leading) link.append(icon(leading), node('span', text)); else link.append(node('span', text), icon('open_in_new'));
+                return link;
             };
+            // The support section follows the administrator's choice: the page offers support links only while they are enabled.
+            const supportLinks = Boolean(document.getElementById('accountSupportLink'));
             async function acknowledge() {
                 if (saving) return;
                 saving = true; notice.querySelectorAll('button').forEach(b => { b.disabled = true; });
@@ -94,9 +98,20 @@
                 links.append(external(t('upgradeNotice.changes', 'What has changed'), wiki + 'Upgrading-to-3.4'),
                     external(t('upgradeNotice.issues', 'Report an issue'), 'https://github.com/bifrost0x/webssh/issues'));
                 const footer = node('footer'); const done = button(t('upgradeNotice.confirm', 'Got it'), acknowledge, true); done.disabled = saving;
-                footer.append(links, done);
-                notice.replaceChildren(heading, body, node('p', t('upgradeNotice.benefits', 'What you get:'), 'upgrade-notice-lead'), list,
-                    node('p', t('upgradeNotice.report', 'Something not working as before? Please report it as an issue on GitHub. We will take care of it right away.')), footer);
+                footer.append(done);
+                const parts = [heading, body, node('p', t('upgradeNotice.benefits', 'What you get:'), 'upgrade-notice-lead'), list,
+                    node('p', t('upgradeNotice.report', 'Something not working as before? Please report it as an issue on GitHub. We will take care of it right away.')), links];
+                if (supportLinks) {
+                    // An offer, set apart and below the notice itself; the same links and icons as the settings page.
+                    const support = node('section', '', 'upgrade-notice-support'); support.setAttribute('aria-labelledby', 'upgradeNoticeSupportTitle');
+                    const title = node('h3'); title.id = 'upgradeNoticeSupportTitle'; title.append(icon('favorite'), node('span', t('settings.supportProject', 'Support WebSSH')));
+                    const items = node('ul');
+                    [['GitHub Sponsors', 'https://github.com/sponsors/bifrost0x', 'favorite'], ['Patreon', 'https://www.patreon.com/bifrost0x', 'volunteer_activism'],
+                        ['Buy Me a Coffee', 'https://buymeacoffee.com/bifrost0x', 'local_cafe']].forEach(([name, href, glyph]) => { const item = node('li'); item.append(external(name, href, glyph)); items.append(item); });
+                    support.append(title, node('p', t('upgradeNotice.support', 'WebSSH is a solo project: one person develops it, covers all the costs and is glad to put in the time. If you would like to support the project, you can do so here:')), items);
+                    parts.push(support);
+                }
+                notice.replaceChildren(...parts, footer);
                 return done;
             }
             notice.addEventListener('cancel', event => { event.preventDefault(); acknowledge(); });

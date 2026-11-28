@@ -127,6 +127,8 @@ window.i18n.registerLocales({
 
         "upgradeNotice.confirm": "Đã hiểu",
 
+        "upgradeNotice.support": "WebSSH là dự án do một người phát triển. Người đó tự chi trả mọi chi phí và sẵn lòng dành thời gian cho dự án. Nếu bạn muốn ủng hộ, bạn có thể làm điều đó tại đây:",
+
         "tour.feature.smb": "Nguồn tệp SMB",
 
         "tour.feature.chmod": "Thay đổi quyền tệp",

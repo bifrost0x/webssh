@@ -127,6 +127,8 @@ window.i18n.registerLocales({
 
         "upgradeNotice.confirm": "Compris",
 
+        "upgradeNotice.support": "WebSSH est un projet mené en solo : une seule personne le développe, en assume tous les frais et y consacre volontiers son temps. Si vous souhaitez soutenir le projet, vous pouvez le faire ici :",
+
         "tour.feature.smb": "Sources de fichiers SMB",
 
         "tour.feature.chmod": "Modifier les permissions des fichiers",

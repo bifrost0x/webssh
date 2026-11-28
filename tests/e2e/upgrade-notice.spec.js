@@ -9,6 +9,13 @@ const {login} = require('./helpers');
 
 const wiki = 'https://github.com/bifrost0x/webssh/wiki/Upgrading-to-3.4';
 const issues = 'https://github.com/bifrost0x/webssh/issues';
+// The support links of the settings page, .github/FUNDING.yml and the README.
+const support = [
+    ['GitHub Sponsors', 'https://github.com/sponsors/bifrost0x', 'favorite'],
+    ['Patreon', 'https://www.patreon.com/bifrost0x', 'volunteer_activism'],
+    ['Buy Me a Coffee', 'https://buymeacoffee.com/bifrost0x', 'local_cafe'],
+];
+const themes = ['glass', 'werkbank', 'retro', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'];
 const notice = page => page.locator('dialog.upgrade-notice');
 const noticesRead = page => page.waitForResponse(response => response.url().endsWith('/api/account/notices')
     && response.request().method() === 'GET');
@@ -52,12 +59,16 @@ test('a taken-over account sees the notice once, before the tour, and on no othe
     await expect(dialog).toBeVisible();
     await expect(page.locator('.intro-tour')).toHaveCount(0);
 
-    for (const [name, href] of [['What has changed', wiki], ['Report an issue', issues]]) {
-        const link = dialog.getByRole('link', {name});
+    for (const [name, href] of [['What has changed', wiki], ['Report an issue', issues], ...support]) {
+        const link = dialog.getByRole('link', {name, exact: true});
         await expect(link).toHaveAttribute('href', href);
         await expect(link).toHaveAttribute('target', '_blank');
-        await expect(link).toHaveAttribute('rel', /(^|\s)noopener(\s|$)/);
+        await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     }
+    // The support offer is its own section below the notice, with the icons of the settings page.
+    const offer = dialog.getByRole('region', {name: 'Support WebSSH'});
+    await expect(offer).toContainText('WebSSH is a solo project');
+    expect(await offer.locator('a .material-icons').allTextContents()).toEqual(support.map(([, , glyph]) => glyph));
     for (const width of [390, 1440]) {
         await page.setViewportSize({width, height: 800});
         const box = await dialog.boundingBox();
@@ -105,16 +116,18 @@ test('the notice is a modal dialog that works with the keyboard alone', async ({
         if (!document.querySelector('dialog.upgrade-notice')?.contains(active)) return null;
         return active.tagName === 'A' ? active.href : active.textContent.trim();
     });
-    const walk = async key => {
+    const walk = async (key, presses) => {
         const seen = [];
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < presses; i++) {
             await page.keyboard.press(key);
             seen.push(await focused());
         }
         return seen;
     };
-    expect(await walk('Tab')).toEqual([wiki, issues, 'Got it', wiki]);
-    expect(await walk('Shift+Tab')).toEqual(['Got it', issues, wiki, 'Got it']);
+    // Notice, then the support links, then closing.
+    const order = [wiki, issues, ...support.map(([, href]) => href), 'Got it'];
+    expect(await walk('Tab', order.length + 1)).toEqual([...order, wiki]);
+    expect(await walk('Shift+Tab', order.length + 1)).toEqual(['Got it', ...order.slice(0, -1).reverse(), 'Got it']);
 
     const saved = page.waitForResponse(response => response.url().endsWith('/api/account/notices/acknowledge'));
     await page.keyboard.press('Escape');
@@ -130,4 +143,71 @@ test('an account created on this installation never sees the notice', async ({pa
     if (await goBackend(page)) expect(await read.json()).toEqual({notices: []});
     await expect(notice(page)).toHaveCount(0);
     await expectNoNotice(page);
+});
+
+// Rendered from a stubbed notices answer, so no seeded account is used up;
+// the same code shows it on both servers.
+test('the support offer is quieter than the notice, readable in every theme and follows the administrator', async ({page}) => {
+    await login(page, 'e2e_user', {workspace: false});
+    await page.route('**/api/account/notices', route => route.fulfill({json: {notices: ['upgrade-3.4']}}));
+    await page.route('**/api/account/notices/acknowledge', route => route.fulfill({json: {notices: []}}));
+    await page.reload();
+    const dialog = notice(page);
+    const offer = dialog.locator('.upgrade-notice-support');
+    await expect(offer).toBeVisible();
+    const size = selector => dialog.locator(selector).first().evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+    expect(await size('.upgrade-notice-support p')).toBeLessThan(await size('#upgradeNoticeBody'));
+
+    // WCAG contrast of every text in the dialog against what lies behind it.
+    const lowest = () => dialog.evaluate(root => {
+        const context = document.createElement('canvas').getContext('2d', {willReadFrequently: true});
+        const rgba = color => {
+            context.clearRect(0, 0, 1, 1); context.fillStyle = '#000'; context.fillStyle = color; context.fillRect(0, 0, 1, 1);
+            const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+            return [r, g, b, a / 255];
+        };
+        const over = ([r, g, b, a], [br, bg, bb]) => [r * a + br * (1 - a), g * a + bg * (1 - a), b * a + bb * (1 - a)];
+        const behind = element => {
+            const layers = [];
+            for (let node = element; node; node = node.parentElement) {
+                const layer = rgba(getComputedStyle(node).backgroundColor);
+                if (layer[3] > 0) layers.push(layer);
+                if (layer[3] >= 1) break;
+            }
+            return layers.reverse().reduce((base, layer) => over(layer, base), [255, 255, 255]);
+        };
+        const luminance = rgb => {
+            const [r, g, b] = rgb.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        };
+        const ratio = element => {
+            const background = behind(element);
+            const [a, b] = [luminance(over(rgba(getComputedStyle(element).color), background)), luminance(background)].sort((x, y) => y - x);
+            return (a + 0.05) / (b + 0.05);
+        };
+        const texts = [...root.querySelectorAll('h2, h3 > span:not(.material-icons), p, li, a > span:not(.material-icons), .btn')];
+        return texts.map(element => [ratio(element), element.textContent.trim().slice(0, 24)]).sort((x, y) => x[0] - y[0])[0];
+    });
+    // Final colors only: transitions would report a value between two themes.
+    await page.addStyleTag({content: '*, *::before, *::after { transition: none !important; animation: none !important; }'});
+    for (const theme of themes) {
+        await page.evaluate(name => { document.body.dataset.theme = name; }, theme);
+        const [ratio, text] = await lowest();
+        expect(ratio, `${theme}: "${text}"`).toBeGreaterThanOrEqual(4.5);
+    }
+
+    // Without support links on the page (an administrator hid them), the
+    // notice offers none either, and Tab goes from the notice to closing.
+    await page.route(url => new URL(url).pathname === '/', async route => {
+        const response = await route.fetch();
+        await route.fulfill({response, body: (await response.text()).replace(/<a id="accountSupportLink"[\s\S]*?<\/a>/, '')});
+    });
+    await page.reload();
+    await expect(dialog).toBeVisible();
+    await expect(page.locator('#accountSupportLink')).toHaveCount(0);
+    await expect(offer).toHaveCount(0);
+    await page.keyboard.press('Shift+Tab');
+    await expect(dialog.getByRole('link', {name: 'Report an issue'})).toBeFocused();
+    await dialog.getByRole('button', {name: 'Got it', exact: true}).click();
+    await expect(dialog).toHaveCount(0);
 });
