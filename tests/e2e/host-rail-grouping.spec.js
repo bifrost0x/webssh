@@ -171,3 +171,26 @@ test('every rail row names its role to screen readers without a visible glyph', 
         }
     }
 });
+
+test('the Hosts switch shows the rail whenever it reports it expanded', async ({page}) => {
+    await openRail(page);
+    const toggle = page.locator('#toggleHostRail');
+    const rail = page.locator('#shellGroups');
+    for (const [width, height] of [[1440, 900], [1100, 800], [1024, 768], [900, 700], [768, 1024], [1366, 600]]) {
+        await page.setViewportSize({width, height});
+        await expect(toggle, `${width}x${height}`).toBeVisible();
+        if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(rail, `${width}x${height} expanded`).toBeVisible();
+        const layout = await page.evaluate(() => {
+            const groups = document.querySelector('.shell-groups').getBoundingClientRect();
+            const main = document.querySelector('.main-content').getBoundingClientRect();
+            return {inside: groups.left >= 0 && groups.right <= window.innerWidth && groups.height > 100,
+                clear: main.left >= groups.right - 1, wide: main.width >= 300};
+        });
+        expect(layout, `${width}x${height}`).toEqual({inside: true, clear: true, wide: true});
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(rail, `${width}x${height} collapsed`).toBeHidden();
+    }
+});

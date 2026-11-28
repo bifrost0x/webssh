@@ -271,7 +271,8 @@ Server with no known system, machine or service gets no identity line, and
 its terminal keeps the full pane. Rows in the host rail on the left have a
 role edge and no service logos, and a **Group / Role** switch groups the rail
 by role instead of by group. The choice is stored in the browser (`localStorage`), not on the server, and the switch
-does not exist in the classic layout.
+does not exist in the classic layout. The **Hosts** switch shows the rail at
+every window width from 768 pixels on.
 
 All of this uses only what detection read while you were connected anyway.
 Facts that are missing or outside the fixed catalogs are left out, and a host
