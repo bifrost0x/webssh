@@ -6,7 +6,6 @@ import (
 	"io"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	smb2 "github.com/hirochachacha/go-smb2/v2"
 
@@ -119,8 +118,7 @@ func (b *Backend) childNode(at node, st *smb2.FileStat) (node, error) {
 		return node{}, fail(fault.SMBIdentityUnavailable, PhaseFileOperation, "IdentityError", nil)
 	}
 	parts, err := child(at.parts, st.FileName)
-	// The walk holds no path a page could not address (splitPath).
-	if err != nil || st.EndOfFile < 0 || utf8.RuneCountInString(joinPath(parts)) > maxPathLength {
+	if err != nil || st.EndOfFile < 0 || !withinPathLength(parts) {
 		return node{}, opFailed("UnsafeName")
 	}
 	o := object{Name: st.FileName, ID: st.FileId, Attributes: st.FileAttributes, Size: st.EndOfFile, ModTime: st.LastWriteTime}

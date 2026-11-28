@@ -14,7 +14,7 @@ import (
 // pythonBin finds the repository's virtual environment.
 func pythonBin(t *testing.T) string {
 	t.Helper()
-	for _, p := range []string{"../../.venv/bin/python", "/usr/bin/python"} {
+	for _, p := range []string{os.Getenv("WEBSSH_PYTHON"), "../../.venv/bin/python"} {
 		if _, err := os.Stat(p); err == nil {
 			abs, _ := filepath.Abs(p)
 			return abs

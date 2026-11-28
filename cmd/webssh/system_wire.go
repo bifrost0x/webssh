@@ -221,7 +221,7 @@ func (s *system) factorLimits() auth.FactorLimits {
 	cfg := s.cfg
 	return auth.FactorLimits{Limiter: s.limiter, Enabled: cfg.RateLimits.Enabled,
 		Login: auth.ParseRule(cfg.RateLimits.Login, ruleLogin), Reauth: auth.ParseRule(cfg.RateLimits.Reauth, ruleReauth),
-		ClientAddr: clientAddrString}
+		ClientAddr: clientAddrString, Settings: s.flow.Settings}
 }
 
 func clientAddrString(r *http.Request) string {

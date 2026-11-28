@@ -64,6 +64,7 @@ func (w *discoveryWiring) wire(sys *system) error {
 	w.reach.Prober = prober
 	w.reach.Inventory = reachInventory{sys.hosts}.list
 	w.reach.Greetings = greetingStore{sys.hosts}
+	w.reach.Permitted = w.permitted(settings.PolicyReachability)
 	if v, ok := sys.optional.terminalVariants.(*variantProvider); ok && v.policy.Enabled() {
 		w.reach.Tailnet = tailnetProbe{v.policy}
 	}

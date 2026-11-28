@@ -8,11 +8,14 @@
 # carries the version and the full commit id (internal/buildinfo); the
 # archives are reproducible: same commit and toolchain, same bytes. The
 # build runs in an export of HEAD (git archive), so untracked, ignored or
-# modified files of the checkout never reach the binary.
+# modified files of the checkout never reach the binary. GOWORK=off keeps a
+# go.work in the export or in a parent directory (the temporary directory)
+# from replacing the modules go.sum pins.
 # Windows and macOS have no release binaries (decision of 27.11.2026).
 set -eu
 
 cd -- "$(dirname -- "$0")/.."
+export GOWORK=off
 
 version=${1:-}
 if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then

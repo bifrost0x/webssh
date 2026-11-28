@@ -170,13 +170,38 @@ func invalidNetwork(err error) error {
 }
 
 func (h *DiscoveryHTTP) view(r *http.Request, p principal.Principal) (int, any, error) {
+	if err := h.stillPermitted(r.Context(), p); err != nil {
+		return 0, nil, err
+	}
 	v, err := h.Scanner.View(p, r.PathValue("scan_id"))
 	return http.StatusOK, v, err
 }
 
 func (h *DiscoveryHTTP) cancel(r *http.Request, p principal.Principal) (int, any, error) {
+	if err := h.stillPermitted(r.Context(), p); err != nil {
+		return 0, nil, err
+	}
 	v, err := h.Scanner.Cancel(p, r.PathValue("scan_id"))
 	return http.StatusOK, v, err
+}
+
+// stillPermitted checks the permission again for a running or finished
+// scan. Once it is withdrawn, the account's scans stop and their results
+// are dropped, as on a session revocation; the answer is the one for a
+// scan that does not exist.
+func (h *DiscoveryHTTP) stillPermitted(ctx context.Context, p principal.Principal) error {
+	if h.Permitted == nil {
+		return errScanGone
+	}
+	ok, err := h.Permitted(ctx, p)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		h.Scanner.Revoked(principal.Revocation{UserID: p.UserID})
+		return errScanGone
+	}
+	return nil
 }
 
 // serveAPI runs fn for the signed-in principal and writes its answer or

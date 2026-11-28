@@ -47,7 +47,11 @@ func openBootstrap(stderr io.Writer) admincli.BootstrapOpener {
 			return nil, nil, err
 		}
 		boot := newBootstrap(g.db, g.ring, g.accounts, &totp.Service{DB: g.db}, &webauthn.Service{DB: g.db})
-		return &admincli.BootstrapAdmin{Accounts: g.accounts, Bootstrap: boot, Audit: g.audit}, g.Close, nil
+		// The restore state is on disk (the journal); the server's
+		// maintenance flag lives only in its own process.
+		dataDir := g.cfg.DataDir
+		restoring := func() bool { blocked, _ := restoreBlocked(dataDir); return blocked }
+		return &admincli.BootstrapAdmin{Accounts: g.accounts, Bootstrap: boot, Audit: g.audit, Maintenance: restoring}, g.Close, nil
 	}
 }
 

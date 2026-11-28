@@ -276,3 +276,25 @@ func TestReachabilityUsesTheTailnetAuthorization(t *testing.T) {
 		t.Error("the signature ignores the tailnet authorization")
 	}
 }
+
+// D-27: once permission.hosts.reachability is withdrawn, the cached answer
+// of the last check is no longer shown and is dropped.
+func TestReachabilityLastNeedsPermission(t *testing.T) {
+	h, _, _ := reachFixture([]ReachHost{{ID: "a", Host: "a", Port: 22}}, map[string]string{"a:22": "ssh:SSH-2.0-OpenSSH_9.6\r\n"})
+	permitted := true
+	h.Check.Permitted = func(context.Context, principal.Principal) (bool, error) { return permitted, nil }
+	if status, body := reachRequest(t, h, principaltest.User(1), ""); status != 200 {
+		t.Fatalf("check: %d %v", status, body)
+	}
+	if last, err := h.Check.Last(t.Context(), principaltest.User(1)); err != nil || last["results"] == nil {
+		t.Fatalf("last: %v %v", last, err)
+	}
+	permitted = false
+	if last, err := h.Check.Last(t.Context(), principaltest.User(1)); err != nil || last["results"] != nil {
+		t.Fatalf("last without permission: %v %v", last, err)
+	}
+	permitted = true
+	if last, err := h.Check.Last(t.Context(), principaltest.User(1)); err != nil || last["results"] != nil {
+		t.Fatalf("answer kept after the withdrawal: %v %v", last, err)
+	}
+}

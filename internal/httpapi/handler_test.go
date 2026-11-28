@@ -27,6 +27,11 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 		if !strings.Contains(csp, "img-src 'self' data:;") || strings.Contains(csp, "https:") {
 			t.Errorf("%s: img-src of CSP %q", target, csp)
 		}
+		// form-action does not fall back to default-src; without it an
+		// injected form could post credentials to any host.
+		if !strings.Contains(csp, "form-action 'self';") {
+			t.Errorf("%s: form-action of CSP %q", target, csp)
+		}
 		for name, want := range map[string]string{
 			"X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff", "X-XSS-Protection": "0",
 			"Referrer-Policy": "strict-origin-when-cross-origin", "Permissions-Policy": "geolocation=(), microphone=(), camera=()",

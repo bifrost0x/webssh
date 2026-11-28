@@ -54,7 +54,10 @@ type pythonAccount struct {
 
 func pythonBinary(t *testing.T) string {
 	t.Helper()
-	for _, p := range []string{"../../.venv/bin/python", "/usr/bin/python"} {
+	for _, p := range []string{os.Getenv("WEBSSH_PYTHON"), "../../.venv/bin/python"} {
+		if p == "" {
+			continue
+		}
 		if abs, err := filepath.Abs(p); err == nil {
 			if _, err := os.Stat(abs); err == nil {
 				return abs

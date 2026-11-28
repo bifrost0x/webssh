@@ -137,8 +137,11 @@ func (s *Service) save(ctx context.Context, r resolved, p string, req SaveReques
 	if int64(len(data)) > s.opts.MaxEditorBytes {
 		return Saved{}, s.tooLargeToEdit()
 	}
+	// A save goes through a link only where the source can do that
+	// (SFTP); SMB refuses the flag, and its leaf open rejects reparse
+	// points on its own.
 	res, err := r.b.Write(ctx, p, bytes.NewReader(data), WriteOptions{
-		ExpectedRevision: req.ExpectedRevision, Strategy: strategy, FollowSymlink: true,
+		ExpectedRevision: req.ExpectedRevision, Strategy: strategy, FollowSymlink: r.caps.SymlinkTargets,
 		Size: int64(len(data)), MaxBytes: s.opts.MaxEditorBytes,
 	})
 	switch {

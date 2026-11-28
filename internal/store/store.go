@@ -87,7 +87,8 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 // writerPragmas are set on the write connection and read back.
 // trusted_schema = OFF keeps functions with side effects out of views and
 // triggers; foreign_keys enforces the references every capability
-// declares.
+// declares; secure_delete overwrites deleted content, so removed sealed
+// secrets do not linger in free pages that a raw copy of the file keeps.
 var writerPragmas = []struct {
 	set, get string
 	want     int64
@@ -95,6 +96,7 @@ var writerPragmas = []struct {
 	{"PRAGMA foreign_keys = ON", "PRAGMA foreign_keys", 1},
 	{"PRAGMA trusted_schema = OFF", "PRAGMA trusted_schema", 0},
 	{"PRAGMA synchronous = FULL", "PRAGMA synchronous", 2},
+	{"PRAGMA secure_delete = ON", "PRAGMA secure_delete", 1},
 }
 
 func hardenWriter(busy time.Duration) func(*sqlite3.Conn) error {

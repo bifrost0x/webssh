@@ -44,32 +44,49 @@ type remote struct {
 	s      Settings
 	client *http.Client
 
-	fetch sync.Mutex // serializes network fetches
+	fetch chan struct{} // holds one token per network fetch; see lockFetch
 
 	mu        sync.Mutex
 	meta      metadata
 	allowed   map[string]bool
 	metaAt    time.Time
-	metaFail  time.Time // when the last refresh of an old document failed
+	metaFail  time.Time // when the last fetch failed, with or without an old document
 	keys      []jwk
 	keysAt    time.Time // when the keys were fetched
 	keysUntil time.Time // when they must be fetched again
 }
 
 func newRemote(s Settings) *remote {
-	return &remote{s: s, client: newHTTPClient(s.timeout(), s.RootCAs)}
+	return &remote{s: s, client: newHTTPClient(s.timeout(), s.RootCAs), fetch: make(chan struct{}, 1)}
 }
 
-// metadata returns the discovery document, fetching it when it is
-// missing or old. A failed refresh keeps a document fetched before.
-func (r *remote) metadata(ctx context.Context) (metadata, map[string]bool, error) {
-	if m, a, ok := r.cachedMeta(); ok {
-		return m, a, nil
+// lockFetch waits for the one network fetch slot, or for ctx: a request
+// context has no deadline of its own, but a caller that gives up must not
+// stay queued behind a slow provider.
+func (r *remote) lockFetch(ctx context.Context) error {
+	select {
+	case r.fetch <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	r.fetch.Lock()
-	defer r.fetch.Unlock()
-	if m, a, ok := r.cachedMeta(); ok {
-		return m, a, nil
+}
+
+func (r *remote) unlockFetch() { <-r.fetch }
+
+// metadata returns the discovery document, fetching it when it is
+// missing or old. A failed refresh keeps a document fetched before; a
+// failed first fetch is answered without a new attempt for metadataRetry.
+func (r *remote) metadata(ctx context.Context) (metadata, map[string]bool, error) {
+	if m, a, ok, err := r.cachedMeta(); ok || err != nil {
+		return m, a, err
+	}
+	if err := r.lockFetch(ctx); err != nil {
+		return metadata{}, nil, err
+	}
+	defer r.unlockFetch()
+	if m, a, ok, err := r.cachedMeta(); ok || err != nil {
+		return m, a, err
 	}
 	m, allowed, err := r.discover(ctx)
 	r.mu.Lock()
@@ -79,6 +96,10 @@ func (r *remote) metadata(ctx context.Context) (metadata, map[string]bool, error
 			r.metaFail = r.s.now()
 			return r.meta, r.allowed, nil
 		}
+		// A caller that gave up says nothing about the provider.
+		if ctx.Err() == nil {
+			r.metaFail = r.s.now()
+		}
 		return metadata{}, nil, err
 	}
 	r.meta, r.allowed, r.metaAt, r.metaFail = m, allowed, r.s.now(), time.Time{}
@@ -87,19 +108,22 @@ func (r *remote) metadata(ctx context.Context) (metadata, map[string]bool, error
 
 // cachedMeta returns the document while it is fresh, and an old one for
 // metadataRetry after its refresh failed, so that sign-ins do not each
-// wait for an unreachable provider.
-func (r *remote) cachedMeta() (metadata, map[string]bool, bool) {
+// wait for an unreachable provider. Without any document, a fetch that
+// failed within metadataRetry is reported as errProvider.
+func (r *remote) cachedMeta() (metadata, map[string]bool, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := r.s.now()
+	failedRecently := !r.metaFail.IsZero() && now.Sub(r.metaFail) < metadataRetry
 	switch {
+	case r.metaAt.IsZero() && failedRecently:
+		return metadata{}, nil, false, fmt.Errorf("%w: discovery failed within the last %s", errProvider, metadataRetry)
 	case r.metaAt.IsZero():
-		return metadata{}, nil, false
-	case now.Sub(r.metaAt) < metadataMaxAge,
-		!r.metaFail.IsZero() && now.Sub(r.metaFail) < metadataRetry:
-		return r.meta, r.allowed, true
+		return metadata{}, nil, false, nil
+	case now.Sub(r.metaAt) < metadataMaxAge, failedRecently:
+		return r.meta, r.allowed, true, nil
 	}
-	return metadata{}, nil, false
+	return metadata{}, nil, false, nil
 }
 
 // discover loads the discovery document (OIDC Discovery 1.0 section 4).
@@ -153,8 +177,10 @@ func (r *remote) currentKeys() ([]jwk, bool) {
 // whether new keys arrived. Expired keys are never used: a failed fetch
 // then fails the sign-in.
 func (r *remote) refreshKeys(ctx context.Context, jwksURI string) (fetched bool, err error) {
-	r.fetch.Lock()
-	defer r.fetch.Unlock()
+	if err := r.lockFetch(ctx); err != nil {
+		return false, err
+	}
+	defer r.unlockFetch()
 	r.mu.Lock()
 	now := r.s.now()
 	fresh := r.keys != nil && now.Before(r.keysUntil)

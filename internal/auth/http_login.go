@@ -111,8 +111,13 @@ func (f *Flow) reserveUsername(ctx context.Context, endpoint, name, source, devi
 }
 
 func (f *Flow) ipPrefix(ctx context.Context) int {
-	if f.Settings != nil {
-		if _, _, p, err := f.Settings.LoginLimits(ctx); err == nil {
+	return sourcePrefix(ctx, f.Settings)
+}
+
+// sourcePrefix is ratelimit_ipv6_prefix, or 128 when it cannot be read.
+func sourcePrefix(ctx context.Context, s SignInSettings) int {
+	if s != nil {
+		if _, _, p, err := s.LoginLimits(ctx); err == nil {
 			return p
 		}
 	}

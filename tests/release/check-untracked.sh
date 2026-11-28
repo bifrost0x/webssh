@@ -2,7 +2,8 @@
 # Checks that scripts/build-release-binaries.sh builds only committed
 # files: an untracked Go file with an init function and an untracked
 # static file are planted into a copy of the checkout, and neither may
-# reach the release binary.
+# reach the release binary. A go.work in the temporary directory the build
+# runs under must not take part in the build either.
 #
 #   tests/release/check-untracked.sh
 set -eu
@@ -33,7 +34,9 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     exit 1
 fi
 
-scripts/build-release-binaries.sh 0.0.0-check >/dev/null
+mkdir "$work/tmp"
+printf 'go 1.20\n' >"$work/tmp/go.work"
+TMPDIR=$work/tmp scripts/build-release-binaries.sh 0.0.0-check >/dev/null
 
 host=$(uname -m)
 case $host in

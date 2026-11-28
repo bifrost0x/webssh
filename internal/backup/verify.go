@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/store"
@@ -242,7 +243,7 @@ func readMembers(tr *tar.Reader, m *Manifest, dbCopy string, l Limits) (map[stri
 			return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
 		}
 		i := seen
-		if seen >= len(want) || want[seen] != h.Name || h.Typeflag != tar.TypeReg || h.Linkname != "" || h.Size != m.Files[i].Size {
+		if seen >= len(want) || want[seen] != h.Name || h.Typeflag != tar.TypeReg || h.Linkname != "" || h.Size != m.Files[i].Size || sparse(h) {
 			return nil, fmt.Errorf("%w: unexpected member %q", ErrInvalid, h.Name)
 		}
 		seen++
@@ -254,6 +255,18 @@ func readMembers(tr *tar.Reader, m *Manifest, dbCopy string, l Limits) (map[stri
 		return nil, fmt.Errorf("%w: members are missing", ErrInvalid)
 	}
 	return small, nil
+}
+
+// sparse reports a GNU PAX sparse member, which archive/tar presents as a
+// regular file whose holes read as zeros: a few bytes of archive could
+// declare any size. Write never produces one.
+func sparse(h *tar.Header) bool {
+	for k := range h.PAXRecords {
+		if strings.HasPrefix(k, "GNU.sparse.") {
+			return true
+		}
+	}
+	return false
 }
 
 func readMember(tr *tar.Reader, h *tar.Header, want File, legacy bool, dbCopy string, small map[string][]byte) error {
