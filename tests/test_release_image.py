@@ -221,6 +221,17 @@ def test_assembly_preserves_exact_native_descriptors_before_promotion():
     assert registry.index['manifests'] == [d for index in registry.native.values() for d in index['manifests']]
 
 
+def test_debug_assembly_keeps_its_own_candidate_tag():
+    from scripts import release_image
+    registry = NativeRegistry()
+    evidence = native_evidence(registry)
+    release_image.assemble(IMAGE, REVISION, evidence, '123', '2', variant='debug', runner=registry)
+    creates = [call for call in registry.calls if call[3] == 'create']
+    assert [call[5] for call in creates] == [IMAGE + ':candidate-123-2-debug']
+    with pytest.raises(ValueError, match='Unknown image variant'):
+        release_image.assemble(IMAGE, REVISION, evidence, '123', '2', variant='latest', runner=registry)
+
+
 @pytest.mark.parametrize('field,value', [
     ('repository', 'ghcr.io/another/image'), ('revision', '2' * 40),
     ('run_id', '456'), ('run_attempt', '3'), ('digest', AMD64),

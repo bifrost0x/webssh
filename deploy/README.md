@@ -20,7 +20,7 @@ the empty data directories; there is no shell. Two targets:
 | Target | Tags | Content |
 |---|---|---|
 | `release` (default) | `<version>`, `<major>.<minor>`, `latest` | as above |
-| `debug` | `debug`, `<version>-debug` | the same image plus a static BusyBox, for inspecting volumes and the file system |
+| `debug` | `debug`, `<version>-debug`, `<major>.<minor>-debug` | the same image plus a static BusyBox, for inspecting volumes and the file system |
 
 ```sh
 docker build --build-arg VERSION=3.4.0 --build-arg VCS_REF="$(git rev-parse HEAD)" \

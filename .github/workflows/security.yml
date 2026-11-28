@@ -59,14 +59,24 @@ jobs:
           cache-from: type=gha,scope=security-amd64
           cache-to: type=gha,mode=max,scope=security-amd64
 
+      # The debug target with the build inputs of the scan candidate; it is
+      # published under the debug tags and scanned like the release.
+      - name: Build native AMD64 debug scan candidate
+        run: |
+          set -euo pipefail
+          docker buildx build --load --target debug --platform linux/amd64 \
+            --build-arg VCS_REF="$GITHUB_SHA" \
+            --build-arg OS_PACKAGE_REFRESH="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --tag "webssh-security-debug:$GITHUB_SHA" .
+
       - name: Verify native runtime acceptance
         run: |
           set -euo pipefail
           test "$(uname -m)" = "x86_64"
-          runtime_ref="$(docker image inspect --format '{{.Id}}' "webssh-security:$GITHUB_SHA")"
-          test "$(docker image inspect --format '{{.Architecture}}' "$runtime_ref")" = amd64
-          docker buildx build --load --target debug --platform linux/amd64 \
-            --build-arg VCS_REF="$GITHUB_SHA" --tag "webssh-security-debug:$GITHUB_SHA" .
+          for image in "webssh-security:$GITHUB_SHA" "webssh-security-debug:$GITHUB_SHA"; do
+            runtime_ref="$(docker image inspect --format '{{.Id}}' "$image")"
+            test "$(docker image inspect --format '{{.Architecture}}' "$runtime_ref")" = amd64
+          done
           BUILD=0 IMG="webssh-security:$GITHUB_SHA" DEBUG_IMG="webssh-security-debug:$GITHUB_SHA" REVISION="$GITHUB_SHA" \
             tests/image/check.sh
 
@@ -111,12 +121,30 @@ jobs:
           scanners: vuln
           trivyignores: .trivyignore.yaml
 
+      # Trivy does not detect BusyBox; tests/image/check.sh asserts its version.
+      - name: Scan debug image fixable high and critical vulnerabilities
+        if: ${{ always() }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.1
+          image-ref: webssh-security-debug:${{ github.sha }}
+          format: json
+          output: trivy-results-amd64-debug.json
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          scanners: vuln
+          trivyignores: .trivyignore.yaml
+
       - name: Upload AMD64 Trivy result
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trivy-amd64-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: trivy-results-amd64.json
+          path: |
+            trivy-results-amd64.json
+            trivy-results-amd64-debug.json
           if-no-files-found: error
           retention-days: 14
 
@@ -158,14 +186,25 @@ jobs:
         if: github.event_name != 'pull_request'
         run: docker load --input /tmp/webssh-arm64.tar
 
+      # The debug target with the build inputs of the scan candidate; it is
+      # published under the debug tags and scanned like the release.
+      - name: Build native ARM64 debug scan candidate
+        run: |
+          set -euo pipefail
+          docker buildx build --load --target debug --platform linux/arm64 \
+            --build-arg VCS_REF="$GITHUB_SHA" \
+            --build-arg OS_PACKAGE_REFRESH="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --tag "webssh-security-debug:$GITHUB_SHA" .
+          docker image save --output /tmp/webssh-arm64-debug.tar "webssh-security-debug:$GITHUB_SHA"
+
       - name: Verify native runtime acceptance
         run: |
           set -euo pipefail
           test "$(uname -m)" = "aarch64"
-          runtime_ref="$(docker image inspect --format '{{.Id}}' "webssh-security:$GITHUB_SHA")"
-          test "$(docker image inspect --format '{{.Architecture}}' "$runtime_ref")" = arm64
-          docker buildx build --load --target debug --platform linux/arm64 \
-            --build-arg VCS_REF="$GITHUB_SHA" --tag "webssh-security-debug:$GITHUB_SHA" .
+          for image in "webssh-security:$GITHUB_SHA" "webssh-security-debug:$GITHUB_SHA"; do
+            runtime_ref="$(docker image inspect --format '{{.Id}}' "$image")"
+            test "$(docker image inspect --format '{{.Architecture}}' "$runtime_ref")" = arm64
+          done
           BUILD=0 IMG="webssh-security:$GITHUB_SHA" DEBUG_IMG="webssh-security-debug:$GITHUB_SHA" REVISION="$GITHUB_SHA" \
             tests/image/check.sh
 
@@ -184,12 +223,30 @@ jobs:
           scanners: vuln
           trivyignores: .trivyignore.yaml
 
+      # Trivy does not detect BusyBox; tests/image/check.sh asserts its version.
+      - name: Scan ARM64 debug image fixable high and critical vulnerabilities
+        if: ${{ always() }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.1
+          input: /tmp/webssh-arm64-debug.tar
+          format: json
+          output: trivy-results-arm64-debug.json
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          scanners: vuln
+          trivyignores: .trivyignore.yaml
+
       - name: Upload ARM64 Trivy result
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trivy-arm64-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: trivy-results-arm64.json
+          path: |
+            trivy-results-arm64.json
+            trivy-results-arm64-debug.json
           if-no-files-found: error
           retention-days: 14
 

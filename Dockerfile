@@ -6,7 +6,8 @@
 #   docker build --target debug -t webssh:local-debug .
 #
 # Published tags: the release target as <version>, <major>.<minor> and
-# latest, the debug target as debug and <version>-debug (deploy/README.md).
+# latest, the debug target as debug, <version>-debug and <major>.<minor>-debug
+# (deploy/README.md).
 #
 # .dockerignore limits the context to the Go module and the frontend
 # assets. The binary is cross-compiled on the build platform
@@ -103,8 +104,8 @@ ENTRYPOINT ["/app/webssh"]
 # Gunicorn command of the Python image.
 CMD ["serve", "--bind", "0.0.0.0:5000"]
 
-# Diagnostic variant (tags debug and <version>-debug): the same image plus a
-# static BusyBox, whose sh replaces the /bin/sh link.
+# Diagnostic variant (tags debug, <version>-debug and <major>.<minor>-debug):
+# the same image plus a static BusyBox, whose sh replaces the /bin/sh link.
 FROM runtime AS debug
 COPY --from=busybox /bin/ /bin/
 

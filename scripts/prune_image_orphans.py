@@ -5,7 +5,7 @@ only become reachable once a run assembles them into a tagged index. Runs
 that fail before assembly leave orphans behind that nothing can pull by tag.
 
 This script removes, after a minimum age, untagged versions that no tagged
-index references. Tagged versions, including candidate-<run_id>-<attempt>
+index references. Tagged versions, including candidate-<run_id>-<attempt>[-debug]
 tags, are never deleted: GHCR attributes download counts to versions, and
 removing a version may remove its downloads from the package total.
 

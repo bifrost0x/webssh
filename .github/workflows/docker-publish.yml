@@ -95,6 +95,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
+          target: release
           platforms: linux/${{ matrix.arch }}
           pull: true
           outputs: type=image,name=${{ env.IMAGE_REF }},push-by-digest=true,name-canonical=true,push=true
@@ -109,9 +110,31 @@ jobs:
             type=gha,scope=publish-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=publish-${{ matrix.arch }}
 
+      # Same builder, inputs and cache as the release target, so the stages
+      # both targets share are reused and carry the same binary.
+      - name: Build immutable native debug candidate
+        id: build-debug
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          target: debug
+          platforms: linux/${{ matrix.arch }}
+          pull: true
+          outputs: type=image,name=${{ env.IMAGE_REF }},push-by-digest=true,name-canonical=true,push=true
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            OS_PACKAGE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
+          sbom: true
+          provenance: mode=max
+          cache-from: |
+            type=gha,scope=security-${{ matrix.arch }}
+            type=gha,scope=publish-${{ matrix.arch }}
+
       - name: Validate native candidate identity
         env:
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          DEBUG_DIGEST: ${{ steps.build-debug.outputs.digest }}
           CANDIDATE_PLATFORM: linux/${{ matrix.arch }}
         shell: bash
         run: |
@@ -120,11 +143,18 @@ jobs:
             --revision "$GITHUB_SHA" --platform "$CANDIDATE_PLATFORM" \
             --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --output image-candidate.json
+          python scripts/release_image.py inspect-platform \
+            --image "$IMAGE_REF" --digest "$DEBUG_DIGEST" \
+            --revision "$GITHUB_SHA" --platform "$CANDIDATE_PLATFORM" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --output image-candidate-debug.json
           python - <<'PY' >> "$GITHUB_ENV"
           import json
-          candidate = json.load(open('image-candidate.json'))
-          digest, = candidate['platforms'].values()
-          print(f"RUNTIME_REF={candidate['repository']}@{digest}")
+          for path, name in (('image-candidate.json', 'RUNTIME_REF'),
+                             ('image-candidate-debug.json', 'DEBUG_REF')):
+              candidate = json.load(open(path))
+              digest, = candidate['platforms'].values()
+              print(f"{name}={candidate['repository']}@{digest}")
           PY
 
       - name: Scan exact native candidate
@@ -141,18 +171,31 @@ jobs:
           scanners: vuln
           trivyignores: .trivyignore.yaml
 
-      # The debug target of the same revision only lends BusyBox to the
-      # checks that inspect files; every container under test runs the
-      # exact candidate.
-      - name: Verify compatible and hardened runtime of exact native candidate
+      # Trivy does not detect BusyBox; tests/image/check.sh asserts its version.
+      - name: Scan exact native debug candidate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.1
+          image-ref: ${{ env.DEBUG_REF }}
+          format: json
+          output: candidate-trivy-debug.json
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          scanners: vuln
+          trivyignores: .trivyignore.yaml
+
+      # The exact debug candidate lends BusyBox to the checks that inspect
+      # files and is checked itself; every other container under test runs
+      # the exact release candidate.
+      - name: Verify compatible and hardened runtime of exact native candidates
         env:
-          DEBUG_IMG: webssh-candidate-debug:${{ github.sha }}
           REVISION: ${{ github.sha }}
         run: |
-          docker buildx build --load --target debug --platform "linux/${{ matrix.arch }}" \
-            --build-arg VCS_REF="$GITHUB_SHA" --tag "$DEBUG_IMG" .
           docker pull "$RUNTIME_REF"
-          BUILD=0 IMG="$RUNTIME_REF" tests/image/check.sh
+          docker pull "$DEBUG_REF"
+          BUILD=0 IMG="$RUNTIME_REF" DEBUG_IMG="$DEBUG_REF" tests/image/check.sh
 
       # This success-only artifact is the handoff: failed scans/runtime checks
       # never produce promotable evidence. Each matrix leg owns a distinct name.
@@ -161,7 +204,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-${{ github.sha }}-${{ github.run_id }}-${{ matrix.arch }}
-          path: image-candidate.json
+          path: |
+            image-candidate.json
+            image-candidate-debug.json
           overwrite: true
           if-no-files-found: error
           retention-days: 14
@@ -173,7 +218,9 @@ jobs:
           name: candidate-checks-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           path: |
             image-candidate.json
+            image-candidate-debug.json
             candidate-trivy.json
+            candidate-trivy-debug.json
           if-no-files-found: warn
           retention-days: 90
 
@@ -224,7 +271,9 @@ jobs:
           name: candidate-${{ github.sha }}-${{ github.run_id }}-arm64
           path: candidates/arm64
 
-      - name: Assemble and validate complete candidate index
+      # Each index keeps its own candidate tag (candidate-<run>-<attempt> and
+      # candidate-<run>-<attempt>-debug), which image-retention.yml never prunes.
+      - name: Assemble and validate complete candidate indexes
         shell: bash
         run: |
           python scripts/release_image.py assemble \
@@ -232,10 +281,17 @@ jobs:
             --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --evidence candidates/amd64/image-candidate.json candidates/arm64/image-candidate.json \
             --output image-candidate.json
+          python scripts/release_image.py assemble --variant debug \
+            --image "$IMAGE_REF" --revision "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --evidence candidates/amd64/image-candidate-debug.json candidates/arm64/image-candidate-debug.json \
+            --output image-candidate-debug.json
           python - <<'PY' >> "$GITHUB_ENV"
           import json
-          candidate = json.load(open('image-candidate.json'))
-          print(f"IMAGE_DIGEST={candidate['digest']}")
+          for path, name in (('image-candidate.json', 'IMAGE_DIGEST'),
+                             ('image-candidate-debug.json', 'DEBUG_DIGEST')):
+              candidate = json.load(open(path))
+              print(f"{name}={candidate['digest']}")
           PY
 
       - name: Extract metadata (tags, labels)
@@ -249,9 +305,24 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
 
+      # main publishes debug, a tag vX.Y.Z publishes X.Y.Z-debug and
+      # X.Y-debug; the debug image never becomes latest.
+      - name: Extract debug metadata (tags)
+        id: meta-debug
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE_REF }}
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=debug,enable={{is_default_branch}}
+            type=semver,pattern={{version}},suffix=-debug
+            type=semver,pattern={{major}}.{{minor}},suffix=-debug
+
       - name: Promote the verified index without rebuilding
         env:
           RELEASE_TAGS: ${{ steps.meta.outputs.tags }}
+          DEBUG_TAGS: ${{ steps.meta-debug.outputs.tags }}
         shell: bash
         run: |
           promotion_args=()
@@ -259,15 +330,22 @@ jobs:
             promotion_args+=(--require-current-main)
           fi
           printf '%s\n' "$RELEASE_TAGS" > release-tags.txt
+          printf '%s\n' "$DEBUG_TAGS" > debug-tags.txt
           python scripts/release_image.py promote \
             --image "$IMAGE_REF" --digest "$IMAGE_DIGEST" \
             --revision "$GITHUB_SHA" --tags-file release-tags.txt \
             --output image-release.json "${promotion_args[@]}"
+          python scripts/release_image.py promote \
+            --image "$IMAGE_REF" --digest "$DEBUG_DIGEST" \
+            --revision "$GITHUB_SHA" --tags-file debug-tags.txt \
+            --output image-release-debug.json "${promotion_args[@]}"
 
       - name: Upload immutable image identity
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: image-release-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: image-release.json
+          path: |
+            image-release.json
+            image-release-debug.json
           if-no-files-found: error
           retention-days: 90

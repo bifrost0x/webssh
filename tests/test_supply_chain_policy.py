@@ -228,7 +228,7 @@ def test_scanned_and_published_images_refresh_os_packages_per_ci_attempt():
     )
 
     refresh = 'OS_PACKAGE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}'
-    for filename, expected_builds in [('security.yml', 2), ('docker-publish.yml', 1)]:
+    for filename, expected_builds in [('security.yml', 2), ('docker-publish.yml', 2)]:
         workflow = (WORKFLOWS / filename).read_text(encoding='utf-8')
         builds = re.split(r'uses: docker/build-push-action@', workflow)[1:]
         assert len(builds) == expected_builds
@@ -236,6 +236,12 @@ def test_scanned_and_published_images_refresh_os_packages_per_ci_attempt():
             step = re.split(r'\n      - ', build)[0]
             assert re.search(r'build-args:\s*\|\n(?:[^\n]*\n)*?\s+'
                              + re.escape(refresh), step)
+    # The debug scan candidates are built with the CLI and the same inputs.
+    security = (WORKFLOWS / 'security.yml').read_text(encoding='utf-8')
+    debug_builds = re.findall(r'docker buildx build --load --target debug .*?--tag ', security, re.DOTALL)
+    assert len(debug_builds) == 2
+    for build in debug_builds:
+        assert '--build-arg OS_PACKAGE_REFRESH="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"' in build
 
 
 def test_security_workflow_gates_publish_and_preserves_scan_evidence():
@@ -268,13 +274,17 @@ def test_security_workflow_gates_publish_and_preserves_scan_evidence():
     assert re.search(r'format:\s*[\'"]?spdx-json', security)
     assert re.search(r'output-file:\s*[\'"]?webssh\.spdx\.json', security)
 
-    assert security.count('aquasecurity/trivy-action@') == 2
+    assert security.count('aquasecurity/trivy-action@') == 4
     assert re.search(r'exit-code:\s*[\'"]?1', security)
     assert re.search(r'ignore-unfixed:\s*[\'"]?true', security)
     assert re.search(r'severity:\s*[\'"]?CRITICAL,HIGH', security)
     assert 'output: trivy-results-amd64.json' in security
     assert 'input: /tmp/webssh-arm64.tar' in security
     assert 'output: trivy-results-arm64.json' in security
+    assert 'image-ref: webssh-security-debug:${{ github.sha }}' in security
+    assert 'output: trivy-results-amd64-debug.json' in security
+    assert 'input: /tmp/webssh-arm64-debug.tar' in security
+    assert 'output: trivy-results-arm64-debug.json' in security
     assert 'trivyignores: .trivyignore.yaml' in security
     assert re.search(
         r'if:\s*\$\{\{\s*always\(\)\s*\}\}.*?'
@@ -315,7 +325,8 @@ def test_publish_records_and_verifies_the_immutable_image_identity():
     assert 'python scripts/release_image.py assemble' in publish
     assert 'python scripts/release_image.py promote' in publish
     assert 'name: image-release-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}' in publish
-    assert 'path: image-release.json' in publish
+    upload = publish.split('- name: Upload immutable image identity', 1)[1]
+    assert 'image-release.json' in upload and 'image-release-debug.json' in upload
 
 
 def test_docker_image_declares_the_source_revision_label():
@@ -705,22 +716,35 @@ def test_release_only_promotes_the_candidate_after_exact_sha_tests_and_scans():
     assert not re.search(r'^    needs:', candidate, re.MULTILINE)
     assert 'needs: [release-tests, build-candidate]' in publisher
     assert 'push-by-digest=true,name-canonical=true,push=true' in candidate
-    assert publish.count('uses: docker/build-push-action@') == 1
+    assert publish.count('uses: docker/build-push-action@') == 2
     build = candidate.split('- name: Build immutable native candidate', 1)[1].split('- name:', 1)[0]
-    assert 'tags:' not in build
-    assert 'platforms: linux/${{ matrix.arch }}' in build
+    debug = candidate.split('- name: Build immutable native debug candidate', 1)[1].split('- name:', 1)[0]
+    assert 'target: release' in build
+    assert 'target: debug' in debug
+    for step in (build, debug):
+        assert 'tags:' not in step
+        assert 'platforms: linux/${{ matrix.arch }}' in step
+        assert 'push-by-digest=true,name-canonical=true,push=true' in step
+        assert re.search(r'\n\s+sbom:\s+true\b', step)
+        assert re.search(r'\n\s+provenance:\s+mode=max\b', step)
+        assert 'VCS_REF=${{ github.sha }}' in step
     for arch, runner in (('amd64', 'ubuntu-24.04'), ('arm64', 'ubuntu-24.04-arm')):
         assert re.search(r'arch: ' + arch + r'\s+runner: ' + re.escape(runner) + r'\s', candidate)
     inspect = candidate.index('python scripts/release_image.py inspect-platform')
+    assert 'DEBUG_DIGEST: ${{ steps.build-debug.outputs.digest }}' in candidate
+    assert '--digest "$DEBUG_DIGEST"' in candidate
     scan = candidate.index('image-ref: ${{ env.RUNTIME_REF }}')
-    runtime = candidate.index('BUILD=0 IMG="$RUNTIME_REF" tests/image/check.sh')
+    debug_scan = candidate.index('image-ref: ${{ env.DEBUG_REF }}')
+    runtime = candidate.index('BUILD=0 IMG="$RUNTIME_REF" DEBUG_IMG="$DEBUG_REF" tests/image/check.sh')
     runtime_step = candidate[:runtime].rsplit('- name:', 1)[1]
     assert 'REVISION: ${{ github.sha }}' in runtime_step
+    assert 'docker buildx build' not in runtime_step
     handoff = candidate.index('- name: Upload verified native identity')
-    assert inspect < scan < runtime < handoff
+    assert inspect < scan < debug_scan < runtime < handoff
     identity_step = candidate[handoff:].split('- name:', 2)[1]
     assert 'if: always()' not in identity_step
     assert 'image-candidate.json' in identity_step
+    assert 'image-candidate-debug.json' in identity_step
     assert publisher.index('python scripts/release_image.py assemble') < publisher.index('python scripts/release_image.py promote')
     assert 'docker/build-push-action@' not in publisher
     assert 'continue-on-error:' not in publish
@@ -793,7 +817,27 @@ def test_publish_queues_releases_and_guards_only_main_promotion():
     step = publish.split('- name: Promote the verified index without rebuilding', 1)[1].split('- name:', 1)[0]
     assert 'if [ "$GITHUB_REF" = "refs/heads/main" ]; then' in step
     assert 'promotion_args+=(--require-current-main)' in step
-    assert '\"${promotion_args[@]}\"' in step
+    assert step.count('\"${promotion_args[@]}\"') == 2
+    assert '--digest "$IMAGE_DIGEST"' in step and '--tags-file release-tags.txt' in step
+    assert '--digest "$DEBUG_DIGEST"' in step and '--tags-file debug-tags.txt' in step
+
+
+def test_debug_image_follows_release_tags_without_latest():
+    publish = (WORKFLOWS / 'docker-publish.yml').read_text(encoding='utf-8')
+    publisher = publish.split('\n  build-and-push:', 1)[1]
+    meta = publisher.split('- name: Extract debug metadata (tags)', 1)[1].split('- name:', 1)[0]
+    assert 'id: meta-debug' in meta
+    assert 'latest=false' in meta
+    tags = [line.strip() for line in meta.split('tags: |', 1)[1].strip().splitlines()]
+    assert tags == [
+        'type=raw,value=debug,enable={{is_default_branch}}',
+        'type=semver,pattern={{version}},suffix=-debug',
+        'type=semver,pattern={{major}}.{{minor}},suffix=-debug',
+    ]
+    assert 'DEBUG_TAGS: ${{ steps.meta-debug.outputs.tags }}' in publisher
+    assembly = publisher.split('- name: Assemble and validate complete candidate indexes', 1)[1].split('- name:', 1)[0]
+    assert 'assemble --variant debug' in assembly
+    assert 'candidates/arm64/image-candidate-debug.json' in assembly
 
 
 def test_docs_selection_is_job_level_and_keeps_both_required_aggregates():
@@ -824,11 +868,16 @@ def test_security_images_require_native_runtime_acceptance_before_success():
     workflow = (WORKFLOWS / 'security.yml').read_text(encoding='utf-8')
     for arch, machine in [('amd64', 'x86_64'), ('arm64', 'aarch64')]:
         job = re.split(r'\n  [a-z][a-z0-9-]*:', workflow.split('\n  image-security-' + arch + ':', 1)[1], maxsplit=1)[0]
+        debug_name = f'- name: Build native {arch.upper()} debug scan candidate'
+        debug = job.split(debug_name, 1)[1].split('- name:', 1)[0]
+        assert job.index(debug_name) < job.index('- name: Verify native runtime acceptance')
+        assert 'if:' not in debug
+        assert f'--target debug --platform linux/{arch}' in debug
         runtime = job.split('- name: Verify native runtime acceptance', 1)[1].split('- name:', 1)[0]
         assert 'if:' not in runtime
         assert f'test "$(uname -m)" = "{machine}"' in runtime
         assert 'docker image inspect --format' in runtime
-        assert f'--target debug --platform linux/{arch}' in runtime
+        assert '"webssh-security-debug:$GITHUB_SHA"; do' in runtime
         assert ('BUILD=0 IMG="webssh-security:$GITHUB_SHA" '
                 'DEBUG_IMG="webssh-security-debug:$GITHUB_SHA" REVISION="$GITHUB_SHA"') in runtime
         assert 'tests/image/check.sh' in runtime

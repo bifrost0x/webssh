@@ -1,9 +1,9 @@
 name: Prune Orphaned Image Manifests
 
 # Removes untagged manifests that no tagged index references (leftovers of
-# runs that failed before assembly). Tagged versions, candidates included,
-# and everything they reference are never deleted, so download counts of
-# tagged versions are preserved.
+# runs that failed before assembly). Tagged versions of the release and debug
+# targets, candidates included, and everything they reference are never
+# deleted, so download counts of tagged versions are preserved.
 
 on:
   schedule:

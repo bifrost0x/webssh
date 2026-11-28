@@ -12,6 +12,8 @@ REVISION = re.compile(r'[0-9a-f]{40}')
 REPOSITORY = re.compile(r'[a-z0-9.-]+(?::[0-9]+)?/[a-z0-9._/-]+')
 TAG = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}')
 PLATFORMS = frozenset({'linux/amd64', 'linux/arm64'})
+# Dockerfile targets published from one run; each keeps its own candidate tag.
+VARIANTS = {'release': '', 'debug': '-debug'}
 INDEX_TYPES = frozenset({
     'application/vnd.oci.image.index.v1+json',
     'application/vnd.docker.distribution.manifest.list.v2+json',
@@ -107,14 +109,19 @@ def inspect_platform(image, digest, revision, platform, run_id, run_attempt,
     return {**evidence, 'run_id': run_id, 'run_attempt': run_attempt}
 
 
-def assemble(image, revision, candidates, run_id, run_attempt, *, runner=subprocess.run):
+def assemble(image, revision, candidates, run_id, run_attempt, *, variant='release',
+             runner=subprocess.run):
     """Combine successful native build evidence into a non-release candidate.
 
     The caller downloads only success artifacts from this run, after
     both scan and runtime jobs succeed. Reinspect every immutable source before
     writing even the candidate tag, then verify all descriptors survived.
+    The variant names the Dockerfile target, so the release and debug
+    indexes of one run never share, and overwrite, a candidate tag.
     """
     _run_identity(run_id, run_attempt)
+    if variant not in VARIANTS:
+        raise ValueError('Unknown image variant')
     if not isinstance(candidates, list) or len(candidates) != len(PLATFORMS):
         raise ValueError('Exactly two native candidates are required')
     by_platform = {}
@@ -140,7 +147,7 @@ def assemble(image, revision, candidates, run_id, run_attempt, *, runner=subproc
             raise ValueError('Native candidate evidence does not match the registry')
         by_platform[platform] = actual
     ordered = [by_platform[platform] for platform in sorted(PLATFORMS)]
-    candidate_tag = f'{image}:candidate-{run_id}-{run_attempt}'
+    candidate_tag = f'{image}:candidate-{run_id}-{run_attempt}{VARIANTS[variant]}'
     _docker(['create', '--tag', candidate_tag,
              *[item['immutable_ref'] for item in ordered]], runner)
     digest = _docker(['inspect', '--format', '{{.Manifest.Digest}}', candidate_tag], runner)
@@ -199,6 +206,7 @@ def main():
     parser.add_argument('--run-id')
     parser.add_argument('--run-attempt')
     parser.add_argument('--evidence', type=Path, nargs='+')
+    parser.add_argument('--variant', choices=sorted(VARIANTS), default='release')
     parser.add_argument('--revision', required=True)
     parser.add_argument('--tags-file', type=Path)
     parser.add_argument('--require-current-main', action='store_true',
@@ -211,7 +219,8 @@ def main():
         if not args.evidence:
             parser.error('assemble requires --evidence')
         candidates = [json.loads(path.read_text(encoding='utf-8')) for path in args.evidence]
-        evidence = assemble(args.image, args.revision, candidates, args.run_id, args.run_attempt)
+        evidence = assemble(args.image, args.revision, candidates, args.run_id, args.run_attempt,
+                            variant=args.variant)
     elif args.mode == 'inspect-platform':
         evidence = inspect_platform(args.image, args.digest, args.revision, args.platform,
                                     args.run_id, args.run_attempt)
