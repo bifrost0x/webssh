@@ -4,37 +4,44 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/ncruces/go-sqlite3/driver"
+
+	"github.com/bifrost0x/webssh/internal/oracletest"
 )
 
-// pythonInterpreter returns the Python of the worktree's venv, or python3.
-func pythonInterpreter(t *testing.T) string {
-	t.Helper()
-	for _, p := range []string{"../../../.venv/bin/python3", "/usr/bin/python3"} {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	p, err := exec.LookPath("python3")
-	if err != nil {
-		t.Skip("no Python interpreter")
-	}
-	return p
-}
+// lockHelperEnv tells TestSQLiteLockHelper what to hold: "<begin>|<path>".
+const lockHelperEnv = "WEBSSH_TEST_SQLITE_LOCK"
 
-// holdPythonLock starts Python's sqlite3 in a transaction on app.db, as
-// the Python release holds it during a write, and returns a function that
-// ends it.
+// pythonLockScript is what the Python release's sqlite3 module does inside
+// a write: a transaction that has read from app.db.
+const pythonLockScript = "import sqlite3,sys\nc=sqlite3.connect(sys.argv[1],isolation_level=None)\nc.execute(sys.argv[2])\n" +
+	"c.execute('SELECT count(*) FROM users').fetchone()\nprint('held',flush=True)\nsys.stdin.read()\n"
+
+// holdPythonLock starts another process inside a transaction on app.db,
+// as the Python release holds it during a write, and returns a function
+// that ends it. The holder is the Python release's sqlite3 module in live
+// mode (internal/oracletest) and otherwise this test binary with the
+// SQLite driver: both take SQLite's lock bytes of the same file format,
+// which is what the probe looks at.
 func holdPythonLock(t *testing.T, appDB, begin string) func() {
 	t.Helper()
-	script := "import sqlite3,sys\nc=sqlite3.connect(sys.argv[1],isolation_level=None)\nc.execute(sys.argv[2])\n" +
-		"c.execute('SELECT count(*) FROM users').fetchone()\nprint('held',flush=True)\nsys.stdin.read()\n"
-	cmd := exec.CommandContext(t.Context(), pythonInterpreter(t), "-I", "-c", script, appDB, begin)
+	var cmd *exec.Cmd
+	if oracletest.CurrentMode(t) == oracletest.Replay {
+		cmd = exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestSQLiteLockHelper$", "-test.count=1") // #nosec G204 -- the test binary itself
+		cmd.Env = append(os.Environ(), lockHelperEnv+"="+begin+"|"+appDB)
+	} else {
+		rel := oracletest.RequireLive(t)
+		cmd = exec.CommandContext(t.Context(), rel.Python, "-I", "-c", pythonLockScript, appDB, begin) // #nosec G204 -- test oracle
+	}
 	stdin, _ := cmd.StdinPipe()
 	stdout, _ := cmd.StdoutPipe()
 	if err := cmd.Start(); err != nil {
@@ -42,9 +49,40 @@ func holdPythonLock(t *testing.T, appDB, begin string) func() {
 	}
 	line, err := bufio.NewReader(stdout).ReadString('\n')
 	if err != nil || strings.TrimSpace(line) != "held" {
-		t.Fatalf("python: %q, %v", line, err)
+		_ = stdin.Close()
+		_ = cmd.Wait()
+		t.Fatalf("lock holder: %q, %v", line, err)
 	}
 	return func() { _ = stdin.Close(); _ = cmd.Wait() }
+}
+
+// TestSQLiteLockHelper is the lock holder of holdPythonLock: it opens
+// app.db, begins the transaction, reads and waits for its stdin to close.
+func TestSQLiteLockHelper(t *testing.T) {
+	spec := os.Getenv(lockHelperEnv)
+	if spec == "" {
+		t.Skip("helper process for the lock tests")
+	}
+	begin, path, _ := strings.Cut(spec, "|")
+	db, err := driver.Open("file:" + filepath.ToSlash(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	conn, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(t.Context(), begin); err != nil {
+		t.Fatal(err)
+	}
+	var users int
+	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM users").Scan(&users); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("held")
+	_, _ = io.Copy(io.Discard, os.Stdin)
 }
 
 // Section 5.2 step 4 and 8.3: a Python process inside a transaction is

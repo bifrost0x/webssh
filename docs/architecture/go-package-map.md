@@ -45,7 +45,7 @@ Existing installations are carried over once, automatically, by
 | Platform (Linux: Docker, Unraid): data directory permissions, time zone check | `internal/platform` |
 | Upgrade from the Python release: one-time migration of `DATA_DIR`, restore of Python backups, removal of legacy data | `internal/migrate/legacy`, `internal/fernet` |
 | Runtime: process, HTTP, realtime | `cmd/webssh`, `internal/httpapi`, `internal/realtime`, `internal/realtime/protocol`, `internal/config`, `internal/store`, `internal/fault`, `internal/principal`, `internal/buildinfo` |
-| Testing: test doubles and the end-to-end seed | `internal/principal/principaltest`, `internal/realtime/protocol/protocoltest`, `internal/store/storetest`, `internal/auth/authtest`, `internal/backup/backuptest`, `internal/e2eseed` |
+| Testing: test doubles, the end-to-end seed and the recorded answers of the Python release | `internal/principal/principaltest`, `internal/realtime/protocol/protocoltest`, `internal/store/storetest`, `internal/auth/authtest`, `internal/backup/backuptest`, `internal/e2eseed`, `internal/oracletest` |
 
 ## Packages
 
@@ -119,6 +119,7 @@ Kinds and allowed imports ([ADR 0003](../adr/0003-package-structure-and-modulari
 | `internal/files/filestest` | capability | Test double: an in-memory file backend; imported by test files only | – | B4 |
 | `internal/vault/vaulttest` | capability | Test double of the saved-password provider; imported by test files only | – | B5 |
 | `internal/e2eseed` | edge | Applies the end-to-end seed to the Go stores and provides the test-only hooks; imported only by `cmd/webssh/e2e.go` (build tag `e2e`), never part of the release binary | – | M1 |
+| `internal/oracletest` | foundation | Recorded answers of the Python release for the differential tests, replayed without Python; asks the release itself with `WEBSSH_PYTHON_ORACLE=live` or `record`; imported by test files only | – | M2 |
 
 `internal/migrate/legacy` is the only package that knows the Python schema
 and file layout. It reads them and writes through the capabilities' stores.

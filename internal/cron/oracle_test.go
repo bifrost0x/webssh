@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/oracletest"
 )
 
 // The differential tests compare this package with app/automation_cron.py.
@@ -109,16 +110,26 @@ func pythonPath() string {
 	return filepath.Join(repoRoot, ".venv", "bin", "python")
 }
 
-// startOracle starts the Python oracle, or returns nil without Python.
+// startOracle starts the Python oracle under -update and in the live and
+// record modes of internal/oracletest; in replay mode it returns nil.
 func startOracle(t testing.TB) *oracle {
 	t.Helper()
-	python := pythonPath()
-	if _, err := os.Stat(python); err != nil {
+	var python, root string
+	switch {
+	case *update:
+		python = pythonPath()
+		if _, err := os.Stat(python); err != nil {
+			t.Fatalf("-update needs the Python oracle: %v", err)
+		}
+		var err error
+		if root, err = filepath.Abs(repoRoot); err != nil {
+			t.Fatal(err)
+		}
+	case oracletest.CurrentMode(t) != oracletest.Replay:
+		rel := oracletest.RequireLive(t)
+		python, root = rel.Python, rel.Root
+	default:
 		return nil
-	}
-	root, err := filepath.Abs(repoRoot)
-	if err != nil {
-		t.Fatal(err)
 	}
 	cmd := exec.CommandContext(t.Context(), python, "-I", "testdata/oracle.py", root) // #nosec G204 -- test oracle
 	cmd.Env = []string{"LANG=C.UTF-8", "PATH=" + os.Getenv("PATH")}
@@ -206,7 +217,7 @@ func TestPythonZonesLive(t *testing.T) {
 	t.Parallel()
 	o := startOracle(t)
 	if o == nil {
-		t.Skip("no Python virtual environment")
+		oracletest.RequireLive(t)
 	}
 	keys := systemZones(t)
 	after := time.Date(2025, 12, 31, 12, 0, 0, 0, time.UTC).Unix()
@@ -225,7 +236,7 @@ func TestPythonRandomLive(t *testing.T) {
 	t.Parallel()
 	o := startOracle(t)
 	if o == nil {
-		t.Skip("no Python virtual environment")
+		oracletest.RequireLive(t)
 	}
 	rng := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 7)) // #nosec G404 -- test data
 	n := 3000

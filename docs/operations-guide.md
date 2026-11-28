@@ -336,6 +336,8 @@ More checks: [Health Checks and Troubleshooting](wiki/Health-Checks-and-Troubles
   `warpgate-down.sh` removes it.
 - Lab tests: `go test -tags lab -run Lab ./cmd/... ./internal/...`.
 - Network namespaces: `internal/netpolicy/testdata/netns-test.sh lab` and
-  `… crafted`.
+  `… crafted`; they compare with the recorded route answers of the Python
+  release (`testdata/python_routes.json`), and with
+  `WEBSSH_PYTHON_ORACLE=live` also with the live release.
 - Migration report on a copy: `webssh migrate --dry-run` with `DATA_DIR`
   pointing at the copy.

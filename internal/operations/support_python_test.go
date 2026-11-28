@@ -8,26 +8,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bifrost0x/webssh/internal/oracletest"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/principal/principaltest"
 )
-
-func pythonBin(t *testing.T) string {
-	t.Helper()
-	for _, p := range []string{"../../.venv/bin/python", "/usr/bin/python"} {
-		if _, err := os.Stat(p); err == nil {
-			abs, _ := filepath.Abs(p)
-			return abs
-		}
-	}
-	t.Skip("no Python virtual environment")
-	return ""
-}
 
 // pythonSupport calls create_support_report of app/support_report.py with
 // the facts of each case patched in, and prints status and body.
@@ -104,29 +92,34 @@ var supportCases = []supportCase{
 }
 
 // The report has the shape, members, filters and refusals of the Python
-// release for the same facts.
+// release for the same facts (recorded in
+// testdata/python_support_report.json).
 func TestSupportReportMatchesPython(t *testing.T) {
-	python := pythonBin(t)
-	in, _ := json.Marshal(supportCases)
-	cmd := exec.CommandContext(t.Context(), python, "-c", pythonSupport)
-	cmd.Dir = "../.."
-	cmd.Env = append(os.Environ(), "DATA_DIR="+t.TempDir(), "SECRET_KEY=differential-test-only-0123456789abcdef", "PYTHONDONTWRITEBYTECODE=1")
-	cmd.Stdin = bytes.NewReader(in)
-	raw, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("python: %v\n%s", err, raw)
-	}
-	_, result, ok := strings.Cut(string(raw), "\n--result--\n")
-	if !ok {
-		t.Fatalf("python output: %s", raw)
-	}
-	var want []struct {
+	type answer struct {
 		Status int            `json:"status"`
 		Body   map[string]any `json:"body"`
 	}
-	if err := json.Unmarshal([]byte(result), &want); err != nil {
-		t.Fatal(err)
-	}
+	rec := oracletest.Open(t, "testdata/python_support_report.json")
+	want := oracletest.Ask(t, rec, "create_support_report", supportCases, func(r oracletest.Release) []answer {
+		in, _ := json.Marshal(supportCases)
+		cmd := exec.CommandContext(t.Context(), r.Python, "-c", pythonSupport) // #nosec G204 -- test oracle
+		cmd.Dir = r.Root
+		cmd.Env = append(os.Environ(), "DATA_DIR="+t.TempDir(), "SECRET_KEY=differential-test-only-0123456789abcdef", "PYTHONDONTWRITEBYTECODE=1")
+		cmd.Stdin = bytes.NewReader(in)
+		raw, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("python: %v\n%s", err, raw)
+		}
+		_, result, ok := strings.Cut(string(raw), "\n--result--\n")
+		if !ok {
+			t.Fatalf("python output: %s", raw)
+		}
+		var a []answer
+		if err := json.Unmarshal([]byte(result), &a); err != nil {
+			t.Fatal(err)
+		}
+		return a
+	})
 	for i, c := range supportCases {
 		h := &SupportHTTP{Facts: caseFacts{c}, HTTPS: func(*http.Request) bool { return c.HTTPS },
 			Now: func() time.Time { return time.Date(2026, 11, 27, 9, 0, 0, 0, time.UTC) }}

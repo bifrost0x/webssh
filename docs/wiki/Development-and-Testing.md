@@ -27,9 +27,16 @@ Gates run on `./cmd/... ./internal/...` rather than `./...`, because
 the [package map](https://github.com/bifrost0x/webssh/blob/main/docs/architecture/go-package-map.md),
 the import rules and the size limit of production files.
 
-- Difference tests compare pure functions with the Python implementation:
-  `PYTHON=.venv/bin/python scripts/check-python-oracles.sh` with the
-  environment from **Development setup** below.
+- Difference tests compare Go with answers of the Python release that are
+  recorded under `testdata/` (`internal/oracletest`). They need no Python
+  and run in every `go test`. `WEBSSH_PYTHON_ORACLE=live` asks the Python
+  release instead and requires the recorded answers; it fails when no
+  interpreter is found (`WEBSSH_PYTHON`, default `.venv/bin/python`; the
+  Python sources come from `WEBSSH_PYTHON_ROOT`, default this checkout).
+  `PYTHON=.venv/bin/python scripts/record-python-oracles.sh` records every
+  answer again, and `scripts/check-python-oracles.sh` checks that the
+  recordings still match the release, with the environment from
+  **Development setup** below.
 - Lab tests (`-tags lab`) run against the containers of the test lab; the
   browser suite runs against the Go server with `tests/e2e/go-suite.json`.
 - `go run -tags devfs ./cmd/webssh serve` serves `static/` directly while

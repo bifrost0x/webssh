@@ -2,6 +2,7 @@ package legacy
 
 import (
 	"bytes"
+	"crypto/sha256"
 	json "encoding/json/v2"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bifrost0x/webssh/internal/oracletest"
 	"github.com/bifrost0x/webssh/internal/pyjson"
 )
 
@@ -18,7 +20,8 @@ import (
 // loaded by load_json_strict with _valid_document of app/host_context.py
 // and by decodeStore and readContexts. Both must agree on whether the file
 // is valid, and for a valid file on the notes, directories, command-set
-// references and revision of every context.
+// references and revision of every context. The Python answers are
+// recorded in testdata/python_hostcontext.json.
 const pythonHostContext = `
 import json, sys
 from pathlib import Path
@@ -140,42 +143,42 @@ func hostContextDocs() []string {
 
 func TestHostContextReadMatchesPython(t *testing.T) {
 	t.Parallel()
-	python, err := filepath.Abs("../../../.venv/bin/python")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(python); err != nil {
-		python = "/usr/bin/python"
-		if _, err := os.Stat(python); err != nil {
-			t.Skip("no Python virtual environment")
-		}
-	}
-	dir := t.TempDir()
 	docs := hostContextDocs()
-	cases := make([]hostContextCase, len(docs))
-	for i, d := range docs {
-		cases[i] = hostContextCase{Dir: dir, Doc: d}
-	}
-	in, _ := json.Marshal(cases)
-	cmd := exec.CommandContext(t.Context(), python, "-c", pythonHostContext)
-	cmd.Dir = "../../.."
-	cmd.Env = append(os.Environ(), "DATA_DIR="+filepath.Join(dir, "data"), "SECRET_KEY=differential-test-only-0123456789abcdef", "PYTHONDONTWRITEBYTECODE=1")
-	cmd.Stdin = bytes.NewReader(in)
-	raw, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("python: %v\n%s", err, raw)
-	}
-	_, result, ok := strings.Cut(string(raw), "\n--result--\n")
-	if !ok {
-		t.Fatalf("python output: %s", raw)
-	}
-	var want []map[string]contextFields
-	if err := json.Unmarshal([]byte(result), &want); err != nil {
-		t.Fatal(err)
-	}
-	if len(want) != len(docs) {
-		t.Fatalf("%d results for %d documents", len(want), len(docs))
-	}
+	rec := oracletest.Open(t, "testdata/python_hostcontext.json")
+	want := oracletest.Ask(t, rec, "load_json_strict", docs, func(r oracletest.Release) []map[string]contextFields {
+		dir := t.TempDir()
+		cases := make([]hostContextCase, len(docs))
+		for i, d := range docs {
+			cases[i] = hostContextCase{Dir: dir, Doc: d}
+		}
+		in, _ := json.Marshal(cases)
+		cmd := exec.CommandContext(t.Context(), r.Python, "-c", pythonHostContext) // #nosec G204 -- test oracle
+		cmd.Dir = r.Root
+		cmd.Env = append(os.Environ(), "DATA_DIR="+filepath.Join(dir, "data"), "SECRET_KEY=differential-test-only-0123456789abcdef", "PYTHONDONTWRITEBYTECODE=1")
+		cmd.Stdin = bytes.NewReader(in)
+		raw, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("python: %v\n%s", err, raw)
+		}
+		_, result, ok := strings.Cut(string(raw), "\n--result--\n")
+		if !ok {
+			t.Fatalf("python output: %s", raw)
+		}
+		var answer []map[string]contextFields
+		if err := json.Unmarshal([]byte(result), &answer); err != nil {
+			t.Fatal(err)
+		}
+		if len(answer) != len(docs) {
+			t.Fatalf("%d results for %d documents", len(answer), len(docs))
+		}
+		for _, contexts := range answer {
+			for id, c := range contexts {
+				c.Notes = shortNotes(c.Notes)
+				contexts[id] = c
+			}
+		}
+		return answer
+	})
 	valid := 0
 	for i, d := range docs {
 		got, gotValid := goHostContexts(d)
@@ -196,7 +199,7 @@ func TestHostContextReadMatchesPython(t *testing.T) {
 		}
 		for id, w := range want[i] {
 			g, ok := got[id]
-			if !ok || g.Notes != w.Notes || g.Revision != w.Revision ||
+			if !ok || shortNotes(g.Notes) != w.Notes || g.Revision != w.Revision ||
 				!slices.Equal(g.Directories, nonNilList(w.Directories)) || !slices.Equal(g.CommandSets, nonNilList(w.CommandSets)) {
 				t.Errorf("case %d %s: context %q\n got %+v\nwant %+v", i, label, id, g, w)
 			}
@@ -205,6 +208,16 @@ func TestHostContextReadMatchesPython(t *testing.T) {
 	if valid == 0 || valid == len(docs) {
 		t.Fatalf("%d of %d documents valid; the cases must cover both outcomes", valid, len(docs))
 	}
+}
+
+// shortNotes keeps notes up to 1 KiB and replaces longer ones by their
+// length and SHA-256, which keeps the recording small.
+func shortNotes(notes string) string {
+	if len(notes) <= 1024 {
+		return notes
+	}
+	sum := sha256.Sum256([]byte(notes))
+	return fmt.Sprintf("%d bytes, sha256 %x", len(notes), sum)
 }
 
 // goHostContexts reads one document like the E28 step, with every context

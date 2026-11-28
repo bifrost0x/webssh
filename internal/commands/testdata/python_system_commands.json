@@ -1,0 +1,13 @@
+{
+  "oracle": {
+    "python": "CPython 3.15.1",
+    "source": "7d8831353ec44d7e5ed7b3e7644fa09c608bfc01 (app/ tree 5d2f7fa38f4d2e3d02ea6a84b1f76b47b8b2c57d)",
+    "recorder": "scripts/record-python-oracles.sh"
+  },
+  "cases": {
+    "app/resources/commands/system_commands.json": {
+      "request_sha256": "d208a9189e5bdae43885df289c444494d59ffcf1cec6bd2c810892e810b2f914",
+      "answer": {"sha256":"75c5150a44b9f1abc5bb9e3f436ae531df02a1db9de0ae785d1df7c3ae2fbb17","size":122070}
+    }
+  }
+}

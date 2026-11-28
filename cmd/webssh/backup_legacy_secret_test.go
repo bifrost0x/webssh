@@ -14,6 +14,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
+	"github.com/bifrost0x/webssh/internal/oracletest"
 )
 
 // pythonSecrets prints a digest of every secret the Python release opens
@@ -98,10 +99,10 @@ func nextState(t *testing.T) legacy.State {
 	return st.State
 }
 
-func runPython(t *testing.T, python, script, dir, secret string) string {
+func runPython(t *testing.T, r oracletest.Release, script, dir, secret string) string {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), python, "-c", script)
-	cmd.Dir = "../.."
+	cmd := exec.CommandContext(t.Context(), r.Python, "-c", script) // #nosec G204 -- test oracle
+	cmd.Dir = r.Root
 	cmd.Env = append(os.Environ(), "DATA_DIR="+dir, "SECRET_KEY="+secret, "PYTHONPATH=.", "PYTHONDONTWRITEBYTECODE=1")
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
@@ -163,12 +164,11 @@ func TestRestoreBesideLegacyDataKeepsTheSecret(t *testing.T) {
 	}
 	assertLegacyUnchanged(t, hostB, before)
 
-	// The way back: the Python release opens its data with secret_key.
-	python := pythonBinary(t)
+	// The way back: the Python release opens its data with secret_key
+	// (recorded in testdata/python_restore_way_back.json).
+	rec := oracletest.Open(t, "testdata/python_restore_way_back.json")
 	pristine := extractGolden(t, "datadir-extended.tar")
-	if got, ref := runPython(t, python, pythonSecrets, hostB, secretB), runPython(t, python, pythonSecrets, pristine, secretB); got != ref {
-		t.Fatalf("the Python release reads other data after the restore:\n got %s\nwant %s", got, ref)
-	}
+	assertWayBack(t, rec, "restore beside legacy data", "datadir-extended.tar", hostB, pristine, secretB, before)
 }
 
 // The online server signs in host A's administrator with password and

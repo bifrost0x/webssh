@@ -1,0 +1,121 @@
+{
+  "oracle": {
+    "python": "CPython 3.15.1",
+    "source": "7d8831353ec44d7e5ed7b3e7644fa09c608bfc01 (app/ tree 5d2f7fa38f4d2e3d02ea6a84b1f76b47b8b2c57d)",
+    "recorder": "scripts/record-python-oracles.sh"
+  },
+  "cases": {
+    "CRLF keeps CR": {
+      "request_sha256": "e60ccf77560d2c18d6722f5a41e17afa2799d102935fbb83876ece3e75303ca9",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"key\r","source":"file"}
+    },
+    "NUL bytes dropped": {
+      "request_sha256": "06e717542f2bcfda92a5e2d8351f1dab569844aa2950d64ba95471cd6bfcd56a",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"abcd","source":"file"}
+    },
+    "all trailing LF removed": {
+      "request_sha256": "65bcccba36ab2357a2291da24dea6e1a75abe322a2f56c46ed234177447448c9",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"key","source":"file"}
+    },
+    "dangling symlink is created": {
+      "request_sha256": "af79cf99fc3ab4120cbb6ab3de36c7771953c6c5cdd5cca284e7b1fb429305b9",
+      "answer": {"failed":false,"data_dir":"$ROOT/target","secret":"<generated>","source":"file"}
+    },
+    "double slashes": {
+      "request_sha256": "ebd7b870797bc94c826a35d6aa7d4b3a77548b7ab436016282a6018f776ec6d9",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"k","source":"file"}
+    },
+    "empty file exports empty secret": {
+      "request_sha256": "470e8bb442131f8804f8993a7e0e14577b6c93e8df0583982d7a7ac6f4903b6e",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","source":"file"}
+    },
+    "environment wins": {
+      "request_sha256": "e16653e1295667d250e74a419cb76ad8550e6787a3b328154e70835e56e9ca87",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":" my secret ","source":"environment"}
+    },
+    "generated": {
+      "request_sha256": "25e5a414ab8e1b4e302fb26284af9329161994de9fa72d143f4e662f89c4aa61",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"<generated>","source":"file"}
+    },
+    "generated in new directory": {
+      "request_sha256": "7ce0bf0dea7229b87aeeea47ad7f003a56bbe3780aec4fbe6b781bb8aa0942ec",
+      "answer": {"failed":false,"data_dir":"$ROOT/new/deeper","secret":"<generated>","source":"file"}
+    },
+    "inner LF kept": {
+      "request_sha256": "51c9eb9fce8008f7a6b4976a35b98eab4609d185e55f460295ed04757f1955c7",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"a\nb","source":"file"}
+    },
+    "legacy ignored with environment secret": {
+      "request_sha256": "54c11d4d13d0702ce2fa0f39f2f3b36c33a0c4e801774ab1e9aa308cbc8850b9",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"explicit-secret","source":"environment"}
+    },
+    "legacy is the data dir": {
+      "request_sha256": "d3a7245aa1a9d7856a65de92703e01845ea5a7dd8962922d468728abd11d71b8",
+      "answer": {"failed":false,"data_dir":"$ROOT/legacy","secret":"same","source":"file"}
+    },
+    "legacy secret differs": {
+      "request_sha256": "8884e64349c988b7c32194321b1cfb50be8cd74862a8f4632e4625870dfd76da",
+      "answer": {"failed":true}
+    },
+    "legacy secret equal": {
+      "request_sha256": "390a58987a5224a26ce33a62bc8f59cf21b54196ffbfa15876a3371979dfdd53",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"same","source":"file"}
+    },
+    "legacy secret without new file": {
+      "request_sha256": "cd0ddc9d6a6f6bed7c4fc41592876da439135f3c1d231b77deaec7ba0a5cf6a3",
+      "answer": {"failed":true}
+    },
+    "non-breaking space is not removed": {
+      "request_sha256": "93154be95d550a47f84187466472998f61d90a7ae332ac731787ed09c5e0c08b",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":" changeme","source":"environment"}
+    },
+    "placeholder uses file": {
+      "request_sha256": "968b21ffd8fe91b258615d77237d1c2ff946d31c2d42bf2827ac685b8c06721d",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"from-file","source":"file"}
+    },
+    "placeholder with spaces and case": {
+      "request_sha256": "5d6146d6774c3264b2cd6a35323ff342b7da1532742bbc564c67f9d1a4eeb72d",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"from-file","source":"file"}
+    },
+    "relative data dir": {
+      "request_sha256": "0a4895df4d0a80d8130cebf7f5a1c6b7e1e186d67b41f8e8d1192d71df56f29f",
+      "answer": {"failed":true}
+    },
+    "relative symlink": {
+      "request_sha256": "01ec32f6397aedc3e53bc0f7f3f120fc56d5fcad4d082185010582d77e0375d7",
+      "answer": {"failed":false,"data_dir":"$ROOT/real","secret":"k","source":"file"}
+    },
+    "secret file is a directory": {
+      "request_sha256": "48cb93fed754d7e7fdf63ac3115b1277707447bbeb25a1f82ee9b4778a27218b",
+      "answer": {"failed":true}
+    },
+    "secret file is a symlink": {
+      "request_sha256": "a1f15de44036c82fac623d5d477993a9b932546d371c2a2f208ccdf5c2ec6004",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"linked","source":"file"}
+    },
+    "symlink loop": {
+      "request_sha256": "585ca88b7855b2fcf7eaa3087f5b7a5293fcc984b8f6a46ddcee38142226c58b",
+      "answer": {"failed":true}
+    },
+    "symlinked data dir": {
+      "request_sha256": "0bf76d11c4784ecce4cffc1a74daba585043e8c687edf5626f07d22274522576",
+      "answer": {"failed":false,"data_dir":"$ROOT/real","secret":"k","source":"file"}
+    },
+    "template placeholder": {
+      "request_sha256": "9d9cdfb324f92d1fcf90fdbda69f50720a902de3588b3d73ac577c7446ee1b1f",
+      "answer": {"failed":false,"data_dir":"$ROOT/d","secret":"f","source":"file"}
+    },
+    "trailing newline in name": {
+      "request_sha256": "5bd09165dc8de4b6b8c439d7685fd7a629f63a04de8d8a50d32cbd0afdeb3600",
+      "answer": {"failed":false,"data_dir":"$ROOT/nl","secret":"<generated>","source":"file"}
+    },
+    "trailing slash and dots": {
+      "request_sha256": "96fa2592e643d8fc872709fe0533bbd0f7e923f052b20c6b46acce48de5ed47f",
+      "answer": {"failed":false,"data_dir":"$ROOT/x/d","secret":"k","source":"file"}
+    },
+    "unreadable secret file": {
+      "request_sha256": "a5dd7a37aae5dedc3e201d4002a1a74bd54c71006c3dbdee1c94874f6b4bf6a1",
+      "answer": {"failed":true}
+    }
+  }
+}

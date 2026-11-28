@@ -1,0 +1,27 @@
+{
+  "oracle": {
+    "python": "CPython 3.15.1",
+    "source": "7d8831353ec44d7e5ed7b3e7644fa09c608bfc01 (app/ tree 5d2f7fa38f4d2e3d02ea6a84b1f76b47b8b2c57d)",
+    "recorder": "scripts/record-python-oracles.sh"
+  },
+  "cases": {
+    "create_support_report": {
+      "request_sha256": "66417d335d92e4db6da5468a4d8a6a19f989e4d16623f8cdaccb1f3043d333d5",
+      "answer": [
+        {"status":200,"body":{"area":"general","features":{"automation":false,"ldap":false,"oidc":false,"passkey":false,"recovery":false,"saved_passwords":false,"sftp":true,"smb":false,"ssh":true,"tmux":false,"totp":false},"https":false,"readiness":{"failed":[],"status":"ready"},"reference":null,"schema":1}},
+        {"status":200,"body":{"area":"files","deployment":{"internal_ssh_blocked":true,"profile":"production","secure_cookie":true},"features":{"automation":false,"ldap":true,"oidc":false,"passkey":true,"recovery":false,"saved_passwords":false,"sftp":true,"smb":true,"ssh":true,"tmux":true,"totp":false},"https":true,"readiness":{"failed":[],"status":"ready"},"reference":"SMB-ABCDEF123456","schema":1}},
+        {"status":200,"body":{"area":"sign_in","deployment":{"internal_ssh_blocked":false,"profile":"unknown","secure_cookie":false},"features":{"automation":true,"ldap":false,"oidc":true,"passkey":false,"recovery":true,"saved_passwords":true,"sftp":true,"smb":false,"ssh":true,"tmux":false,"totp":true},"https":false,"readiness":{"failed":["maintenance","database"],"status":"not_ready"},"reference":null,"schema":1}},
+        {"status":200,"body":{"area":"ssh","features":{"automation":false,"ldap":false,"oidc":false,"passkey":false,"recovery":false,"saved_passwords":false,"sftp":true,"smb":false,"ssh":true,"tmux":false,"totp":false},"https":false,"readiness":{"failed":[],"status":"ready"},"reference":null,"schema":1}},
+        {"status":400,"body":{"error":"Invalid report options"}},
+        {"status":400,"body":{"error":"Invalid report options"}},
+        {"status":400,"body":{"error":"Invalid report options"}},
+        {"status":400,"body":{"error":"Invalid report options"}},
+        {"status":400,"body":{"error":"Invalid report options"}},
+        {"status":400,"body":{"error":"Invalid report options"}},
+        {"status":400,"body":{"error":"Invalid report options"}},
+        {"status":400,"body":{"error":"Invalid report options"}},
+        {"status":400,"body":{"error":"Invalid report options"}}
+      ]
+    }
+  }
+}

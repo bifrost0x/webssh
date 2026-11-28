@@ -1,0 +1,13 @@
+{
+  "oracle": {
+    "python": "CPython 3.15.1",
+    "source": "7d8831353ec44d7e5ed7b3e7644fa09c608bfc01 (app/ tree 5d2f7fa38f4d2e3d02ea6a84b1f76b47b8b2c57d)",
+    "recorder": "scripts/record-python-oracles.sh"
+  },
+  "cases": {
+    "restore beside legacy data": {
+      "request_sha256": "9d456d25bb945733617d028064909c13d3a06402ac762f0b785aa7f59ece6f40",
+      "answer": {"sha256":"50553674038b6e82346c6570cf4ae176c141ae3900e19ee764e6e3b7cd37ae5b","secrets":14}
+    }
+  }
+}

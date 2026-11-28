@@ -104,6 +104,8 @@ var packageMap = map[string]role{
 	"internal/idna2003":        {kind: foundation},
 	"internal/files/filestest": {kind: capability},
 	"internal/vault/vaulttest": {kind: capability},
+	// Recorded answers of the Python release for the differential tests.
+	"internal/oracletest": {kind: foundation},
 }
 
 // roleOf returns the role of a module-relative package path. Commands

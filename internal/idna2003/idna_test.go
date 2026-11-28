@@ -10,37 +10,24 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/bifrost0x/webssh/internal/oracletest"
 )
 
-// The Python oracle is testdata/oracle.py, run by the repository's virtual
-// environment or WEBSSH_PYTHON. Its vectors and digests are checked in,
-// so the comparison also runs where Python is missing.
+// The Python oracle is testdata/oracle.py. Its vectors and digests are
+// checked in and compared without Python (scripts/record-python-oracles.sh
+// records them again); TestLivePythonOracle asks the live interpreter
+// (WEBSSH_PYTHON_ORACLE=live, internal/oracletest).
 
-const repoRoot = "../.."
-
-func pythonPath() string {
-	if p := os.Getenv("WEBSSH_PYTHON"); p != "" {
-		return p
-	}
-	return filepath.Join(repoRoot, ".venv", "bin", "python")
-}
-
-// python runs the oracle with args and returns its output, or skips when
-// no interpreter is available. WEBSSH_REQUIRE_PYTHON turns the skip into
-// a failure, so a CI job that is meant to compare cannot pass silently.
+// python runs the oracle with args and returns its output. It runs only
+// in the live mode of internal/oracletest: replay skips with the reason,
+// and a missing interpreter fails the test.
 func python(t *testing.T, stdin []byte, args ...string) []byte {
 	t.Helper()
-	p := pythonPath()
-	if _, err := os.Stat(p); err != nil {
-		if os.Getenv("WEBSSH_REQUIRE_PYTHON") != "" {
-			t.Fatalf("Python oracle required but missing: %v", err)
-		}
-		t.Skip("no Python interpreter for the oracle (set WEBSSH_PYTHON)")
-	}
+	p := oracletest.RequireLive(t).Python
 	cmd := exec.CommandContext(t.Context(), p, append([]string{"-I", "testdata/oracle.py"}, args...)...) // #nosec G204 -- fixed test interpreter and script
 	cmd.Env = []string{"LANG=C.UTF-8", "PATH=" + os.Getenv("PATH")}
 	cmd.Stdin = bytes.NewReader(stdin)

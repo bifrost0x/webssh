@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bifrost0x/webssh/internal/oracletest"
 	"github.com/bifrost0x/webssh/internal/pyjson"
 	"github.com/bifrost0x/webssh/internal/settings"
 )
@@ -19,6 +20,7 @@ import (
 // as app/__init__.py runs them, against migrateRuntimeFeatures and
 // migrateFeaturePolicies for the same document and environment. Revisions
 // are random on both sides, so a generated one compares as "generated".
+// The Python answers are recorded in testdata/python_appsettings.json.
 const pythonAppSettings = `
 import json, sys
 from pathlib import Path
@@ -82,6 +84,15 @@ func appSettingsCases(dir string) []appSettingsCase {
 	return out
 }
 
+// appSettingsInput is the input document of a case as a map.
+func appSettingsInput(c appSettingsCase) map[string]any {
+	input := map[string]any{}
+	if c.Doc != nil {
+		_ = json.Unmarshal([]byte(*c.Doc), &input)
+	}
+	return input
+}
+
 // normalise parses a document, drops schema_version (the step always
 // writes it) and marks revisions that are not in the input as generated.
 func normaliseAppSettings(t *testing.T, doc string, input map[string]any) string {
@@ -102,43 +113,44 @@ func normaliseAppSettings(t *testing.T, doc string, input map[string]any) string
 
 func TestAppSettingsStartupMigrationsMatchPython(t *testing.T) {
 	t.Parallel()
-	python, err := filepath.Abs("../../../.venv/bin/python")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(python); err != nil {
-		python = "/usr/bin/python"
-		if _, err := os.Stat(python); err != nil {
-			t.Skip("no Python virtual environment")
+	cases := appSettingsCases("")
+	rec := oracletest.Open(t, "testdata/python_appsettings.json")
+	want := oracletest.Ask(t, rec, "startup_migrations", cases, func(r oracletest.Release) []*string {
+		dir := t.TempDir()
+		in, _ := json.Marshal(appSettingsCases(dir))
+		cmd := exec.CommandContext(t.Context(), r.Python, "-c", pythonAppSettings) // #nosec G204 -- test oracle
+		cmd.Dir = r.Root
+		cmd.Env = append(os.Environ(), "DATA_DIR="+filepath.Join(dir, "data"), "SECRET_KEY=differential-test-only-0123456789abcdef", "PYTHONDONTWRITEBYTECODE=1")
+		cmd.Stdin = bytes.NewReader(in)
+		raw, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("python: %v\n%s", err, raw)
 		}
-	}
-	dir := t.TempDir()
-	cases := appSettingsCases(dir)
-	in, _ := json.Marshal(cases)
-	cmd := exec.CommandContext(t.Context(), python, "-c", pythonAppSettings)
-	cmd.Dir = "../../.."
-	cmd.Env = append(os.Environ(), "DATA_DIR="+filepath.Join(dir, "data"), "SECRET_KEY=differential-test-only-0123456789abcdef", "PYTHONDONTWRITEBYTECODE=1")
-	cmd.Stdin = bytes.NewReader(in)
-	raw, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("python: %v\n%s", err, raw)
-	}
-	_, result, ok := strings.Cut(string(raw), "\n--result--\n")
-	if !ok {
-		t.Fatalf("python output: %s", raw)
-	}
-	var want []*string
-	if err := json.Unmarshal([]byte(result), &want); err != nil {
-		t.Fatal(err)
-	}
-	if len(want) != len(cases) {
-		t.Fatalf("%d results for %d cases", len(want), len(cases))
-	}
+		_, result, ok := strings.Cut(string(raw), "\n--result--\n")
+		if !ok {
+			t.Fatalf("python output: %s", raw)
+		}
+		var docs []*string
+		if err := json.Unmarshal([]byte(result), &docs); err != nil {
+			t.Fatal(err)
+		}
+		if len(docs) != len(cases) {
+			t.Fatalf("%d results for %d cases", len(docs), len(cases))
+		}
+		// Revisions are random; the normalised form compares them as
+		// "generated".
+		for i, c := range cases {
+			if docs[i] != nil {
+				norm := normaliseAppSettings(t, *docs[i], appSettingsInput(c))
+				docs[i] = &norm
+			}
+		}
+		return docs
+	})
 	for i, c := range cases {
-		input := map[string]any{}
+		input := appSettingsInput(c)
 		members := []pyjson.Member{}
 		if c.Doc != nil {
-			_ = json.Unmarshal([]byte(*c.Doc), &input)
 			members, _ = pyjson.Members(jsontext.Value(*c.Doc))
 		}
 		env := settings.Environment{Values: c.Values, Explicit: c.Explicit}
@@ -148,7 +160,7 @@ func TestAppSettingsStartupMigrationsMatchPython(t *testing.T) {
 		if want[i] == nil {
 			t.Fatalf("case %d: Python wrote no file", i)
 		}
-		if exp := normaliseAppSettings(t, *want[i], input); got != exp {
+		if exp := *want[i]; got != exp {
 			t.Errorf("case %d (doc %v, env %v %v, vaults %v):\n got %s\nwant %s", i, c.Doc != nil, c.Explicit, c.Values, c.Vaults, got, exp)
 		}
 		for _, name := range generated {

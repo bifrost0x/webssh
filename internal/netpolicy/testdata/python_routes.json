@@ -1,0 +1,45 @@
+{
+  "oracle": {
+    "python": "CPython 3.15.2 (python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd)",
+    "recorder": "scripts/record-python-oracles.sh",
+    "source": "7d8831353ec44d7e5ed7b3e7644fa09c608bfc01 (app/ tree 5d2f7fa38f4d2e3d02ea6a84b1f76b47b8b2c57d)"
+  },
+  "routes": {
+    "crafted": {
+      "100.100.1.1": "tailscale0",
+      "100.100.1.2": "lo",
+      "100.100.100.10": "tailscale0",
+      "100.100.100.2": "tailscale0",
+      "100.64.0.1": null,
+      "100.80.0.7": "lan0",
+      "100.90.0.1": null,
+      "100.91.0.1": null,
+      "127.0.0.1": "lo",
+      "192.0.2.10": "lan0",
+      "198.51.100.1": null,
+      "8.8.8.8": null,
+      "::ffff:100.100.100.10": null,
+      "fd7a:115c:a1e0::1": "tailscale0",
+      "fd7a:115c:a1e0::9": "tailscale0",
+      "fd7a:115c:a1e0:b1a::a00:1": "tailscale0"
+    },
+    "lab": {
+      "100.100.1.1": "tailscale0",
+      "100.100.1.2": "tailscale0",
+      "100.100.100.10": "tailscale0",
+      "100.100.100.2": "lo",
+      "100.64.0.1": "tailscale0",
+      "100.80.0.7": "tailscale0",
+      "100.90.0.1": "tailscale0",
+      "100.91.0.1": "tailscale0",
+      "127.0.0.1": "lo",
+      "192.0.2.10": "eth0",
+      "198.51.100.1": "eth0",
+      "8.8.8.8": "eth0",
+      "::ffff:100.100.100.10": null,
+      "fd7a:115c:a1e0::1": null,
+      "fd7a:115c:a1e0::9": null,
+      "fd7a:115c:a1e0:b1a::a00:1": null
+    }
+  }
+}
