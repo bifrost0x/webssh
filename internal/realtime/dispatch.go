@@ -81,6 +81,19 @@ func (s *Server) keepaliveRoute() protocol.Route {
 // dispatch handles one text frame. A returned error is a protocol
 // violation and closes the connection; request errors become results.
 func (s *Server) dispatch(ep endpoint, data []byte) error {
+	return s.dispatchHeld(ep, data, func() {})
+}
+
+// dispatchHeld is dispatch for a frame whose read reservation release
+// gives back: once the request is answered, also when its handler runs
+// asynchronously.
+func (s *Server) dispatchHeld(ep endpoint, data []byte, release func()) error {
+	async := false
+	defer func() {
+		if !async {
+			release()
+		}
+	}()
 	env, err := protocol.DecodeEnvelope(data)
 	if err != nil {
 		return err
@@ -106,7 +119,11 @@ func (s *Server) dispatch(ep endpoint, data []byte) error {
 		s.invoke(ep, env, route)
 		return nil
 	}
-	if !ep.async(func() { s.invoke(ep, env, route) }) {
+	async = ep.async(func() {
+		defer release()
+		s.invoke(ep, env, route)
+	})
+	if !async {
 		e := fault.New(fault.RateLimited, "Too many requests are in progress.")
 		e.RetryAfter = asyncRetry
 		s.reply(ep, env, nil, e)
