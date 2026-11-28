@@ -36,8 +36,6 @@ var updateCLI = flag.Bool("update-cli", false, "record the Python CLI answers in
 
 const cliVectors = "testdata/cli_python.json"
 
-const repoRoot = "../.."
-
 type cliStep struct {
 	Args  []string `json:"args"`
 	Stdin string   `json:"stdin,omitzero"`

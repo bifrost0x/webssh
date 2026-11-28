@@ -25,8 +25,6 @@ import (
 // testdata/python_vectors.jsonl, and -update rewrites them.
 var update = flag.Bool("update", false, "rewrite the Python vectors in testdata from the oracle")
 
-const repoRoot = "../.."
-
 type request struct {
 	Op     string              `json:"op"`
 	Limits map[string][2]int64 `json:"limits,omitempty"`

@@ -21,8 +21,6 @@ import (
 // the live oracle (WEBSSH_PYTHON_ORACLE=live, internal/oracletest).
 var update = flag.Bool("update", false, "rewrite the Python vectors in testdata from the oracle")
 
-const repoRoot = "../.."
-
 type oracle struct {
 	in  *json.Encoder
 	out *bufio.Scanner

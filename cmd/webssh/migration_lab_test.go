@@ -45,6 +45,8 @@ type refuseHostKey struct{}
 func (refuseHostKey) HostKey(context.Context, client.HostKeyPrompt) (bool, error) { return false, nil }
 func (refuseHostKey) Banner(context.Context, client.BannerPrompt) (bool, error)   { return true, nil }
 
+const repoRoot = "../.."
+
 // labVariantCommand runs tests.golden.lab_variant of this repository with
 // the application of the Python release on the import path.
 func labVariantCommand(t *testing.T, dir, labJSON string) *exec.Cmd {
