@@ -151,9 +151,13 @@ type Reachability struct {
 	// Tailnet reaches direct Tailscale SSH hosts; nil: they are probed as
 	// any other host, so a tailnet node reads as blocked while the route
 	// restriction holds.
-	Tailnet  TailnetProber
-	now      func() time.Time
-	deadline time.Duration
+	Tailnet TailnetProber
+	// Permitted is permission.hosts.reachability (D-27). Last shows a
+	// cached answer only while it holds and drops it once it is withdrawn;
+	// nil leaves the check to the caller.
+	Permitted Permission
+	now       func() time.Time
+	deadline  time.Duration
 
 	mu         sync.Mutex
 	generation uint64
@@ -226,6 +230,18 @@ func (r *Reachability) Clear() {
 // Last returns the last check for the current hosts without contacting
 // any host, or nil results.
 func (r *Reachability) Last(ctx context.Context, p principal.Principal) (map[string]any, error) {
+	if r.Permitted != nil {
+		ok, err := r.Permitted(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			r.mu.Lock()
+			delete(r.cache, p.UserID)
+			r.mu.Unlock()
+			return map[string]any{"results": nil}, nil
+		}
+	}
 	hosts, err := r.Inventory(ctx, p.UserID)
 	if err != nil {
 		return nil, err

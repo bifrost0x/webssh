@@ -240,3 +240,34 @@ func TestDiscoveryHTTP(t *testing.T) {
 		t.Fatalf("scan after shutdown: %v", err)
 	}
 }
+
+// Withdrawing permission.hosts.discovery takes effect on scans that are
+// already running or done: view and cancel are refused, the scan stops and
+// its results are dropped.
+func TestDiscoveryPermissionWithdrawnStopsScans(t *testing.T) {
+	prober := &fakeProber{script: map[string]string{"10.0.0.1:22": "ssh:SSH-2.0-OpenSSH_9.6\r\n"}}
+	permitted := true
+	h := &DiscoveryHTTP{
+		Scanner: &Scanner{Dialer: prober, interval: time.Millisecond}, Enabled: true,
+		Permitted: func(context.Context, principal.Principal) (bool, error) { return permitted, nil },
+		Known:     func(context.Context, int64) (map[string]bool, error) { return map[string]bool{}, nil },
+		Limiter:   &fakeLimiter{},
+	}
+	user := principaltest.User(1)
+	status, body := discoveryRequest(t, h, &user, "POST", "/api/discovery/scans", `{"network":"10.0.0.1"}`)
+	if status != 202 {
+		t.Fatalf("start: %d %v", status, body)
+	}
+	id := body["id"].(string)
+	waitScan(t, h.Scanner, user, id)
+	permitted = false
+	for _, method := range []string{"GET", "DELETE"} {
+		if status, body := discoveryRequest(t, h, &user, method, "/api/discovery/scans/"+id, ""); status != 404 || body["code"] != "not_found" {
+			t.Fatalf("%s after withdrawal: %d %v", method, status, body)
+		}
+	}
+	permitted = true
+	if status, body := discoveryRequest(t, h, &user, "GET", "/api/discovery/scans/"+id, ""); status != 404 {
+		t.Fatalf("results kept after withdrawal: %d %v", status, body)
+	}
+}
