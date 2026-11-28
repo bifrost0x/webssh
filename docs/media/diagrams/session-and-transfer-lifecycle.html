@@ -12,15 +12,14 @@
 <body>
 <!--
 Source brief
-- Verified from: app/socket_events.py, app/socket_capacity.py, app/ssh_manager.py,
-  app/paramiko_channels.py, app/transfer_routes.py, app/transfer_manager.py,
-  app/binary_transfer.py, app/runtime_lifecycle.py, app/sftp_handler.py,
-  app/network_policy.py.
+- Implemented in: internal/realtime, internal/terminal, internal/ssh/client,
+  internal/transfer, internal/files, internal/files/sftp, internal/jobs,
+  internal/quota, internal/netpolicy.
 - Type: architecture with two ordered lifecycle bands.
-- Claim: terminal data uses authenticated, same-origin Socket.IO control and a
+- Claim: terminal data uses an authenticated, same-origin WebSocket and a
   process-local SSH session. Browser uploads/downloads use user-bound single-use
   HTTP tokens and bounded streaming; server-to-server copies use a bounded
-  background job. File bodies do not use Socket.IO.
+  background job. File bodies do not use the WebSocket.
 - Omitted: individual event names, numeric defaults, preview/editor operations.
 - Colors follow the arctic-ice theme used by the README captures and logo.
 - Font note: WebSSH's named Sora and IBM Plex Mono fonts are not vendored;
@@ -28,7 +27,7 @@ Source brief
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" role="img" aria-labelledby="session-and-transfer-lifecycle-title session-and-transfer-lifecycle-desc">
   <title id="session-and-transfer-lifecycle-title">WebSSH session and transfer lifecycle</title>
-  <desc id="session-and-transfer-lifecycle-desc">Architecture showing realtime terminal traffic through an authenticated, same-origin Socket.IO connection and process-local SSH state. Browser uploads and downloads use owned transfer records, single-use HTTP tokens and bounded streams; server-to-server copies branch to a bounded background job without a browser HTTP token. File bodies never use Socket.IO.</desc>
+  <desc id="session-and-transfer-lifecycle-desc">Architecture showing realtime terminal traffic through an authenticated, same-origin WebSocket connection and process-local SSH state. Browser uploads and downloads use owned transfer records, single-use HTTP tokens and bounded streams; server-to-server copies branch to a bounded background job without a browser HTTP token. File bodies never use the WebSocket.</desc>
   <defs>
     <style>
       .title{font:700 32px "Segoe UI Variable Display","Segoe UI",Arial,sans-serif;fill:#edf4f5}
@@ -63,12 +62,12 @@ Source brief
   <text class="meta" x="195" y="318" text-anchor="middle">output</text>
   <rect x="380" y="220" width="280" height="118" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
   <text class="eyebrow" x="398" y="246" fill="#48a3b1">ADMISSION</text>
-  <text class="node" x="520" y="274" text-anchor="middle">Authenticated Socket.IO</text>
+  <text class="node" x="520" y="274" text-anchor="middle">Authenticated WebSocket</text>
   <text class="meta" x="520" y="298" text-anchor="middle">login · same origin</text>
   <text class="meta" x="520" y="318" text-anchor="middle">generation · quota</text>
   <rect x="720" y="220" width="300" height="118" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
   <text class="eyebrow" x="738" y="246" fill="#48a3b1">PROCESS STATE</text>
-  <text class="node" x="870" y="274" text-anchor="middle">SSHSession + Paramiko</text>
+  <text class="node" x="870" y="274" text-anchor="middle">SSH session (Go)</text>
   <text class="meta" x="870" y="298" text-anchor="middle">owned channel</text>
   <text class="meta" x="870" y="318" text-anchor="middle">bounded reader</text>
   <rect x="1100" y="220" width="270" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
@@ -122,7 +121,7 @@ Source brief
   <text class="label" x="884" y="404" fill="#80969b" text-anchor="start">OWNED SESSION</text>
   <path d="M195 480 V400 H560 V366" fill="none" stroke="#db7376" stroke-width="2" stroke-linejoin="round" stroke-dasharray="7 6"/>
   <path d="M550 350 l20 24 M570 350 l-20 24" stroke="#db7376" stroke-width="3" stroke-linecap="round"/>
-  <text class="label" x="378" y="392" fill="#db7376" text-anchor="middle">NO FILE BODY OVER SOCKET.IO</text>
+  <text class="label" x="378" y="392" fill="#db7376" text-anchor="middle">NO FILE BODY OVER THE WEBSOCKET</text>
   <line x1="40" y1="836" x2="1400" y2="836" stroke="#2b4248" stroke-width="1"/>
   <line x1="56" y1="865" x2="86" y2="865" stroke="#48a3b1" stroke-width="2.5"/>
   <text class="legend" x="98" y="870">data path</text>

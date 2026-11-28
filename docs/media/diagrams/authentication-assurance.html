@@ -12,9 +12,9 @@
 <body>
 <!--
 Source brief
-- Verified from: app/auth_assurance.py, app/step_up.py, app/step_up_routes.py,
-  app/account_step_up_routes.py, app/transport_security.py, app/totp_routes.py,
-  app/webauthn_routes.py, app/oidc_routes.py, app/ldap_routes.py, app/github_auth_routes.py.
+- Implemented in: internal/auth, internal/auth/stepup, internal/auth/local,
+  internal/auth/totp, internal/auth/webauthn, internal/auth/oidc,
+  internal/auth/ldap, internal/auth/github, internal/session, internal/httpapi.
 - Type: flowchart. Primary story: verified primary identity produces conservative
   assurance; unmet MFA continues through an owned factor; Recovery is restricted;
   sensitive administrator and account actions require a one-use action-bound grant,

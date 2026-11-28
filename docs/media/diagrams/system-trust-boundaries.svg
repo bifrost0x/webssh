@@ -42,7 +42,7 @@
   <text class="meta" x="397.5" y="390" text-anchor="middle">client IP: opt-in</text>
   <rect x="556" y="290" width="254" height="118" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
   <text class="eyebrow" x="574" y="316">APP</text>
-  <text class="node" x="683" y="346" text-anchor="middle">Flask + Socket.IO</text>
+  <text class="node" x="683" y="346" text-anchor="middle">HTTP + WebSocket</text>
   <text class="meta" x="683" y="370" text-anchor="middle">login · MFA · step-up</text>
   <text class="meta" x="683" y="390" text-anchor="middle">CSRF · same origin · owner</text>
   <rect x="866" y="290" width="238" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>
