@@ -12,13 +12,13 @@
 <body>
 <!--
 Source brief
-- Verified from: app/__init__.py (ProxyFix only with TRUSTED_PROXIES),
-  app/transport_security.py, app/socket_events.py, app/ssh_manager.py,
-  app/network_policy.py, app/overview_routes.py, app/discovery_routes.py,
-  app/automation_transport.py, app/credential_service.py, app/credential_crypto.py,
-  app/smb_network_policy.py, app/audit_logger.py, docs/wiki/Architecture-and-Runtime-Lifecycle.md.
+- Implemented in: internal/httpapi (client address only with TRUSTED_PROXIES
+  and TRUSTED_PROXY_CIDRS, CSRF, origin), internal/realtime, internal/session,
+  internal/auth, internal/ssh/client, internal/netpolicy, internal/hostops,
+  internal/automation, internal/vault, internal/keyring, internal/files/smb,
+  internal/audit, docs/wiki/Architecture-and-Runtime-Lifecycle.md.
 - Pattern/type: secure paved road / architecture.
-- Primary nodes: browser, optional reverse proxy, Flask/Socket.IO, runtime workers,
+- Primary nodes: browser, optional reverse proxy, HTTP and WebSocket server, runtime workers,
   persisted state, network policy, SSH/SFTP targets, optional identity provider,
   optional SMB shares, audit log.
 - Boundary claim: every outbound SSH, SFTP, probe and SMB connection passes the
@@ -70,7 +70,7 @@ Source brief
   <text class="meta" x="397.5" y="390" text-anchor="middle">client IP: opt-in</text>
   <rect x="556" y="290" width="254" height="118" rx="12" fill="#0f2327" stroke="#48a3b1" stroke-width="2"/>
   <text class="eyebrow" x="574" y="316">APP</text>
-  <text class="node" x="683" y="346" text-anchor="middle">Flask + Socket.IO</text>
+  <text class="node" x="683" y="346" text-anchor="middle">HTTP + WebSocket</text>
   <text class="meta" x="683" y="370" text-anchor="middle">login · MFA · step-up</text>
   <text class="meta" x="683" y="390" text-anchor="middle">CSRF · same origin · owner</text>
   <rect x="866" y="290" width="238" height="118" rx="12" fill="#10191c" stroke="#2a3d42" stroke-width="1.5"/>

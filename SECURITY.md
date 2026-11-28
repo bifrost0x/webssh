@@ -42,10 +42,10 @@ Instead, report vulnerabilities via:
 
 | Feature | Implementation |
 |---------|----------------|
-| Password Hashing | bcrypt with auto-generated salt |
-| Session Management | Flask-Login with secure cookies |
+| Password Hashing | Argon2id with a random salt; bcrypt hashes taken over from 3.3 are verified and rehashed at the next sign-in |
+| Session Management | Server-side sessions; the cookie holds a random token, the database only its MAC |
 | WebSocket Auth | Session-based with ownership verification |
-| CSRF Protection | Flask-WTF tokens on all forms |
+| CSRF Protection | Token bound to the browser and the session, required on every state-changing request |
 | Rate Limiting | 5 login attempts per minute per IP |
 | Passkeys | Optional WebAuthn with exact RP ID/origin checks, user verification, and one-use server-side challenges |
 | TOTP | Optional authenticator-app MFA with per-user encrypted secrets, bounded enrollment, and replay-safe time-step consumption |
@@ -59,10 +59,9 @@ Instead, report vulnerabilities via:
 
 | Data | Protection |
 |------|------------|
-| SSH Private Keys | Encrypted at rest using Fernet (AES-128-CBC + HMAC) |
+| SSH Private Keys | Encrypted at rest with AES-256-GCM, each ciphertext bound to its record |
 | GitHub Client Secret | Encrypted in the application database with a domain-separated key derived from the persisted `SECRET_KEY`; write-only in the Admin API |
-| Key Derivation | PBKDF2-SHA256 with 600,000 iterations |
-| Per-User Isolation | Keys derived from `SECRET_KEY + user_id` |
+| Key Derivation | HKDF-SHA256 from `SECRET_KEY` and the keyring material, one subkey per purpose ([ADR 0008](docs/adr/0008-keyring-for-secrets-at-rest.md)) |
 | File Permissions | Keys stored with 0600, directories with 0700 |
 
 ### Network Security
@@ -72,7 +71,7 @@ Instead, report vulnerabilities via:
 | Security Headers | CSP, X-Frame-Options (DENY), X-Content-Type-Options, HSTS |
 | CORS | Configurable, safe localhost-only default if unset |
 | WebSocket | Authenticated, room-based isolation per user |
-| Reverse Proxy | ProxyFix support via `TRUSTED_PROXIES` |
+| Reverse Proxy | Forwarded headers trusted only with `TRUSTED_PROXIES` and from `TRUSTED_PROXY_CIDRS` |
 | Request Bodies | Unsafe control requests are capped at 64 KiB before CSRF parsing; Recovery uses 4 KiB, WebAuthn uses 64 KiB, and SFTP uploads retain their separate streaming limit |
 
 ### SSH Security
@@ -83,7 +82,7 @@ Instead, report vulnerabilities via:
 | Host Key Logging | New keys logged with fingerprint for audit |
 | Connection Isolation | Session ownership verified on every operation |
 | Credential Handling | Cleared from memory after use |
-| Stored-key work | Connection attempt rate limiting precedes stored-key PBKDF2/decryption; encrypted key stores have atomic count and byte growth limits |
+| Stored-key work | Connection attempt rate limiting precedes stored-key decryption; encrypted key stores have atomic count and byte growth limits |
 | Remote clipboard | Persistent-tmux OSC 52 requests require a fresh, visible browser action; replayed and plain-SSH output cannot write the clipboard |
 | Live output | Per-browser ACK accounting with per-socket, per-user, and global bounds applies SSH backpressure; a stalled browser is disconnected without closing its SSH/tmux session |
 
@@ -116,11 +115,11 @@ Instead, report vulnerabilities via:
 
 3. **Bootstrap the first administrator**
    ```bash
-   flask --app start:app create-admin --username admin
+   webssh create-admin --username admin
    ```
    With Docker Compose, run:
    ```bash
-   docker compose exec webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
+   docker compose exec -it webssh /app/webssh create-admin --username admin
    ```
    The command prompts without echoing the password. This explicit path is
    recommended for production, where public registration is disabled. If an
@@ -148,10 +147,10 @@ Instead, report vulnerabilities via:
 
 9. **Create and verify offline backups**
    ```bash
-   flask --app start:app backup create \
-     --destination /secure-backups/webssh.zip \
+   webssh backup create \
+     --destination /secure-backups/webssh.tar \
      --confirm-offline
-   flask --app start:app backup verify /secure-backups/webssh.zip
+   webssh backup verify /secure-backups/webssh.tar
    ```
    Stop every WebSSH process using `DATA_DIR` before create, restore, or
    rotation operations. Native exports exclude saved remote passwords, legacy
@@ -167,17 +166,16 @@ Instead, report vulnerabilities via:
 
 10. **Rotate only a persisted application secret**
     ```bash
-    flask --app start:app rotate-secret-key --confirm-offline
+    webssh rotate-secret-key --confirm-offline
     ```
-    The command first creates and verifies a private internal recovery snapshot,
-    stages and verifies every
-    re-encrypted SSH key, and publishes `DATA_DIR/secret_key` last. It refuses
-    an externally supplied secret that is missing from or differs from the
-    persisted file. Rotate secrets owned by an external secret manager through
-    that manager and a separately controlled key migration. Internal recovery
-    snapshots for rotation and failed restores retain encrypted credentials for
-    rollback. They are not downloadable backup exports; restrict access and
-    manage their retention and cleanup separately.
+    The command refuses while a server uses `DATA_DIR`, while `SECRET_KEY`
+    comes from the environment and while 3.3 data still exists (run
+    `webssh legacy purge` first after an upgrade from 3.3). Before it changes
+    anything it writes a recovery archive and prints its path; it then seals
+    every stored secret again in one database transaction. Rotate secrets
+    owned by an external secret manager through that manager and a separately
+    controlled key migration. Recovery archives retain encrypted credentials
+    for rollback; restrict access and manage their retention and cleanup.
 
 11. **Keep a tested local break-glass administrator**
     OIDC and LDAP remain deployment-gated, while GitHub App authentication is
@@ -218,39 +216,37 @@ and MFA-reset operations still revoke the target account as documented.
 
 ### Container Security
 
-The Docker image runs as non-root user (`appuser`) with:
-- Application code owned by root and read-only for the service user; only the
-  data and recovery directories are writable
+The Docker image is built `FROM scratch` and runs as the non-root user
+1000:1000 with:
+- One statically linked program, `/app/webssh`, owned by root and read-only
+  for the service user; only the data and recovery directories are writable
+- No shell, no package manager and no interpreter; `/bin/sh` and `python`
+  are links to the program that accept only the health checks and helper
+  commands of the 3.3 Compose files
 - Restricted file permissions (0700 on data directories)
 - No unnecessary capabilities
-- Health check enabled
-- Gunicorn 26 `gthread` runtime with exactly one worker and a bounded,
-  configurable `GUNICORN_THREADS` value (default: 64)
-- Native Socket.IO threading only; no Eventlet worker or monkey patching path
-
-`greenlet` can appear in the universal lock only because SQLAlchemy declares it
-as a platform-marked transitive dependency. It is not a selectable WebSSH
-runtime and must not be removed independently; changing that dependency graph
-requires its own reviewed SQLAlchemy upgrade.
+- Health check enabled (`/app/webssh healthcheck`)
+- A separate `debug` variant with a BusyBox shell for troubleshooting only
 
 Keep the previously deployed immutable image by its recorded registry digest
-as the image-only rollback artifact for the Gunicorn-26 runtime. Redeploy it
-with the existing `/app/data` volume and verify readiness, login, stored keys,
-terminal, and SFTP. Successful publishes retain a verified
-`image-release-<commit-sha>` Actions artifact containing the immutable registry
-reference for 90 days. Preserve the deployed revision's artifact before an
-upgrade. No persistent-data rollback or format rewrite is required.
+as the image-only rollback artifact. Redeploy it with the existing
+`/app/data` volume and verify readiness, login, stored keys, terminal, and
+SFTP. Successful publishes retain a verified `image-release-<commit-sha>`
+Actions artifact containing the immutable registry reference for 90 days.
+Preserve the deployed revision's artifact before an upgrade. The way back
+from 3.4 to 3.3 is described in
+[Upgrading to 3.4](docs/wiki/Upgrading-to-3.4.md#way-back-to-33).
 
 ## Known Limitations
 
 | Limitation | Description | Mitigation |
 |------------|-------------|------------|
-| In-Memory Rate Limiting | Bypassed with multiple workers | Use single worker (default) |
+| In-Memory Rate Limiting | Counters live in the process and start empty after a restart | Exactly one server per `DATA_DIR`, enforced by a lock |
 | TOFU Host Keys | Unknown keys require explicit confirmation before authentication | Verify the fingerprint through a trusted channel before accepting it |
 | Deployment-gated identity features | Passkeys, TOTP, OIDC, and LDAP require both deployment allowance and Admin activation | Configure exact origins/provider settings, validate readiness, and keep local administrator recovery tested before activation |
 | Runtime GitHub authentication | A bad callback, revoked client secret, missing organization permission, or GitHub outage can prevent provider login | Configure the GitHub App in the Admin Panel, use the exact callback, validate organization policy, and keep local administrator recovery tested |
 | OIDC claim semantics vary | `acr` and `amr` do not have universal assurance meanings | Allowlist only values documented and tested for the configured provider; otherwise WebSSH treats the login as basic assurance |
-| In-process live sessions | Active SSH state requires exactly one WebSSH worker | Keep the documented single `gthread` worker and use the normal session lifetime instead of policy-triggered mass termination |
+| In-process live sessions | Active SSH state lives in the one WebSSH process | Run exactly one server per `DATA_DIR` and use the normal session lifetime instead of policy-triggered mass termination |
 
 ## Security Audit
 

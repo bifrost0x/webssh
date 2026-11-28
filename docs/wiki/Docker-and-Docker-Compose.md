@@ -10,8 +10,8 @@ Keep custom write paths such as `DATA_DIR` or `BACKUP_TEMP_DIR` on a mounted
 volume.
 
 Upgrading from 3.3 (the Python image)? Read [Upgrading to 3.4](Upgrading-to-3.4)
-first and use the 3.4 Compose file: the 3.3 file calls Python in its health
-check.
+first. The 3.3 Compose file keeps working with 3.4; the 3.4 file drops its
+health check override and the Gunicorn and Redis options.
 
 ## Commands in the container
 
@@ -137,8 +137,10 @@ application can cancel readers and transfers before Docker sends a forced kill.
 
 The image runs `/app/webssh healthcheck` every 30 seconds. It asks `/ready` on
 `127.0.0.1:$PORT` and then on port 5000, follows no redirects and ignores
-`HTTP_PROXY`. The Compose file needs no `healthcheck:` block of its own; a block
-copied from 3.3 that calls `python` keeps the container `unhealthy`. `/ready`
+`HTTP_PROXY`. The Compose file needs no `healthcheck:` block of its own. The
+blocks of the 3.3 Compose files (`python -c …` and the `CMD-SHELL` loop) still
+work, because the image answers exactly these commands with the same probe; a
+health check that runs any other program reports `unhealthy`. `/ready`
 waits for:
 
 - the application runtime to accept work;
@@ -179,7 +181,8 @@ root-owned `/app/recovery` and startup now reports `Permission denied`, stop the
 service before repairing it. An empty recovery volume may be removed and
 recreated by Compose. Never remove a non-empty recovery volume during or after
 an interrupted restore; preserve its contents and have an administrator change
-the volume root to the image's `appuser` UID/GID with mode `0700` instead.
+the volume root to the image's user (1000:1000 unless overridden) with mode
+`0700` instead.
 
 Use an immutable version tag or digest for controlled production rollouts.
 

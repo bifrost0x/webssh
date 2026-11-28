@@ -16,14 +16,14 @@ does not replace their copyright, permission or attribution notices.
 | --- | --- |
 | xterm.js | `static/vendor/xterm/LICENSE` |
 | xterm fit and search addons | `static/vendor/xterm/LICENSE-addon-fit`, `static/vendor/xterm/LICENSE-addon-search` |
-| Socket.IO client | `static/vendor/socketio/LICENSE` |
 | highlight.js | `static/vendor/highlight/LICENSE` |
 | Material Icons | `static/vendor/material-icons/LICENSE` |
 | Simple Icons platform logos (CC0-1.0, except the marks listed below) | `static/icons/platforms/LICENSE.md`, upstream and per-logo sources in `static/icons/platforms/provenance.json` |
 | Simple Icons service logos (CC0-1.0) | `static/icons/services/LICENSE.md`, upstream and per-logo sources in `static/icons/services/provenance.json` |
 | Terminal fonts | `static/vendor/terminal-fonts/licenses/` and its `README.md` |
 | Website code graph (vis-network) | `site/vendor/vis-network-9.1.6/LICENSE-APACHE-2.0`, `LICENSE-MIT` |
-| go-smb2 (SMB client of the Go backend, modified fork, BSD-2-Clause) | `third_party/go-smb2/LICENSE`, repeated in `THIRD-PARTY-NOTICES`; changes in `third_party/README.md` |
+| Go modules linked into the binary | `THIRD-PARTY-NOTICES`, checked against the build list by `go test ./internal/architecture` |
+| go-smb2 (SMB client, modified fork, BSD-2-Clause) | `third_party/go-smb2/LICENSE`, repeated in `THIRD-PARTY-NOTICES`; changes in `third_party/README.md` |
 
 The platform logos come from [Simple Icons](https://github.com/simple-icons/simple-icons),
 which releases its icon set under CC0-1.0. Some marks carry the license of
@@ -42,12 +42,13 @@ them only to identify the software a host runs, which implies no endorsement.
 
 `npm run vendor` copies the frontend library license notices from the locked
 upstream packages alongside their assets. `npm run vendor:check` verifies those
-copies. The application image includes `LICENSE`, `THIRD-PARTY-NOTICES`,
-`NOTICE`, and the runtime vendor notices under `/app`. The website code graph
-ships its own vendor directory, the project notices at its root, and the
-Material Icons license alongside the font in `assets/material-icons-LICENSE`.
-Installed Python packages retain their license
-metadata in the image's Python environment.
+copies. The application image includes `LICENSE`, `THIRD-PARTY-NOTICES` and
+`NOTICE` under `/app`; the frontend vendor notices are embedded in the binary
+with their assets and served below `/static/vendor/`. Release binaries ship
+`LICENSE`, `NOTICE` and `THIRD-PARTY-NOTICES` in their archive. The website
+code graph ships its own vendor directory, the project notices at its root,
+and the Material Icons license alongside the font in
+`assets/material-icons-LICENSE`.
 
 The CI license check validates the project declarations and complete retained
 license texts. The container checks verify that the runtime notices match the

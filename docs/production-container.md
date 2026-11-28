@@ -132,16 +132,16 @@ sidecar. Production target policy and interface checks still apply.
 
 ## Disposable runtime verification
 
-`scripts/check_hardened_container.py --image IMAGE --revision COMMIT_SHA
---platform linux/amd64` exercises the established production setup, optional
-hardening, hardening with a custom UID/GID, transfer path and larger tmpfs, and
-the shipped Unraid template (its user, restrictions, variables and paths) on
-folders owned by `nobody:users` with mode `0777`. It checks
-revision, readiness, filesystem/process restrictions, a 160 MiB scratch write,
-online backup, offline CLI backup, restore, SQLite integrity, restart and graceful
-shutdown. Use `linux/arm64` for the other release platform. `--profile` can select
-`compatible`, `hardened`, `hardened-custom` or `unraid`; CI/release checks run all four.
-The helper uses anonymous volumes and uniquely labelled disposable containers,
-and checks ownership before removing them. It does not use deployment data.
+`tests/image/check.sh` builds the `release` and `debug` targets of the
+`Dockerfile` (`BUILD=0` checks existing `webssh:local` and
+`webssh:local-debug` images instead) and runs every container with the
+restrictions of `docker-compose.hardened.yml`. It checks the image
+configuration, the missing shell, readiness, file system and process
+restrictions, ownership and modes for the default user, a custom UID/GID and
+the shipped Unraid template, the Compose files and the 3.3 command forms, the
+production profile, offline CLI backup and restore, restart and graceful
+shutdown. `TRIVY=1` adds the Trivy scan. It creates only containers, volumes
+and Compose projects named `webssh-go-check*` and removes them again; it does
+not use deployment data.
 Image scanning and immutable release-candidate checks remain required. These
 are functional smoke tests, not proof for every custom image or workload.

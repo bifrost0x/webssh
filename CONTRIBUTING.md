@@ -13,26 +13,28 @@ Thanks for your interest in contributing! This project is open to contributions 
 
 ### Prerequisites
 
-- Python 3.11+
-- Docker (optional, for testing)
+- Go at the version named by the `go` line in `go.mod`
+- Node.js for the JavaScript and browser tests
+- Python 3 for the repository tool tests in `tests/` and `scripts/` (not needed to build or run WebSSH)
+- Docker (optional, for the image and the test lab)
 
 ### Local Development Setup
 
-Follow [Development and Testing](docs/wiki/Development-and-Testing.md) for
-hash-locked dependency installation, an isolated test data directory, Node tooling,
-and the required checks. Python 3.11 is the minimum; the production container uses
-Python 3.15. Browser assets are already vendored, so no frontend build is needed
-to start the application.
+Follow [Development and Testing](docs/wiki/Development-and-Testing.md) for the
+build, an isolated test data directory, Node tooling and the required checks.
+Browser assets are already vendored; `scripts/stage-webassets.sh` copies them
+into the binary before `go build ./cmd/webssh`.
 
 ### Project Structure
 
 | Path | Purpose |
 |---|---|
-| `app/` | Flask application, authenticated Socket.IO handlers, SSH/SFTP and storage services |
-| `static/`, `templates/` | Vanilla JavaScript, CSS, vendored browser assets and Jinja templates |
-| `config.py`, `start.py` | Configuration and application entry point |
-| `tests/` | Python, JavaScript, browser and disposable-server integration tests |
-| `scripts/` | Dependency locks, vendor updates, CI and release checks |
+| `cmd/webssh` | The program: wiring and subcommands (`webssh help`) |
+| `internal/` | One package per capability: HTTP API and pages (`internal/httpapi/pages/*.gohtml`), realtime transport, SSH/SFTP/SMB, storage, migration |
+| `static/` | Vanilla JavaScript, CSS and vendored browser assets, embedded into the binary |
+| `tests/` | JavaScript, browser, image and lab tests, repository tool tests, golden data of the 3.3 release |
+| `scripts/` | Asset staging, vendor updates, CI and release checks |
+| `Dockerfile`, `docker-compose*.yml`, `deploy/` | Container image and Compose files |
 | `docs/wiki/` | Versioned user and operator documentation |
 | `site/` | Public project website |
 
@@ -89,11 +91,14 @@ See the [planning and release workflow](docs/project-planning.md) for the lightw
 
 #### Code Style
 
-**Python:**
-- Follow PEP 8
-- Use meaningful variable names
-- Keep functions focused and small
-- Lean code: no unnecessary comments, docstrings only where logic is non-obvious
+**Go:**
+- `gofmt`, `go vet`, `staticcheck` and `gosec` must be clean on `./cmd/... ./internal/...`
+- One package per capability, at most 400 lines per production file; `go test ./internal/architecture` checks the [package map](docs/architecture/go-package-map.md) and the import rules
+- Use meaningful names and keep functions focused and small
+- Lean code: no unnecessary comments, doc comments where the logic is non-obvious
+
+**Python (repository tools only):**
+- `scripts/*.py` and the tool tests in `tests/` use the standard library and pytest
 - Lint with `python -m ruff check .`; ruff is part of `requirements-test.txt` and configured in `ruff.toml`
 
 **JavaScript:**
@@ -118,8 +123,8 @@ Write clear commit messages:
 ```
 Add SFTP directory creation support
 
-- Implement mkdir operation in sftp_handler.py
-- Add socket event handler for create_directory
+- Implement mkdir in internal/files
+- Add the files.mkdir realtime event
 - Update file manager UI with create folder button
 
 Fixes #42
@@ -138,7 +143,7 @@ This project handles SSH credentials. When contributing, please:
 - Never log passwords or private keys
 - Validate and sanitize all user input
 - Check session ownership before operations
-- Use parameterized queries (SQLAlchemy handles this)
+- Use parameterized SQL queries; never build SQL from input
 - Clear sensitive data from memory when done
 - Consider path traversal in file operations
 
@@ -184,6 +189,7 @@ Before submitting:
 4. **Test with Docker** - Ensure containerized deployment works
    ```bash
    docker build -t webssh:test .
+   docker build --target debug -t webssh:test-debug .   # variant with BusyBox for debugging
    docker run -p 5000:5000 -e SECRET_KEY=$(openssl rand -hex 32) -e CORS_ORIGINS=http://localhost:5000 webssh:test
    ```
 
@@ -199,7 +205,7 @@ Documentation improvements are always welcome:
 
 Areas where contributions are especially welcome:
 
-- [ ] Automated tests (pytest, playwright)
+- [ ] Automated tests (Go, Playwright)
 - [ ] Internationalization (new language translations)
 - [ ] Accessibility improvements
 - [ ] Performance optimizations

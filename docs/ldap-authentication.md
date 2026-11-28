@@ -38,7 +38,7 @@ the provided `docker-compose.ldap.yml` overlay with the same WebSSH image; no
 - LDAP sessions are revalidated every five minutes by default. A disabled
   feature, directory outage, missing user, changed stable ID, locked account
   excluded by the configured filter, or certificate failure revokes the user's
-  browser, Socket.IO, SSH, transfer, and pooled-connection access.
+  browser, realtime, SSH, transfer, and pooled-connection access.
 
 ## Information you need from the directory administrator
 

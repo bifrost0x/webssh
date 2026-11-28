@@ -12,15 +12,13 @@
 <body>
 <!--
 Source brief
-- Verified from: app/admin_backup.py, app/backup_manager.py,
-  app/backup_operations.py, app/backup_coordination.py, app/restore_service.py,
-  app/online_backup.py, app/runtime_lifecycle.py, app/step_up.py,
-  app/storage_utils.py, docs/wiki/Backup-Restore-and-Secret-Rotation.md.
+- Implemented in: internal/backup, internal/auth/stepup, internal/jobs,
+  cmd/webssh (backup commands), docs/wiki/Backup-Restore-and-Secret-Rotation.md.
 - Type: flowchart with two ordered outcomes.
 - Claim: both operations require exact administrator authorization; online
   backup coordinates a consistent snapshot without maintenance mode. Restore
   stages in a private, quota-bounded namespace on durable recovery storage
-  (BACKUP_RECOVERY_DURABLE) and validates before exact confirmation, maintenance
+  (BACKUP_TEMP_DIR) and validates before exact confirmation, maintenance
   mode and atomic activation.
 - Omitted: archive field names, endpoint names, and configurable quota values.
 - Colors follow the arctic-ice theme used by the README captures and logo.

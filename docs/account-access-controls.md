@@ -15,7 +15,7 @@ repairing their authentication factors.
 
 Revocation removes the selected authentication records and associated step-up
 state. Existing cookies, including Remember me, cannot recreate them. Attached
-Socket.IO connections are disconnected, and their transfers, permission jobs
+realtime connections are disconnected, and their transfers, permission jobs
 and connection attempts are cancelled. Login-bound credential access, manual
 automation and discovery are revoked. Ongoing HTTP server-operation channels
 recheck their captured authentication record and stop when it is revoked.

@@ -425,11 +425,24 @@ def test_current_runtime_and_proxy_contracts_are_documented():
         assert proxy_name in proxy
 
 
-def test_supported_python_versions_are_documented():
-    """Development docs retain both the support floor and production runtime."""
-    development = wiki_text("Development-and-Testing.md")
-    assert "Python 3.11" in development
-    assert "Python 3.15" in development
+def test_go_toolchain_is_documented_through_go_mod():
+    """The docs point at go.mod for the Go version instead of repeating it."""
+    go_version = re.search(
+        r"^go (\d+\.\d+(?:\.\d+)?)$",
+        (ROOT / "go.mod").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    ).group(1)
+    readme = README.read_text(encoding="utf-8")
+    assert "img.shields.io/github/go-mod/go-version/bifrost0x/webssh" in readme
+    for path in (
+        README,
+        ROOT / "CONTRIBUTING.md",
+        WIKI / "Development-and-Testing.md",
+        WIKI / "Installation-from-Source.md",
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert "go.mod" in text, path.name
+        assert go_version not in text, path.name
 
 
 def test_ldap_documentation_selects_overlay_for_every_helper_command():
@@ -518,53 +531,6 @@ def test_wiki_documents_command_set_lifecycle_and_upgrade_behavior():
         'legacy startup commands',
     ):
         assert phrase in documentation
-
-
-def workflow_job(workflow, job_name):
-    marker = f"\n  {job_name}:\n"
-    _, separator, remainder = workflow.partition(marker)
-    assert separator, f"missing workflow job: {job_name}"
-
-    next_job = re.search(r"(?m)^  [a-zA-Z0-9_-]+:\s*$", remainder)
-    return remainder[:next_job.start()] if next_job else remainder
-
-
-def test_python_runtime_contract_stays_synchronized():
-    minimum_python = "3.11"
-    production_python = "3.15"
-    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    workflow = (ROOT / ".github/workflows/tests.yml").read_text(encoding="utf-8")
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-
-    pytest_job = workflow_job(workflow, "pytest-shards")
-    matrix_entries = re.findall(
-        r"- python_version: '([^']+)'\s+check_name: ([^\n]+)",
-        pytest_job,
-    )
-
-    assert dockerfile.startswith(
-        f"FROM python:{production_python}-slim@sha256:"
-    )
-    assert matrix_entries == [
-        (production_python, "pytest (Python 3.15 shard 1/3)"),
-        (production_python, "pytest (Python 3.15 shard 2/3)"),
-        (production_python, "pytest (Python 3.15 shard 3/3)"),
-    ]
-    assert "python-version: ${{ matrix.python_version }}" in pytest_job
-    compatibility_job = workflow_job(workflow, "dependency-locks")
-    assert f"python-version: '{minimum_python}'" in compatibility_job
-    assert f"Run Python {minimum_python} minimum compatibility" in compatibility_job
-    assert "python -m pytest" in compatibility_job
-    assert "tests/test_auth.py" in compatibility_job
-    assert "tests/test_smb_protocol_contract.py" in compatibility_job
-
-    for job_name in ("ssh-integration", "browser-e2e-shards"):
-        assert (
-            f"python-version: '{production_python}'"
-            in workflow_job(workflow, job_name)
-        )
-
-    assert f"python-{minimum_python}+" in readme
 
 
 def test_readme_exposes_the_public_product_entry_points():
@@ -708,24 +674,21 @@ def test_quick_start_docker_run_matches_the_homelab_compose_file():
     assert volumes == compose_volumes
 
 
-def test_development_start_instructions_are_consistent_and_name_the_terminal_limit():
-    """Both start guides use development defaults; start.py needs a terminal."""
-    for name, start in (
-        ('Development-and-Testing.md', 'start.py'),
-        ('Installation-from-Source.md', 'webssh serve'),
-    ):
+def test_development_start_instructions_use_the_go_program_in_debug_mode():
+    """Both start guides run `webssh serve` with development defaults."""
+    for name in ('Development-and-Testing.md', 'Installation-from-Source.md'):
         page = (WIKI / name).read_text(encoding='utf-8')
         blocks = re.findall(r'```(?:bash|powershell)\n(.*?)```', page, re.DOTALL)
         starts = [
             block for block in blocks
-            if start in block and 'DEPLOYMENT_PROFILE=production' not in block
+            if re.search(r'(?m)^[./\w-]*webssh serve\b', block)
+            and 'DEPLOYMENT_PROFILE=production' not in block
         ]
         assert starts, name
         for block in starts:
             assert re.search(r"DEBUG ?= ?'?True", block), (name, block)
     development = (WIKI / 'Development-and-Testing.md').read_text(encoding='utf-8')
-    assert 'interactive terminal' in development
-    assert '--workers 1' in development
+    assert 'start.py' not in development
 
 
 def load_tests(loader, tests, pattern):

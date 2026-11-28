@@ -18,8 +18,8 @@ built for M1 are in [m1-contracts.md](m1-contracts.md), those of M2 in
 Packages whose name ends in `test` hold test doubles. The architecture
 tests allow only test files to import them.
 
-The Go backend is built in parallel to the Python application and has its
-own data model ([ADR 0002](../adr/0002-parallel-build-with-one-time-migration.md)).
+The Go server was built in parallel to the Python application, replaced it in
+3.4 and has its own data model ([ADR 0002](../adr/0002-parallel-build-with-one-time-migration.md)).
 Existing installations are carried over once, automatically, by
 `internal/migrate/legacy` ([ADR 0007](../adr/0007-legacy-data-migration.md)).
 
@@ -136,7 +136,7 @@ secret through `internal/keyring`
 the legacy automation vault in `internal/vault` is the one runtime reader of
 a legacy format, because only the user's passphrase opens it.
 
-There is no local file backend: the Python application has none. The file
+There is no local file backend: the Python application had none. The file
 backend registry allows one to be added later as `internal/files/local`.
 
 ## Extension points
@@ -173,13 +173,16 @@ Wiring across kinds:
 
 ## Python modules by Go package
 
-This list exists so that nothing is forgotten. It is not a template: each
+The Python sources are those of the last Python release, `v3.3.1` (until
+the tag exists, commit `7d883135`; maintained on the branch `release/3.3`);
+they are no longer on `main`. This list exists so that
+nothing is forgotten. It is not a template: each
 capability is re-designed from its user-facing behaviour and data
 contracts, and each old rule is classified as keep, fix, drop or decide
 ([ADR 0006](../adr/0006-capability-driven-redesign.md)). Data of every
 module is also read by `internal/migrate/legacy`.
 
-| Go package | Python today (`app/` unless noted) | Phase |
+| Go package | Python in 3.3 (`app/` unless noted) | Phase |
 |---|---|---|
 | `cmd/webssh`, `internal/config` | `config.py`, `start.py`, `entrypoint.sh` | B1 |
 | `internal/httpapi` | `__init__.py`, `health.py`, `static_delivery.py`, `request_limits.py`, `transport_security.py`, `decorators.py`, `auth_redirects.py` | B1 |

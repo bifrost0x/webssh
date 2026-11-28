@@ -62,8 +62,9 @@ the 3.3 data once and leaves it unchanged, everyone signs in once, and the
 image no longer contains a shell or Python. Read
 [Upgrading to 3.4](Upgrading-to-3.4) before the update: it lists every
 visible change, the way back to 3.3 and how to remove the 3.3 data
-afterwards. Update the Compose file together with the image; the 3.3 file
-has a Python health check that keeps 3.4 `unhealthy`.
+afterwards. Update the Compose file together with the image. The 3.3 file
+still starts 3.4 and its health check still works, but overrides that start
+a shell, `gunicorn` or `python` do not.
 
 ## v3.3.0 compatibility
 
