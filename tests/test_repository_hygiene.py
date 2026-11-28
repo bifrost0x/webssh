@@ -6,11 +6,15 @@ from pathlib import Path
 import pytest
 
 from scripts.check_repository_hygiene import (
+    MAX_TRACKED_BYTES,
     asset_violations,
     attribution_violations,
+    binary_violations,
     commit_violations,
     content_violations,
     forbidden_path_reason,
+    home_path_violations,
+    main,
     pull_request_scan,
     pull_request_violations,
     scan_repository,
@@ -72,6 +76,53 @@ def test_instruction_and_workstation_markers_are_rejected(tmp_path, content):
     target = tmp_path / 'notes.md'
     target.write_text(content, encoding='utf-8')
     assert content_violations(tmp_path, ['notes.md'])
+
+
+@pytest.mark.parametrize('head, kind', [
+    (b'\x7fELF\x02\x01\x01' + b'\0' * 64, 'ELF'),
+    (b'\xcf\xfa\xed\xfe' + b'\0' * 64, 'Mach-O'),
+    (b'\xca\xfe\xba\xbe' + b'\0' * 64, 'Mach-O'),
+    (b'MZ' + b'\0' * 0x3a + (0x80).to_bytes(4, 'little') + b'\0' * 0x40 + b'PE\0\0' + b'\0' * 16, 'PE'),
+])
+def test_executables_are_rejected(tmp_path, head, kind):
+    (tmp_path / 'webssh').write_bytes(head)
+    assert [(item.path, item.reason) for item in binary_violations(tmp_path, ['webssh'])] == [
+        ('webssh', f'executable binary ({kind})'),
+    ]
+
+
+def test_large_files_are_rejected_unless_listed(tmp_path):
+    (tmp_path / 'assets').mkdir()
+    for name in ('assets/big.gif', 'assets/webssh-themes.gif'):
+        with (tmp_path / name).open('wb') as handle:
+            handle.truncate(MAX_TRACKED_BYTES + 1)
+    (tmp_path / 'small.bin').write_bytes(b'MZ not an executable')
+    paths = ['assets/big.gif', 'assets/webssh-themes.gif', 'small.bin']
+    assert [(item.path, item.reason) for item in binary_violations(tmp_path, paths)] == [
+        ('assets/big.gif', 'file larger than 5 MiB'),
+    ]
+
+
+# The rejected paths are assembled at run time so that this file itself
+# holds none.
+@pytest.mark.parametrize('content, rejected', [
+    ('python = "/home/' + 'example/src/webssh/.venv/bin/python"', True),
+    ('cd /Users/' + 'someone/projects/webssh', True),
+    ('C:\\Users\\' + 'someone\\webssh\\.venv', True),
+    ('DATA_DIR=/home/fixture/data', False),
+    ('the remote home /home/testuser/.ssh/authorized_keys', False),
+    ('~/.local/bin and /home are fine', False),
+])
+def test_home_directory_paths_are_rejected(tmp_path, content, rejected):
+    (tmp_path / 'x_test.go').write_text(content, encoding='utf-8')
+    assert bool(home_path_violations(tmp_path, ['x_test.go'])) == rejected
+
+
+def test_gitleaks_option_fails_with_the_secret_scan(tmp_path):
+    failing = tmp_path / 'gitleaks'
+    failing.write_text('#!/bin/sh\nexit 3\n', encoding='utf-8')
+    failing.chmod(0o700)
+    assert main(['--gitleaks', str(failing)]) != 0
 
 
 def test_assets_must_have_a_public_reference(tmp_path):

@@ -8,6 +8,7 @@ import os
 import re
 import hashlib
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -82,6 +83,31 @@ MEDIA_SUFFIXES = frozenset({
     '.mp3', '.ogg', '.wav', '.vtt', '.woff', '.woff2',
 })
 TEXT_AUDIT_SUFFIXES = frozenset({'.adoc', '.html', '.md', '.rst', '.txt'})
+
+# Tracked files are sources. Build output such as `go build ./cmd/webssh`
+# and other executables, and files above the size limit, stay out of the
+# history; reviewed exceptions are listed by path.
+MAX_TRACKED_BYTES = 5 * 1024 * 1024
+LARGE_FILE_EXCEPTIONS = frozenset({
+    # Theme demo of the README and the project site.
+    'assets/webssh-themes.gif',
+})
+MACH_O_MAGICS = frozenset({
+    b'\xfe\xed\xfa\xce', b'\xfe\xed\xfa\xcf', b'\xce\xfa\xed\xfe', b'\xcf\xfa\xed\xfe',
+    b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca',
+})
+
+# Made-up account names that tests and examples use in absolute paths. A
+# path below any other home directory is a workstation path. Add a name
+# only for synthetic test data.
+SYNTHETIC_HOME_NAMES = frozenset({
+    '..', 'agentuser', 'deploy', 'developer', 'dir', 'fixture', 'me',
+    'pwuser', 'testuser', 'u', 'user', 'x',
+})
+HOME_PATH = re.compile(
+    r'(?<![\w.~-])(?:/home|/Users)/([A-Za-z0-9._-]+)/'
+    r'|\b[A-Za-z]:\\Users\\([^\\\s"\'`]+)\\'
+)
 
 AGENT_INSTRUCTION_MARKERS = (
     re.compile(
@@ -287,6 +313,51 @@ def asset_violations(root: Path, paths: list[str]) -> list[Violation]:
     return violations
 
 
+def executable_format(head: bytes) -> str | None:
+    """Name the executable format of a file that starts with head."""
+    if head.startswith(b'\x7fELF'):
+        return 'ELF'
+    if head[:4] in MACH_O_MAGICS:
+        return 'Mach-O'
+    if head.startswith(b'MZ') and len(head) >= 0x40:
+        offset = int.from_bytes(head[0x3c:0x40], 'little')
+        if head[offset:offset + 4] == b'PE\0\0':
+            return 'PE'
+    return None
+
+
+def binary_violations(root: Path, paths: list[str]) -> list[Violation]:
+    violations = []
+    for value in paths:
+        path = root / value
+        if path.is_symlink() or not path.is_file():
+            continue
+        if path.stat().st_size > MAX_TRACKED_BYTES and value not in LARGE_FILE_EXCEPTIONS:
+            violations.append(Violation(value, f'file larger than {MAX_TRACKED_BYTES // (1024 * 1024)} MiB'))
+        with path.open('rb') as handle:
+            head = handle.read(4096)
+        if (kind := executable_format(head)) is not None:
+            violations.append(Violation(value, f'executable binary ({kind})'))
+    return violations
+
+
+def home_path_violations(root: Path, paths: list[str]) -> list[Violation]:
+    violations = []
+    for value in paths:
+        path = root / value
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_TRACKED_BYTES:
+            continue
+        data = path.read_bytes()
+        if b'\0' in data[:8192]:
+            continue
+        text = data.decode('utf-8', errors='replace')
+        for match in HOME_PATH.finditer(text):
+            if (match.group(1) or match.group(2)) not in SYNTHETIC_HOME_NAMES:
+                violations.append(Violation(value, 'absolute path into a home directory'))
+                break
+    return violations
+
+
 def scan_repository(root: Path = ROOT, paths: list[str] | None = None) -> list[Violation]:
     paths = tracked_paths(root) if paths is None else paths
     violations = [
@@ -296,6 +367,8 @@ def scan_repository(root: Path = ROOT, paths: list[str] | None = None) -> list[V
     ]
     violations.extend(content_violations(root, paths))
     violations.extend(asset_violations(root, paths))
+    violations.extend(binary_violations(root, paths))
+    violations.extend(home_path_violations(root, paths))
     return sorted(set(violations))
 
 
@@ -365,7 +438,22 @@ def main(argv: list[str] | None = None) -> int:
         metavar='RANGE',
         help='also check commits in this range, e.g. origin/main..HEAD',
     )
+    parser.add_argument(
+        '--gitleaks',
+        metavar='BINARY',
+        help='also run the secret scan with its canaries '
+             '(scripts/check_repository_secrets.py) with this gitleaks binary',
+    )
     args = parser.parse_args(argv)
+
+    if args.gitleaks:
+        scan = subprocess.run(
+            [sys.executable, str(ROOT / 'scripts' / 'check_repository_secrets.py'), '--gitleaks', args.gitleaks],
+            check=False,
+        )
+        if scan.returncode:
+            print('Repository hygiene check failed: the secret scan reported findings or could not run.')
+            return scan.returncode
 
     violations = scan_repository()
     if args.commits:
@@ -380,7 +468,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(
         'Repository hygiene check passed: no forbidden paths, internal notes, '
-        'orphaned media or assistant attribution found.'
+        'orphaned media, binaries, home paths or assistant attribution found.'
     )
     return 0
 
