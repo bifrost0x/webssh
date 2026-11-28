@@ -3,6 +3,7 @@ package sftp
 import (
 	"context"
 	"path"
+	"strings"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/files"
@@ -43,14 +44,76 @@ func (t *tree) visit(e files.Entry, depth int) error {
 	return nil
 }
 
-func (b *Backend) rootEntry(ctx context.Context, p string) (files.Entry, error) {
+// anchor pins the canonical form (REALPATH) of the root of a tree
+// operation. SFTP v3 has no *at() requests: every request names a path
+// and the server resolves links in its directories. A local user who can
+// rename inside the tree may therefore replace a directory by a link
+// while the operation runs. Before the operation enters a directory, and
+// before it removes an object, the directory's canonical path must still
+// be the root's canonical path plus the relative path; otherwise the
+// operation stops with SOURCE_CHANGED. What remains is the round trip
+// between the check and the request it guards.
+type anchor struct {
+	root, real string
+}
+
+// want is the canonical path p must have: p is the root, below it, or
+// the root's parent.
+func (a anchor) want(p string) string {
+	switch {
+	case p == a.root:
+		return a.real
+	case p == path.Dir(a.root):
+		return path.Dir(a.real)
+	case a.root == "/":
+		return path.Join(a.real, p)
+	}
+	return path.Join(a.real, strings.TrimPrefix(p, a.root))
+}
+
+// check verifies that dir still resolves to its canonical path.
+func (b *Backend) check(ctx context.Context, a anchor, dir string) error {
 	rctx, cancel := b.request(ctx, false)
 	defer cancel()
+	got, err := b.w.resolve(rctx, dir)
+	if err != nil {
+		return b.mapErr(err, false)
+	}
+	if got != a.want(dir) {
+		return fault.New(fault.SourceChanged, "")
+	}
+	return nil
+}
+
+// rootEntry pins the root and describes it. REALPATH comes first: a root
+// replaced by a link afterwards is seen by LSTAT as a link.
+func (b *Backend) rootEntry(ctx context.Context, p string) (files.Entry, anchor, error) {
+	rctx, cancel := b.request(ctx, false)
+	defer cancel()
+	real, err := b.w.resolve(rctx, p)
+	if err != nil {
+		return files.Entry{}, anchor{}, b.mapErr(err, false)
+	}
 	a, err := b.w.lstat(rctx, p)
+	if err != nil {
+		return files.Entry{}, anchor{}, b.mapErr(err, false)
+	}
+	return entryOf(p, path.Base(p), a), anchor{root: p, real: real}, nil
+}
+
+// fresh describes a listed directory again right before the operation
+// enters it: the type READDIR reported may be stale.
+func (b *Backend) fresh(ctx context.Context, e files.Entry) (files.Entry, error) {
+	if !e.IsDir || e.IsSymlink {
+		return e, nil
+	}
+	rctx, cancel := b.request(ctx, false)
+	defer cancel()
+	a, err := b.w.lstat(rctx, e.Path)
 	if err != nil {
 		return files.Entry{}, b.mapErr(err, false)
 	}
-	return entryOf(p, path.Base(p), a), nil
+	return entryOf(e.Path, e.Name, a), nil
 }
 
 // Walk implements files.Backend: parents before children, server order,
@@ -59,7 +122,7 @@ func (b *Backend) Walk(ctx context.Context, p string, bud files.Budget, fn func(
 	if b.r.cause() != nil {
 		return fault.New(fault.SourceUnavailable, "")
 	}
-	root, err := b.rootEntry(ctx, p)
+	root, anc, err := b.rootEntry(ctx, p)
 	if err != nil {
 		return err
 	}
@@ -69,6 +132,11 @@ func (b *Backend) Walk(ctx context.Context, p string, bud files.Budget, fn func(
 		if err := ctx.Err(); err != nil {
 			return b.mapErr(err, false)
 		}
+		if depth > 0 {
+			if e, err = b.fresh(ctx, e); err != nil {
+				return err
+			}
+		}
 		if err := t.visit(e, depth); err != nil {
 			return err
 		}
@@ -77,6 +145,9 @@ func (b *Backend) Walk(ctx context.Context, p string, bud files.Budget, fn func(
 		}
 		if !e.IsDir || e.IsSymlink {
 			return nil
+		}
+		if err := b.check(ctx, anc, e.Path); err != nil {
+			return err
 		}
 		kids, err := b.readAll(ctx, e.Path, t.meta)
 		if err != nil {
@@ -102,7 +173,7 @@ func (b *Backend) Remove(ctx context.Context, p string, recursive bool, bud file
 	if p == "/" {
 		return fault.New(fault.FilePermissionDenied, "")
 	}
-	root, err := b.rootEntry(ctx, p)
+	root, anc, err := b.rootEntry(ctx, p)
 	if err != nil {
 		return err
 	}
@@ -120,10 +191,13 @@ func (b *Backend) Remove(ctx context.Context, p string, recursive bool, bud file
 	if err := t.visit(root, 0); err != nil {
 		return err
 	}
-	return b.removeTree(ctx, t, root, 0)
+	return b.removeTree(ctx, t, anc, root, 0)
 }
 
-func (b *Backend) removeTree(ctx context.Context, t *tree, dir files.Entry, depth int) error {
+func (b *Backend) removeTree(ctx context.Context, t *tree, anc anchor, dir files.Entry, depth int) error {
+	if err := b.check(ctx, anc, dir.Path); err != nil {
+		return err
+	}
 	kids, err := b.readAll(ctx, dir.Path, t.meta)
 	if err != nil {
 		return err
@@ -132,20 +206,31 @@ func (b *Backend) removeTree(ctx context.Context, t *tree, dir files.Entry, dept
 		if err := ctx.Err(); err != nil {
 			return b.mapErr(err, false)
 		}
+		if k, err = b.fresh(ctx, k); err != nil {
+			return err
+		}
 		if err := t.visit(k, depth+1); err != nil {
 			return err
 		}
 		if k.IsDir && !k.IsSymlink {
-			if err := b.removeTree(ctx, t, k, depth+1); err != nil {
+			if err := b.removeTree(ctx, t, anc, k, depth+1); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := b.removeOne(ctx, k); err != nil {
+		if err := b.removeChecked(ctx, anc, k); err != nil {
 			return err
 		}
 	}
-	return b.removeOne(ctx, dir)
+	return b.removeChecked(ctx, anc, dir)
+}
+
+// removeChecked removes e after its directory passed the check.
+func (b *Backend) removeChecked(ctx context.Context, anc anchor, e files.Entry) error {
+	if err := b.check(ctx, anc, path.Dir(e.Path)); err != nil {
+		return err
+	}
+	return b.removeOne(ctx, e)
 }
 
 // removeOne deletes one object: RMDIR for a directory, REMOVE otherwise.
