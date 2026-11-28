@@ -109,8 +109,24 @@ func unhex(t *testing.T, s string) []byte {
 	return b
 }
 
+// inventoryFirstRowFix is the one declared change to a collector program
+// of the Python release (fix): its awk programs for systemd units and
+// Docker containers indexed their arrays by stored before it was set, so
+// the first row was stored under "" and the END loop, counting from 0,
+// emitted an empty row in its place. Both programs now start stored at 0.
+var inventoryFirstRowFix = []struct{ before, after string }{
+	{"    systemd_units)\n      awk '\n        NF {", "    systemd_units)\n      awk '\n        BEGIN { stored = 0 }\n        NF {"},
+	{"    docker_containers)\n      awk '\n        NF && stored < 50 {", "    docker_containers)\n      awk '\n        BEGIN { stored = 0 }\n        NF && stored < 50 {"},
+}
+
 func TestOracleProgramsAreThoseOfPython(t *testing.T) {
 	c := readOracle(t)
+	for _, fix := range inventoryFirstRowFix {
+		if strings.Count(c.Scripts["runtime_inventory"], fix.before) != 1 {
+			t.Fatalf("the Python inventory program no longer holds %q", fix.before)
+		}
+		c.Scripts["runtime_inventory"] = strings.Replace(c.Scripts["runtime_inventory"], fix.before, fix.after, 1)
+	}
 	for name, got := range map[string]string{
 		"insights_stats": insightsStatsProgram, "insights_diagnostics": insightsDiagnosticsProgram,
 		"runtime_inventory": inventoryProgram, "herdr_probe": HerdrProbeCommand,

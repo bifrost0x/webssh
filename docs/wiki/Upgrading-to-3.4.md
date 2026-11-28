@@ -179,6 +179,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 |---|---|---|---|
 | U61 | New tmux session names are at most 190 characters, so a reattach never refuses a name WebSSH created. Reattaching without a display name keeps the stored one. | fix | Nothing. |
 | U62 | A connection that keeps sending terminal input or acknowledgements the server drops unread (for a closed terminal or out of order, more than 1024 frames in a row) is closed with code 4002 and reconnects. | new | Nothing. |
+| U99 | Server management lists every systemd service and Docker container of the host. 3.3 dropped the first one of each list and showed, for example, "Showing 3 of 4 containers". | fix | Nothing. |
 
 ### Files, SMB and transfers
 

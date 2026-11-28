@@ -42,6 +42,7 @@ capture_inventory_stdout() {
       ;;
     systemd_units)
       awk '
+        BEGIN { stored = 0 }
         NF {
           total++
           if ($3 == "active") active++
@@ -94,6 +95,7 @@ capture_inventory_stdout() {
       ;;
     docker_containers)
       awk '
+        BEGIN { stored = 0 }
         NF && stored < 50 {
           separator = index($0, "|")
           if (separator) {

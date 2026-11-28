@@ -16,7 +16,9 @@ import (
 
 // The fixed collector programs, byte for byte those of the Python release
 // (app/session_insights.py, app/runtime_inventory.py; the differential
-// test compares them). They travel on stdin and are run by sh.
+// test compares them), except that the inventory keeps the first systemd
+// unit and container (inventoryFirstRowFix in the tests). They travel on
+// stdin and are run by sh.
 var (
 	//go:embed scripts/insights_stats.sh
 	insightsStatsProgram string
