@@ -296,9 +296,10 @@
             if (button.dataset.autoTab === name) button.setAttribute('aria-current', 'page');
             else button.removeAttribute('aria-current');
         });
-        ['library', 'runbooks', 'runs', 'schedules', 'credentials'].forEach(key => { if ($(`auto-${key}`)) $(`auto-${key}`).hidden = key !== name; });
         const panel = $(`auto-${name}`);
-        if (panel && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const entering = Boolean(panel?.hidden);
+        ['library', 'runbooks', 'runs', 'schedules', 'credentials'].forEach(key => { if ($(`auto-${key}`)) $(`auto-${key}`).hidden = key !== name; });
+        if (panel && window.AutomationTools.animatePanelEntry({entering, reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches})) {
             panel.getAnimations?.().forEach(animation => animation.cancel());
             panel.animate?.([{opacity:.5,transform:'translateY(10px)'},{opacity:1,transform:'translateY(0)'}],{duration:220,easing:'cubic-bezier(.16,1,.3,1)'});
         }

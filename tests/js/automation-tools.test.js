@@ -51,3 +51,18 @@ test('the maintenance template runs exactly the probe the server parses', () => 
     assert.equal(template.steps.at(-1).command, probe);
     assert.equal(template.steps.at(-1).sudo, false);
 });
+
+test('a section animates only when it becomes visible', () => {
+    const {animatePanelEntry} = Tools;
+    assert.equal(animatePanelEntry({entering: true, reducedMotion: false}), true);
+    // The library is already shown when deleteBook returns to it; replaying
+    // the animation there left its search unfocusable in Chromium.
+    assert.equal(animatePanelEntry({entering: false, reducedMotion: false}), false);
+    assert.equal(animatePanelEntry({entering: true, reducedMotion: true}), false);
+    assert.equal(animatePanelEntry({entering: undefined, reducedMotion: false}), false);
+    const source = fs.readFileSync(path.join(__dirname, '../../static/js/automation.js'), 'utf8');
+    const tab = source.slice(source.indexOf('function tab(name)'), source.indexOf('function iconButton('));
+    assert.ok(tab.indexOf('const entering = Boolean(panel?.hidden)') < tab.indexOf('.hidden = key !== name'),
+        'tab() must read the visibility of the section before it switches sections');
+    assert.match(tab, /animatePanelEntry\(\{entering,/);
+});
