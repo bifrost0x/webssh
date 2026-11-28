@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { test, expect } = require('playwright/test');
-const { openWorkspace, login, assertNoExternalRequests } = require('./helpers');
+const { openWorkspace, login, assertNoExternalRequests, reviewScreenshot } = require('./helpers');
 const { applyCaptureTheme, captureOutputPath } = require('./capture-output');
 
 for (const width of [390, 1920]) {
@@ -145,7 +145,7 @@ for (const theme of ['glass','retro','solar','paper','noir','arctic-ice','rose-g
                     await expect(page.locator(`#context${other}Tab`)).toBeInViewport();
                 }
                 expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${theme} ${width} ${name}`).toBe(true);
-                if (width === 360 || width === 3440) await page.screenshot({path:testInfo.outputPath(`${theme}-${width}-${name}.png`),animations:'disabled'});
+                if (width === 360 || width === 3440) await reviewScreenshot(page, {path:testInfo.outputPath(`${theme}-${width}-${name}.png`),animations:'disabled'});
             }
             if (!fullJourney) continue;
             await page.locator('#sessionNotepad').fill(`Retained ${theme} ${width}`);

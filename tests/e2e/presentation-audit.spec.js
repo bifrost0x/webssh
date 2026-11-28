@@ -1,5 +1,5 @@
 const {test, expect} = require('playwright/test');
-const {login, installExternalRequestGuard, assertNoExternalRequests} = require('./helpers');
+const {login, installExternalRequestGuard, assertNoExternalRequests, reviewScreenshot} = require('./helpers');
 const themes = ['werkbank', 'glass', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'obsidian', 'retro', 'cyberpunk-neon', 'emerald-matrix'];
 const languages = ['en', 'vi', 'de', 'fr', 'es', 'zh'];
 
@@ -20,7 +20,7 @@ async function records(page) {
 }
 async function capture(page, name) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.screenshot({path: test.info().outputPath( `${name}.png`), animations: 'disabled'});
+    await reviewScreenshot(page, {path: test.info().outputPath(`${name}.png`), animations: 'disabled'});
 }
 async function contrast(page, selector, backgroundSelector) {
     return page.evaluate(({selector, backgroundSelector}) => {
