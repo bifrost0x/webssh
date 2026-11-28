@@ -145,7 +145,7 @@ func (s *Service) check(ctx context.Context, userID int64) error {
 	if err != nil {
 		return err
 	}
-	if st.identity.Provider != s.Provider || entry.Subject != st.identity.Subject {
+	if st.identity.Provider != s.Provider || !entry.matches(st.identity) {
 		return errMismatch
 	}
 	err = s.DB.Write(ctx, func(tx *store.Tx) error {

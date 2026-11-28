@@ -35,12 +35,33 @@ const (
 //  4. Python str.strip(); empty, longer than 512 code points or containing
 //     NUL is rejected.
 func CanonicalSubject(raw []byte) (string, error) {
+	s, _, err := canonicalSubject(raw)
+	return s, err
+}
+
+// Subjects returns the subject of a new identity binding for raw and,
+// when it differs, the subject the Python release stored for it. The
+// Python form of a value with a NUL byte is read from the C string before
+// the NUL, so different values (binary objectGUIDs starting with a digit
+// and NUL) shared it; the subject of a new binding is then "b64:" plus
+// the whole value. legacy is "" when both are the same.
+func Subjects(raw []byte) (subject, legacy string, err error) {
+	s, truncated, err := canonicalSubject(raw)
+	if err != nil || !truncated {
+		return s, "", err
+	}
+	return "b64:" + base64.RawURLEncoding.EncodeToString(raw), s, nil
+}
+
+// canonicalSubject is CanonicalSubject; truncated reports that the
+// subject was read from the C string of a value with a NUL byte.
+func canonicalSubject(raw []byte) (string, bool, error) {
 	cstr := raw
 	if before, _, ok := bytes.Cut(raw, []byte{0}); ok {
 		cstr = before
 	}
 	var s string
-	text := true
+	text, truncated := true, len(cstr) < len(raw)
 	switch {
 	case string(cstr) == "TRUE":
 		s = "True"
@@ -49,10 +70,14 @@ func CanonicalSubject(raw []byte) (string, error) {
 	default:
 		if n, ok := pyLongBase0(string(cstr)); ok {
 			s = n.String()
-		} else if utf8.Valid(raw) {
+			break
+		}
+		// The whole value is used: as text, or as "b64:" plus the base64
+		// form, which Python does not strip.
+		truncated = false
+		if utf8.Valid(raw) {
 			s = string(raw)
 		} else {
-			// Python strips only text; the base64 form is used as is.
 			s = "b64:" + base64.RawURLEncoding.EncodeToString(raw)
 			text = false
 		}
@@ -61,9 +86,9 @@ func CanonicalSubject(raw []byte) (string, error) {
 		s = strings.TrimFunc(s, pyIsSpace)
 	}
 	if s == "" || utf8.RuneCountInString(s) > maxSubjectRunes || strings.ContainsRune(s, 0) {
-		return "", ErrInvalidSubject
+		return "", false, ErrInvalidSubject
 	}
-	return s, nil
+	return s, truncated, nil
 }
 
 // pyIsSpace matches Python's str.isspace: Unicode White_Space plus the

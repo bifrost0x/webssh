@@ -77,7 +77,12 @@ func scanIdentity(row scanner) (Identity, error) {
 }
 
 // errNoIdentity is sql.ErrNoRows of the identity queries.
-var errNoIdentity = errors.New("ldap: no identity")
+var (
+	errNoIdentity = errors.New("ldap: no identity")
+	// errAmbiguousSubject: the entry matches a binding under its ambiguous
+	// Python subject that was recorded for another entry.
+	errAmbiguousSubject = errors.New("ldap: identity bound to an ambiguous subject of another entry")
+)
 
 func identityWhere(ctx context.Context, tx *store.Tx, where string, args ...any) (Identity, error) {
 	id, err := scanIdentity(tx.QueryRowContext(ctx, `SELECT `+identityColumns+` FROM authldap_identities WHERE `+where, args...)) // #nosec G202 -- where is a constant of this package

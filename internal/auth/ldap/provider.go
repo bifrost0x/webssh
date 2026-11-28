@@ -53,7 +53,7 @@ func (s *Service) Authenticate(ctx context.Context, presented, password string) 
 			return 0, err
 		}
 	}
-	if err := s.signedIn(ctx, linked.UserID, username, entry.DN); err != nil {
+	if err := s.signedIn(ctx, linked.UserID, username, entry); err != nil {
 		return 0, err
 	}
 	return linked.UserID, nil
@@ -66,7 +66,13 @@ func (s *Service) linkedIdentity(ctx context.Context, entry Entry) (Identity, bo
 	var acc Account
 	err := s.DB.Read(ctx, func(tx *store.Tx) error {
 		var err error
-		if id, err = identityBySubjectTx(ctx, tx, s.Provider, entry.Subject); err != nil {
+		id, err = identityBySubjectTx(ctx, tx, s.Provider, entry.Subject)
+		if errors.Is(err, errNoIdentity) && entry.LegacySubject != "" {
+			if id, err = identityBySubjectTx(ctx, tx, s.Provider, entry.LegacySubject); err == nil && !entry.matches(id) {
+				return errAmbiguousSubject
+			}
+		}
+		if err != nil {
 			return err
 		}
 		acc, err = s.Accounts.GetTx(ctx, tx, id.UserID)
@@ -75,6 +81,11 @@ func (s *Service) linkedIdentity(ctx context.Context, entry Entry) (Identity, bo
 	switch {
 	case errors.Is(err, errNoIdentity):
 		return Identity{}, false, nil
+	case errors.Is(err, errAmbiguousSubject):
+		// The binding was stored under a subject that other entries share
+		// and was recorded for another entry: an administrator relinks it.
+		s.audit("LDAP_LOGIN_REJECTED", "dn", entry.DN, "reason", "ambiguous_subject", "user_id", id.UserID)
+		return Identity{}, false, errAuthFailed
 	case fault.Is(err, fault.NotFound):
 		return Identity{}, false, errAuthFailed
 	case err != nil:
@@ -90,7 +101,10 @@ func (s *Service) linkedIdentity(ctx context.Context, entry Entry) (Identity, bo
 // account that still had to pass a check (E37, a refused revalidation)
 // loses its earlier sessions first; the new session is the first after
 // the check.
-func (s *Service) signedIn(ctx context.Context, userID int64, username, dn string) error {
+//
+// A binding stored under the ambiguous Python subject of the entry moves
+// to the entry's own subject, so no other entry can match it afterwards.
+func (s *Service) signedIn(ctx context.Context, userID int64, username string, entry Entry) error {
 	now := s.now()
 	var required bool
 	var revs []principal.Revocation
@@ -100,7 +114,8 @@ func (s *Service) signedIn(ctx context.Context, userID int64, username, dn strin
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE authldap_identities SET directory_username = ?, distinguished_name = ?,
-			last_verified_us = ? WHERE user_id = ?`, username, dn, now.UnixMicro(), userID); err != nil {
+			subject = CASE WHEN subject = ? THEN ? ELSE subject END, last_verified_us = ? WHERE user_id = ?`,
+			username, entry.DN, entry.LegacySubject, entry.Subject, now.UnixMicro(), userID); err != nil {
 			return fmt.Errorf("ldap: record sign-in: %w", err)
 		}
 		if required {
