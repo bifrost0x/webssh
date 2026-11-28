@@ -3,6 +3,7 @@ package legacy
 import (
 	"regexp"
 	"slices"
+	"strings"
 )
 
 // pythonTopFiles are the 3.3 data files directly in DATA_DIR that the
@@ -32,8 +33,13 @@ var (
 // it and puts it into its backup. The list errs on the side of naming a
 // file: a 3.3 file missing here is only backed up as well.
 func pythonDataFile(path string) bool {
-	if slices.Contains(pythonTopFiles, path) || pythonUserKey.MatchString(path) {
+	if slices.Contains(pythonTopFiles, path) {
 		return true
+	}
+	if pythonUserKey.MatchString(path) {
+		// .bak and .tmp copies in keys/ stay in place at the migration
+		// (entity A08); they are no key Go took over.
+		return !strings.HasSuffix(path, ".bak") && !strings.HasSuffix(path, ".tmp")
 	}
 	m := pythonUserFile.FindStringSubmatch(path)
 	return m != nil && slices.Contains(pythonUserFiles, m[1])

@@ -112,7 +112,8 @@ func TestPythonDataFile(t *testing.T) {
 		}
 	}
 	for _, p := range []string{"certs/ca.pem", "users/user_1/profiles.json.bak", "users/user_1/keys/a/b", "users/x/profiles.json",
-		"users/user_/profiles.json", "users/user_1/notes.md", "notes.txt", "users/user_1"} {
+		"users/user_/profiles.json", "users/user_1/notes.md", "notes.txt", "users/user_1",
+		"users/user_1/keys/id.bak", "users/user_1/keys/id.tmp"} {
 		if pythonDataFile(p) {
 			t.Errorf("%s is no 3.3 data", p)
 		}
