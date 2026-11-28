@@ -37,7 +37,8 @@ how to remove the 3.3 data later.
   header for that path.
 - **Overview host cards.** The cards of a row line up with their status and
   actions at the bottom, and the host details open as a popover instead of
-  unfolding inside the card (`U100`).
+  unfolding inside the card (`U100`). **Arrange** keeps your own order of
+  the hosts, saved to your account; favorites stay first (`U101`).
 - **Command line.** `webssh <command>` replaces `flask --app start:app`.
   The 3.3 command forms and health checks of the shipped Compose files keep
   working until the next major release (`U16`, `U18`).

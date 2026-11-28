@@ -96,7 +96,7 @@ func (pg *pages) workspace(w http.ResponseWriter, r *http.Request) {
 	if len(panels) == 0 {
 		panels = jsontext.Value("null")
 	}
-	d.OverviewPreferences = &httpapi.OverviewPreferences{Panels: panels, Dismissed: page.OverviewDismissed}
+	d.OverviewPreferences = &httpapi.OverviewPreferences{Panels: panels, Dismissed: page.OverviewDismissed, HostOrder: page.OverviewHostOrder}
 	if d.OverviewPreferences.Dismissed == nil {
 		d.OverviewPreferences.Dismissed = []string{}
 	}

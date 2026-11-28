@@ -18,6 +18,9 @@ type User struct {
 	// the form the browser sent them; nil is the default layout.
 	OverviewPanels    []jsontext.Value
 	OverviewDismissed []string
+	// OverviewHostOrder is the order of the overview host cards; nil keeps
+	// the default order.
+	OverviewHostOrder []string
 	// TerminalAppearance is the stored override object, "{}" by default.
 	TerminalAppearance      jsontext.Value
 	ConfirmSessionClose     bool
@@ -68,6 +71,8 @@ func validStored(key string, v jsontext.Value) bool {
 		return isNull(v) || v.Kind() == '['
 	case keyOverviewDismissed:
 		return v.Kind() == '['
+	case keyOverviewHostOrder:
+		return isNull(v) || v.Kind() == '['
 	case keyTheme:
 		_, ok := asString(v)
 		return ok
@@ -131,6 +136,9 @@ func buildUser(stored map[string]jsontext.Value) (User, bool) {
 	if v, ok := stored[keyOverviewDismissed]; ok {
 		u.OverviewDismissed = knownDismissed(v)
 	}
+	if v, ok := stored[keyOverviewHostOrder]; ok && !isNull(v) {
+		u.OverviewHostOrder = knownHostOrder(v)
+	}
 	if v, ok := stored[keyTerminalAppearance]; ok {
 		u.TerminalAppearance = v
 	}
@@ -149,6 +157,17 @@ func buildUser(stored map[string]jsontext.Value) (User, bool) {
 		u.TourAcknowledged = string(v) == "true"
 	}
 	return u, true
+}
+
+// overviewPreferences are the members of the overview preferences. The
+// host order is optional and only present once an account arranged its
+// hosts, so the answer for everyone else stays that of the Python release.
+func (u User) overviewPreferences() map[string]any {
+	prefs := map[string]any{"panels": u.overviewPanelsValue(), "dismissed": u.OverviewDismissed}
+	if u.OverviewHostOrder != nil {
+		prefs["host_order"] = u.OverviewHostOrder
+	}
+	return prefs
 }
 
 // overviewPanelsValue is the effective arrangement as JSON: null or the

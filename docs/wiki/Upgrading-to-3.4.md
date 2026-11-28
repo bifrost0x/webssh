@@ -235,6 +235,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 |---|---|---|---|
 | U97 | In the Glass theme, primary buttons turn a darker blue on hover (`#0866b0` instead of `#087dcf`), so white text keeps a contrast of at least 4.5:1; 3.3 reached 4.3:1. | fix | Nothing. |
 | U100 | Overview host cards form an even grid: the cards of a row have the same height and their status and actions sit at the bottom on one line. The machine badge (VM, LXC, Bare Metal) hangs below the platform tile instead of covering its edge. Host profile and Configuration readiness no longer unfold inside the card; a click on the logo or name of a card opens them as a popover, on a phone as a sheet at the bottom. A panel with a stored height draws a rule under its heading while its content scrolls. | fix | Nothing. |
+| U101 | The Overview can keep your own order of the host cards: **Arrange** in the Hosts panel puts a handle on every card; drag it with the mouse or a finger, or focus it and use the arrow keys, Home and End. The order is flat across groups and is saved per account on the server, as `host_order` in the overview preferences next to the panel arrangement. Favorites always come first; your order applies among the favorites and among the other hosts. New hosts appear at the end, **Reset order** returns to the default order. While a search or filter is active, the order is kept but cannot be changed. Without a saved order the cards keep the default order (favorites, group, position in the group, name). | new | Nothing. |
 
 ### HTTP API
 

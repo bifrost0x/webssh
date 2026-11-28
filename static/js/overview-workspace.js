@@ -47,12 +47,13 @@
         const wf = (key, fallback, values) => t(`workFirst.${key}`, fallback, values);
         const fileSessions = new Set();
         let details = null;
+        let arrange = null;
         const search = $('overviewSearch');
         const hostList = $('overviewHostList');
         const mode = () => view.dataset.reachability || 'manual';
         const state = {readiness: null, reachability: null, checkedAt: null, readinessAt: null, checking: false, reachError: null,
             shown: new Map(), scheduled: false, readinessTimer: 0, automaticTimer: 0, routeMap: null, firstPaint: true, returnKey: null, topologyNarrow: false, stateFilter: null, focusId: null, idFilter: null,
-            dismissed: [], dismissSequence: 0, attention: [], board: null};
+            dismissed: [], dismissSequence: 0, attention: [], board: null, hostOrder: null};
 
         const profiles = () => win.ProfileManager?.profiles || [];
         const sessions = () => sessionManager?.getAllSessions?.() || [];
@@ -668,6 +669,9 @@
                 wasOpen = false;
             });
             top.append(rolePill, head, favorite);
+            // While the hosts are arranged, only the handle of a card works.
+            const arranging = Boolean(arrange?.active());
+            if (arranging) top.append(arrange.handle(host));
             const bottom = node('div', 'od-host-bottom');
             const badge = node('span', 'od-state');
             badge.dataset.state = host.state;
@@ -684,6 +688,7 @@
             bottom.append(badge, editButton, connectButton);
             // Details open in a popover from the card head, so every card keeps the height of its row.
             item.append(top, ...(servicesRow.childElementCount ? [servicesRow] : []), meta, bottom);
+            if (arranging) [head, favorite, servicesRow, meta, bottom].forEach(part => { part.inert = true; });
             return item;
         }
         function identitySignature(host) {
@@ -692,6 +697,8 @@
                 facts.containerAccess, facts.state, facts.checkedAt, facts.stale, facts.services]];
         }
         function renderHosts(hosts) {
+            // A card that is being dragged stays in place; the drop renders again.
+            if (arrange?.dragging()) return;
             const loaded = win.ProfileManager?.profilesLoaded === true;
             const visible = visibleHosts(hosts);
             $('overviewHostsEmpty').hidden = !loaded || hosts.length > 0;
@@ -702,7 +709,7 @@
             const signature = JSON.stringify([loaded, win.i18n?.getLanguage?.() || '', visible.map(host => [host.id, host.state, host.name,
                 host.destination, host.favorite, host.group, host.route.kind, host.route.name, host.sessionId, reasonFor(host),
                 win.HostPlatform?.resolve?.(host.profile)?.id || '', identitySignature(host),
-                Model.maintenance(host.profile)]), state.readinessAt, state.checkedAt]);
+                Model.maintenance(host.profile)]), state.readinessAt, state.checkedAt, Boolean(arrange?.active()), filtered()]);
             if (signature === state.hostSignature) return;
             state.hostSignature = signature;
             const focusedKey = hostList.contains(doc.activeElement) ? doc.activeElement.dataset.key : null;
@@ -715,6 +722,7 @@
             visible.forEach(host => hostList.append(hostCard(host)));
             if (focusedKey) [...hostList.querySelectorAll('[data-key]')].find(item => item.dataset.key === focusedKey)?.focus({preventScroll: true});
             details?.refresh();
+            arrange?.refresh();
         }
 
         function renderAttention(items, hiddenCount) {
@@ -974,7 +982,8 @@
             renderLegend(hosts);
             renderHostFilter();
             renderTopology(hosts);
-            renderHosts(hosts);
+            // The hosts pane shows the account's own order; favourites stay first.
+            renderHosts(win.OverviewHostOrder ? win.OverviewHostOrder.arranged(hosts, state.hostOrder) : hosts);
             state.automationEnabled = runInfo.enabled === true;
             renderAttention(attentionItems, allAttention.length - attentionItems.length);
             renderAutomation(runInfo, metrics);
@@ -1145,9 +1154,10 @@
         function preferences() {
             try {
                 const data = JSON.parse($('overviewPreferences')?.textContent || '{}');
-                return {panels: Array.isArray(data.panels) ? data.panels : null, dismissed: Array.isArray(data.dismissed) ? data.dismissed : []};
+                return {panels: Array.isArray(data.panels) ? data.panels : null, dismissed: Array.isArray(data.dismissed) ? data.dismissed : [],
+                    hostOrder: Array.isArray(data.host_order) ? data.host_order.filter(id => typeof id === 'string') : null};
             } catch {
-                return {panels: null, dismissed: []};
+                return {panels: null, dismissed: [], hostOrder: null};
             }
         }
         function panelLabel(id) {
@@ -1193,6 +1203,14 @@
             if (win.OverviewHostDetails && hostsPanel) {
                 details = win.OverviewHostDetails.create({window: win, document: doc, list: hostList, panel: hostsPanel,
                     hosts: hostModel, sections: hostDetails, tw});
+            }
+            state.hostOrder = preferences().hostOrder;
+            if (win.OverviewHostArrange && win.OverviewHostOrder && win.OverviewHostDrag && hostsPanel) {
+                arrange = win.OverviewHostArrange.create({window: win, document: doc, panel: hostsPanel, list: hostList,
+                    hosts: () => win.OverviewHostOrder.arranged(hostModel(), state.hostOrder), filtered,
+                    order: {get: () => state.hostOrder, set: ids => { state.hostOrder = ids; }},
+                    save: hostOrder => request('/api/overview/preferences', {method: 'PUT', body: JSON.stringify({host_order: hostOrder})}).then(() => true, () => false),
+                    tw, announce, rerender: schedule});
             }
             state.dismissed = preferences().dismissed;
             state.board = createBoard();

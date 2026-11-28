@@ -119,10 +119,12 @@ type AuthMethod struct {
 }
 
 // OverviewPreferences are the saved overview panels; Panels is stored
-// as the browser sent it.
+// as the browser sent it. HostOrder is the account's own order of the host
+// cards, absent while it keeps the default order.
 type OverviewPreferences struct {
 	Panels    any      `json:"panels"`
 	Dismissed []string `json:"dismissed"`
+	HostOrder []string `json:"host_order,omitempty"`
 }
 
 // TransferLimits are the transfer size limits the browser checks before

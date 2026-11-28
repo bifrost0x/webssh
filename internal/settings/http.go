@@ -152,6 +152,8 @@ func (h *HTTP) overviewPreferences(ctx context.Context, p principal.Principal, r
 			c.OverviewPanels = v
 		case "dismissed":
 			c.OverviewDismissed = v
+		case "host_order":
+			c.OverviewHostOrder = v
 		default:
 			return nil, fault.New(fault.InvalidRequest, msg)
 		}
@@ -163,7 +165,7 @@ func (h *HTTP) overviewPreferences(ctx context.Context, p principal.Principal, r
 	if err != nil {
 		return nil, overviewFault(err)
 	}
-	return map[string]any{"panels": u.overviewPanelsValue(), "dismissed": u.OverviewDismissed}, nil
+	return u.overviewPreferences(), nil
 }
 
 // overviewFault gives failures of the overview preferences the codes of

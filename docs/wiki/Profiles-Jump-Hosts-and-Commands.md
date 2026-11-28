@@ -238,6 +238,18 @@ The overview shows, per host:
   on the next connection. With a manual platform icon it says that detection
   is off instead, since such a host is not probed again.
 
+**Arrange** in the heading of the Hosts panel lets you order the host cards
+yourself. Every card gets a handle: drag it with the mouse or a finger, or
+focus it and use the arrow keys to move the host earlier or later, Home and
+End to move it to the first or last place. A screen reader announces the new
+position. The order is flat across groups and saved to your account on the
+server, so it follows you to other browsers. Favorites always come first;
+your order applies among the favorites and among the other hosts. New hosts
+appear at the end, and **Reset order** returns to the default order
+(favorites, then group, position in the group and name). While a search or
+filter is active, the order is kept but cannot be changed. The host list,
+the rail and the classic overview keep their own order by group.
+
 Search in the overview also matches role, platform and service names. The
 classic overview layout keeps its compact rows: platform icon, virtualization
 badge, role pill and up to three service logos, without tint or profile.
