@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/bifrost0x/webssh/internal/fault"
@@ -166,11 +168,11 @@ func (a *Attempt) Challenge(ctx context.Context, role, title, instructions strin
 
 	shown := make([]protocol.InteractivePrompt, len(prompts))
 	for i, p := range prompts {
-		shown[i] = protocol.InteractivePrompt{Label: validText(p.Label), Echo: p.Echo}
+		shown[i] = protocol.InteractivePrompt{Label: shownText(p.Label), Echo: p.Echo}
 	}
 	err := a.events.SendEvent(protocol.TypePromptInteractive, protocol.PromptInteractive{
 		PromptID: c.id, RequestID: a.requestID, Context: role,
-		Title: validText(title), Instructions: validText(instructions), Prompts: shown,
+		Title: shownText(title), Instructions: shownText(instructions), Prompts: shown,
 		ExpiresIn: int((wait + time.Second - 1) / time.Second),
 	})
 	if err != nil {
@@ -352,6 +354,21 @@ func (a *Attempt) decode(data []byte) string {
 // validText replaces every invalid UTF-8 byte with U+FFFD, as Python's
 // decode(errors="replace") did.
 func validText(s string) string { return string([]rune(s)) }
+
+// shownText is a remote text of a round as the dialog shows it: valid
+// UTF-8, line breaks as "\n", and no control, format or bidi characters
+// (the rule the dialer applies to ordinary rounds), which could disguise
+// what the dialog asks for. Spaces stay as the server sent them.
+func shownText(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' || unicode.IsPrint(r) {
+			return r
+		}
+		return -1
+	}, s)
+}
 
 // newPromptID returns 32 URL-safe characters (Python: token_urlsafe(24)).
 func newPromptID() string {
