@@ -122,7 +122,14 @@ func Purge(ctx context.Context, o PurgeOptions) (*Purged, error) {
 		out.Warnings = append(out.Warnings, more...)
 	}
 	files := purgeList(ev.record.Listing)
+	var changed []string
+	if ev.state == S5 {
+		if files, changed, err = withoutChanged(l.dataDir, ev.record, files); err != nil {
+			return nil, stop(S5, CodePurgeRefused, "the data directory could not be read", err)
+		}
+	}
 	plan := planPurge(ev.record.Report, files, o.SkipBackup)
+	plan.Changed = changed
 	if err := refuseUnsavedKept(ev.state, plan); err != nil {
 		return nil, err
 	}

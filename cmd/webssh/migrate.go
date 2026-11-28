@@ -132,14 +132,27 @@ func runLegacy(ctx context.Context, args []string, s streams) int {
 }
 
 // confirmPurge shows what the purge removes, naming the legacy paths the
-// migration kept in place (they go into the backup), and asks unless
-// --yes was given.
+// migration kept in place and the files that are no Python data (both go
+// into the backup) and the changed files it leaves in place, and asks
+// unless --yes was given.
 func confirmPurge(s streams, p legacy.PurgePlan, yes bool) bool {
 	if len(p.Kept) > 0 {
 		write(s.stdout, "The migration kept these legacy paths in place; Go did not take them over. They are removed "+
 			"with the Python data and go into the backup:\n")
 		for _, k := range p.Kept {
 			write(s.stdout, fmt.Sprintf("  %s (%s, %d files)\n", k.Path, k.Reason, k.Files))
+		}
+	}
+	if len(p.Unclaimed) > 0 {
+		write(s.stdout, "These files are no Python data Go took over. They are removed and go into the backup:\n")
+		for _, f := range p.Unclaimed {
+			write(s.stdout, "  "+f+"\n")
+		}
+	}
+	if len(p.Changed) > 0 {
+		write(s.stdout, "These files changed since the migration and stay in place:\n")
+		for _, f := range p.Changed {
+			write(s.stdout, "  "+f+"\n")
 		}
 	}
 	if yes {

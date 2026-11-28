@@ -34,10 +34,16 @@ func purgeRegistry(t *testing.T) *Registry {
 }
 
 // migratedForPurge returns options for a golden data directory migrated
-// without pending entities.
+// without pending entities. The deleted accounts' directories are taken
+// out first: without the quarantine step nothing reports them as kept in
+// place, so the purge would ask for a backup of them.
 func migratedForPurge(t *testing.T) Options {
 	t.Helper()
-	o := testOptions(t, copyGolden(t))
+	dir := copyGolden(t)
+	if err := os.RemoveAll(filepath.Join(dir, "deleted_users")); err != nil {
+		t.Fatal(err)
+	}
+	o := testOptions(t, dir)
 	o.Registry = purgeRegistry(t)
 	if _, err := startClosed(o); err != nil {
 		t.Fatal(err)
