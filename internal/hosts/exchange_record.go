@@ -148,7 +148,7 @@ func validExchangeMetadata(row *record, selector selectorCheck) bool {
 	if !textOf(name, 128) || pyStrip(row.text("name")) == "" {
 		return false
 	}
-	if !textOf(host, 253) || !validHost(row.text("host")) || !exchangeUsername(username, selector) {
+	if !textOf(host, 253) || !validInputHost(row.text("host")) || !exchangeUsername(username, selector) {
 		return false
 	}
 	if n, ok := asInt(port); !ok || n < 1 || n > 65535 {

@@ -53,7 +53,7 @@ func (s *Service) SaveJumpHost(ctx context.Context, owner int64, req protocol.Ho
 	}
 	host, ok := asString(req.Host)
 	host = pyStrip(host)
-	if !ok || !validHost(host) {
+	if !ok || !validInputHost(host) {
 		return nil, invalid("Invalid host format")
 	}
 	number := int64(22)

@@ -84,7 +84,7 @@ func validateProfile(p payload, rules *variantRules) (draft, error) {
 	name = pyPrefix(pyStrip(name), 128)
 	host, ok := asString(p.get("host"))
 	host = pyStrip(host)
-	if !ok || !validHost(host) {
+	if !ok || !validInputHost(host) {
 		return draft{}, invalid("Invalid host format")
 	}
 	port := int64(22)

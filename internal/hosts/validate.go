@@ -26,6 +26,37 @@ func validHost(raw string) bool {
 	return validHostname(host)
 }
 
+// validInputHost is validHost for a host that is saved or imported now:
+// an IP address may carry a zone only as netpolicy accepts it (an
+// interface name or number on a link-local or interface-local address),
+// because netpolicy refuses any other zone when connecting and the zone
+// is part of the host-key identity.
+func validInputHost(raw string) bool {
+	host := pyStrip(raw)
+	if addr, ok := pythonAddr(host); ok {
+		return zoneAllowed(addr)
+	}
+	return validHost(host)
+}
+
+// zoneAllowed is the zone rule of netpolicy (hostname.go), which this
+// package may not import.
+func zoneAllowed(addr netip.Addr) bool {
+	zone := addr.Zone()
+	if zone == "" {
+		return true
+	}
+	if addr.Is4In6() || !(addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsInterfaceLocalMulticast()) || len(zone) > 15 {
+		return false
+	}
+	for i := range len(zone) {
+		if c := zone[i]; !isASCIIAlnum(c) && c != '_' && c != '-' && c != '.' {
+			return false
+		}
+	}
+	return true
+}
+
 // pythonAddr parses what ipaddress.ip_address accepts for a string: dotted
 // IPv4 without leading zeros and IPv6 with an optional scope that holds
 // neither '%' nor '/'.

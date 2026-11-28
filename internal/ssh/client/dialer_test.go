@@ -373,6 +373,8 @@ func TestValidate(t *testing.T) {
 		"bad port":       {Owner: 1, Hop: Hop{Host: "h", Port: 0, User: "u", Auth: Auth{Password: "x"}}},
 		"no auth":        {Owner: 1, Hop: Hop{Host: "h", Port: 22, User: "u"}},
 		"bad host":       {Owner: 1, Hop: Hop{Host: "bad_host", Port: 22, User: "u", Auth: Auth{Password: "x"}}},
+		"pattern zone":   {Owner: 1, Hop: Hop{Host: "::ffff:127.0.0.1%x,*", Port: 22, User: "u", Auth: Auth{Password: "x"}}},
+		"jump zone":      {Owner: 1, Hop: hop, Jumps: []Hop{{Host: "fe80::1%a b", Port: 22, User: "u", Auth: Auth{Password: "x"}}}},
 		"no key source":  {Owner: 1, Hop: Hop{Host: "h", Port: 22, User: "u", Auth: Auth{KeyID: "k"}}},
 	} {
 		if _, err := d.Dial(t.Context(), tgt, nil); err == nil || fault.CodeOf(err) == fault.Internal {
