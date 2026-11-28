@@ -68,11 +68,7 @@ func prepareBackup(sys *system) error {
 // installation: beside the namespace of the Python release
 // (instance-<hash>), never inside DATA_DIR.
 func backupNamespace(cfg config.Config) (string, error) {
-	root := cfg.BackupTempDir
-	if root == "" {
-		root = filepath.Join(os.TempDir(), "webssh-backup-operations")
-	}
-	root, err := filepath.Abs(root)
+	root, err := backupTempRoot(cfg)
 	if err != nil {
 		return "", err
 	}
@@ -194,6 +190,7 @@ func wireBackup(sys *system) error {
 	if err != nil {
 		return err
 	}
+	warnForeignBackupTempDir(cfg, sys.log)
 	ops, err := backup.NewOperations(ns, cfg.Backup.OperationTimeout, cfg.Backup.DownloadTTL)
 	if err != nil {
 		return fmt.Errorf("backup operations: %w", err)

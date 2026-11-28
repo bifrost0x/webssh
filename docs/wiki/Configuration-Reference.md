@@ -333,7 +333,9 @@ Audit export scans at most 50,000 records and declares truncation in response me
 backups until they are downloaded and is the fallback location of CLI backups,
 of the `legacy purge` backup and of the recovery archive of `rotate-secret-key`;
 keep it on a persistent volume, as the supplied Compose files do with
-`/app/recovery`. The rollback state of a restore lives in `DATA_DIR`.
+`/app/recovery`. The rollback state of a restore lives in `DATA_DIR`. The directory
+should belong to the service user; when it belongs to another user, the start
+logs a warning and goes on.
 
 ## Variables without effect in 3.4
 
