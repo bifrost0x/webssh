@@ -8,7 +8,10 @@
 # Every run uses the restrictions of docker-compose.hardened.yml. The debug
 # image (the same image plus BusyBox) inspects files the release image has
 # no tools for. Section 7 starts the unchanged Compose files of the Python
-# release against this image. Only containers, volumes and Compose projects
+# release against this image; sections 8 and 9 repeat what
+# scripts/check_hardened_container.py checks for the Python image: the
+# production profile, offline backup and restore under the restrictions,
+# /app/recovery and the Unraid template. Only containers, volumes and Compose projects
 # named webssh-go-check* are created, and removed again.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -27,6 +30,7 @@ HARD=(--read-only --cap-drop ALL --security-opt no-new-privileges:true --pids-li
 pass=0 fail=0
 BIND=""
 OVERRIDE=""
+UNRAID_VOLUMES=""
 
 ok()    { echo "PASS $*"; pass=$((pass + 1)); }
 bad()   { echo "FAIL $*"; fail=$((fail + 1)); }
@@ -35,13 +39,14 @@ check() { local name=$1; shift; if "$@"; then ok "$name"; else bad "$name"; fi; 
 compose() { docker compose -p "$P" --project-directory . "$@"; }
 
 cleanup() {
-  docker rm -f "$P-run" "$P-port" "$P-u99" "$P-u99b" "$P-tz" >/dev/null 2>&1
+  docker rm -f "$P-run" "$P-port" "$P-u99" "$P-u99b" "$P-tz" "$P-prod" "$P-unraid" >/dev/null 2>&1
   if [ -n "$OVERRIDE" ] && [ -f "$OVERRIDE" ]; then
     compose -f docker-compose.yml -f docker-compose.hardened.yml -f docker-compose.ldap.yml -f "$OVERRIDE" \
       --profile ldap-tools down -v --remove-orphans >/dev/null 2>&1
     rm -f "$OVERRIDE"
   fi
-  docker volume rm -f "$P-data" "$P-data99" >/dev/null 2>&1
+  docker volume rm -f "$P-data" "$P-data99" "$P-pdata" "$P-prec" >/dev/null 2>&1
+  for v in $UNRAID_VOLUMES; do docker volume rm -f "$v" >/dev/null 2>&1; done
   if [ -n "$BIND" ] && [ -d "$BIND" ]; then
     # The bind directory belongs to 99:100 inside the user namespace; remove
     # its content from a container, then the now empty directory.
@@ -225,8 +230,83 @@ echo "secret volume: $mode"
 check "ldap-tools of docker-compose.ldap.yml stores the secret on a fresh volume (0700/0600, 1000:1000)" bash -c \
   "[ $set_code -eq 0 ] && grep -q 'stored securely' <<<\"\$1\" && grep -q 'ldap_bind_password: present' <<<\"\$2\" && [ \"\$3\" = '700 1000:1000 600 1000:1000 ' ]" _ "$set_out" "$status_out" "$mode"
 
+echo "== 8 production profile, offline backup and restore under the restrictions"
+# The settings check_hardened_container.py starts the Python image with.
+PROD=(-e DEPLOYMENT_PROFILE=production -e CORS_ORIGINS=https://localhost -e ALLOW_CORS_WILDCARD=false
+      -e SESSION_COOKIE_SECURE=true -e REGISTRATION_ENABLED=false -e BOOTSTRAP_REGISTRATION_ENABLED=false
+      -e BLOCK_INTERNAL_SSH=true -e TRUSTED_PROXIES=1 -e BACKUP_TEMP_DIR=/app/recovery -e BACKUP_RECOVERY_DURABLE=true)
+PMOUNTS=(-v "$P-pdata:/app/data" -v "$P-prec:/app/recovery")
+cli() { docker run --rm -i "${HARD[@]}" "${PROD[@]}" "${PMOUNTS[@]}" "$IMG" "$@"; }
+# The CLI asks for the password and its confirmation on stdin.
+secret() { local pw="Synthetic-$RANDOM$RANDOM-$RANDOM$RANDOM"; printf '%s\n%s\n' "$pw" "$pw"; }
+docker run -d --name "$P-prod" "${HARD[@]}" "${PROD[@]}" "${PMOUNTS[@]}" --health-interval 1s "$IMG" >/dev/null
+check "the production profile starts healthy with read-only root, no capabilities and a recovery volume" wait_healthy "$P-prod"
+check "/app/data is 0700 and owned by 1000:1000, the generated secret key has at least 64 characters" \
+  inspect_volume "$P-pdata" '[ "$(stat -c "%a %u:%g" /app/data)" = "700 1000:1000" ] && [ "$(wc -c < /app/data/secret_key)" -ge 64 ]'
+check "the recovery volume is 0700 and owned by 1000:1000 at run time" bash -c \
+  "[ \"\$(docker run --rm ${HARD[*]} -v $P-prec:/app/recovery --entrypoint /bin/sh $DEBUG_IMG -c 'stat -c \"%a %u:%g\" /app/recovery')\" = '700 1000:1000' ]"
+online=$(cli backup create --confirm-offline 2>&1); online_code=$?
+echo "$online" | tail -1
+check "backup create refuses while the server runs" bash -c "[ $online_code -ne 0 ] && grep -qi 'stop every webssh' <<<\"\$1\"" _ "$online"
+docker stop -t 10 "$P-prod" >/dev/null
+check "the production container stops with exit 0" test "$(docker inspect -f '{{.State.ExitCode}}' "$P-prod")" = 0
+before=$(secret | cli create-admin --username before 2>&1); before_code=$?
+backup_out=$(cli backup create --confirm-offline 2>&1); backup_code=$?
+echo "$backup_out" | head -1
+archive=$(sed -n 's/^Backup created and verified: \(.*\) (.*/\1/p' <<<"$backup_out")
+check "the offline CLI backup with its default destination lands in the recovery volume and verifies" bash -c \
+  "[ $before_code -eq 0 ] && [ $backup_code -eq 0 ] && [[ \"\$1\" == /app/recovery/* ]] &&
+   docker run --rm ${HARD[*]} ${PROD[*]} ${PMOUNTS[*]} $IMG backup verify \"\$1\" >/dev/null" _ "$archive"
+after=$(secret | cli create-admin --username after 2>&1); after_code=$?
+restore_out=$(cli backup restore "$archive" --confirm-offline 2>&1); restore_code=$?
+echo "$restore_out" | tail -1
+gone=$(secret | cli reset-password --username after 2>&1); gone_code=$?
+kept=$(secret | cli reset-password --username before 2>&1); kept_code=$?
+check "the offline restore under the restrictions brings back the state of the backup" bash -c \
+  "[ $after_code -eq 0 ] && [ $restore_code -eq 0 ] && [ $gone_code -ne 0 ] && [ $kept_code -eq 0 ]"
+docker start "$P-prod" >/dev/null
+check "the restored data starts healthy again and stops with exit 0" bash -c \
+  "wait_() { for _ in \$(seq 60); do [ \"\$(docker inspect -f '{{.State.Health.Status}}' '$P-prod')\" = healthy ] && return 0; sleep 0.5; done; return 1; }; wait_ &&
+   docker stop -t 10 '$P-prod' >/dev/null && [ \"\$(docker inspect -f '{{.State.ExitCode}}' '$P-prod')\" = 0 ]"
+docker rm -f "$P-prod" >/dev/null
+
+echo "== 9 Unraid template (unraid/webssh.xml)"
+# Starts what the shipped template describes: its ExtraParams, its
+# variables with their defaults and its container paths, each on an empty
+# mount root that Unraid creates as nobody:users with mode 0777.
+extra=$(sed -n 's:.*<ExtraParams>\(.*\)</ExtraParams>.*:\1:p' unraid/webssh.xml)
+read -r -a EXTRA <<<"$extra"
+mapfile -t TVARS < <(sed -n 's/.*<Config [^>]*Target="\([A-Z0-9_]*\)" Default="\([^"]*\)"[^>]*Type="Variable".*/\1=\2/p' unraid/webssh.xml)
+mapfile -t TPATHS < <(sed -n 's/.*<Config [^>]*Target="\(\/[^"]*\)"[^>]*Type="Path".*/\1/p' unraid/webssh.xml)
+echo "ExtraParams: $extra; paths: ${TPATHS[*]}; variables: ${#TVARS[@]}"
+check "the template switches only the identity and restrictions and persists data and recovery" bash -c \
+  "[[ \"\$1\" =~ ^--user\ [1-9][0-9]*:[1-9][0-9]*\ --cap-drop\ ALL\ --security-opt\ no-new-privileges:true\$ ]] &&
+   printf '%s\\n' \"\${@:2}\" | grep -qx /app/data && printf '%s\\n' \"\${@:2}\" | grep -qx /app/recovery" _ "$extra" "${TPATHS[@]}"
+ident=${EXTRA[1]}
+UMOUNTS=() TENV=()
+for target in "${TPATHS[@]}"; do
+  v="$P-unraid$(tr / - <<<"$target")"
+  UNRAID_VOLUMES="$UNRAID_VOLUMES $v"
+  docker volume create "$v" >/dev/null
+  docker run --rm -v "$v:/v" "$BUSYBOX" sh -c "chown $ident /v && chmod 0777 /v"
+  UMOUNTS+=(--mount "type=volume,source=$v,target=$target,volume-nocopy=true")
+done
+for kv in "${TVARS[@]}"; do TENV+=(-e "$kv"); done
+docker run -d --name "$P-unraid" "${EXTRA[@]}" "${TENV[@]}" "${UMOUNTS[@]}" --health-interval 1s "$IMG" >/dev/null
+check "the template's container becomes healthy as ${ident}" wait_healthy "$P-unraid"
+upid=$(docker inspect -f '{{.State.Pid}}' "$P-unraid")
+uhost=$(awk -v id="${ident%%:*}" '$1 <= id && id < $1 + $3 { print $2 + id - $1 }' "/proc/$upid/uid_map")
+check "it runs as the template's user without capabilities" bash -c "
+  awk '/^Uid/ { exit !(\$2 == $uhost) }' /proc/$upid/status &&
+  grep -q '^CapEff:[[:space:]]*0000000000000000' /proc/$upid/status && grep -q '^NoNewPrivs:[[:space:]]*1' /proc/$upid/status"
+check "data and recovery become 0700 and owned by ${ident}" bash -c \
+  "[ \"\$(docker run --rm --volumes-from $P-unraid --user $ident --entrypoint /bin/sh $DEBUG_IMG -c 'stat -c \"%a %u:%g\" /app/data /app/recovery' | tr '\\n' ' ')\" = '700 $ident 700 $ident ' ]"
+docker stop -t 10 "$P-unraid" >/dev/null
+check "the template's container stops with exit 0" test "$(docker inspect -f '{{.State.ExitCode}}' "$P-unraid")" = 0
+docker rm -f "$P-unraid" >/dev/null
+
 if [ "${TRIVY:-0}" = 1 ]; then
-  echo "== 8 Trivy"
+  echo "== 10 Trivy"
   TAR=$(mktemp "${TMPDIR:-/tmp}/webssh-go-check.XXXXXX.tar")
   docker save -o "$TAR" "$IMG"
   check "Trivy: no vulnerabilities, secrets or misconfigurations in the release image" \

@@ -86,6 +86,16 @@ func backupNamespace(cfg config.Config) (string, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", fmt.Errorf("BACKUP_TEMP_DIR: %w", err)
 	}
+	// As ensure_backup_temp_dir: a real directory, private to the service.
+	// Unraid creates the recovery folder with mode 0777.
+	if st, err := os.Lstat(root); err != nil {
+		return "", fmt.Errorf("BACKUP_TEMP_DIR: %w", err)
+	} else if !st.IsDir() {
+		return "", errors.New("BACKUP_TEMP_DIR must be a real directory, not a link")
+	}
+	if err := os.Chmod(root, 0o700); err != nil {
+		return "", fmt.Errorf("BACKUP_TEMP_DIR: %w", err)
+	}
 	sum := sha256.Sum256([]byte(data))
 	return filepath.Join(root, "go-instance-"+hex.EncodeToString(sum[:])[:32]), nil
 }
