@@ -13,14 +13,18 @@ from pathlib import Path
 import paramiko
 
 HOST = '127.0.0.1'
-PORT = 2225
+# The Python run uses the fixed paramiko5 lab; the Go run starts its own
+# Herdr host (tests/integration/herdr/run-go-browser.sh) and passes its
+# port, password and compose project.
+PORT = int(os.environ.get('WEBSSH_HERDR_PORT', '2225'))
 USERNAME = 'agentuser'
-PASSWORD = 'Paramiko5-Test-Only!'
+PASSWORD = os.environ.get('WEBSSH_HERDR_PASSWORD', 'Paramiko5-Test-Only!')
 HERDR = '$HOME/.local/bin/herdr'
 LAB_COMPOSE = (
     'docker', 'compose',
-    '-f', str(Path(__file__).resolve().parent / 'paramiko5' / 'docker-compose.yml'),
-    '--project-name', 'webssh-paramiko5-integration',
+    '-f', os.environ.get('WEBSSH_HERDR_COMPOSE_FILE',
+                         str(Path(__file__).resolve().parent / 'paramiko5' / 'docker-compose.yml')),
+    '--project-name', os.environ.get('WEBSSH_HERDR_COMPOSE_PROJECT', 'webssh-paramiko5-integration'),
 )
 
 

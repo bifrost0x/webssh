@@ -101,6 +101,14 @@ jobs:
       - name: Vet
         run: go vet $GO_PACKAGES
 
+      # The lab tests run only against the lab and the disposable Herdr and
+      # Warpgate hosts; vetting them keeps their builds from rotting.
+      - name: Vet the lab builds
+        run: |
+          for tags in lab herdr warpgate; do
+            go vet -tags "$tags" $GO_PACKAGES
+          done
+
       - name: Check for pending go fix rewrites
         run: go fix -diff $GO_PACKAGES
 

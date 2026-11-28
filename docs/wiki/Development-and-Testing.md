@@ -145,6 +145,19 @@ instances of this lab concurrently. Without `--browser`, the existing Python-onl
 command remains available. Browser failure, skipped tests and focused-only tests
 fail the gate; timing and failure evidence goes under `test-results/`.
 
+The Go server runs the same Herdr browser spec and the Go Herdr lab tests
+against its own disposable Herdr host, with a password and host keys made for
+the run, and removes it afterwards:
+
+```bash
+go build -o .test-run.tmp/webssh ./cmd/webssh
+tests/integration/herdr/run-go-lab.sh                 # Go lab tests, build tag herdr
+PYTHON=.venv/bin/python \
+WEBSSH_E2E_M1_SERVER_COMMAND='.test-run.tmp/webssh serve' \
+WEBSSH_E2E_M1_ADMIN_COMMAND='.test-run.tmp/webssh' \
+tests/integration/herdr/run-go-browser.sh             # browser spec
+```
+
 ## Frontend dependencies
 
 Pinned browser libraries are declared in `package.json` and copied into the repository through the vendor workflow. Current contracts include xterm.js, fit/search addons, Socket.IO client, highlight.js, and Material Icons.

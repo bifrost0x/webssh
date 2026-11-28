@@ -3,8 +3,11 @@ const { execFileSync } = require('node:child_process');
 const { test, expect } = require('playwright/test');
 const { login } = require('../e2e/helpers');
 
-// Requires the disposable OpenSSH lab with Herdr 0.9.5 and run_herdr_browser_app.py.
-const PASSWORD = 'Paramiko5-Test-Only!';
+// Requires a disposable OpenSSH host with Herdr 0.9.5: the paramiko5 lab
+// and run_herdr_browser_app.py for Python, or the host and the server that
+// herdr/run-go-browser.sh starts for Go.
+const PASSWORD = process.env.WEBSSH_HERDR_PASSWORD || 'Paramiko5-Test-Only!';
+const GO = Boolean(process.env.WEBSSH_E2E_M1_SERVER_COMMAND);
 const PYTHON = process.env.PYTHON || 'python';
 const MOBILE = {
     viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2,
@@ -152,6 +155,35 @@ async function closeTab(page, id) {
     await page.evaluate(key => SessionManager.requestCloseSession(key), id);
     await expect.poll(() => page.evaluate(key => key in SessionManager.sessions, id)).toBe(false);
 }
+
+// The Go server starts on an empty data directory with only the
+// administrator (run_herdr_browser_go.js). It gets what the Python fixture
+// writes directly through the interface: Herdr switched on (step-up) and
+// the two saved hosts on the disposable host.
+test.beforeAll(async ({ browser }) => {
+    if (!GO) return;
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await login(page);
+    await page.goto('/settings#integrations');
+    const toggle = page.locator('#settingHerdr');
+    await expect(toggle).toBeEnabled();
+    await toggle.check();
+    await expect(page.locator('#stepUpModal')).toHaveClass(/show/);
+    await page.locator('#stepUpPassword').fill('browser-password');
+    await page.locator('#stepUpSubmit').click();
+    await expect(toggle).toBeEnabled();
+    await expect(toggle).toBeChecked();
+    await page.goto('/');
+    await expect.poll(() => page.evaluate(() => Boolean(window.socket?.connected))).toBe(true);
+    const port = Number(process.env.WEBSSH_HERDR_PORT);
+    for (const [name, username] of [['Herdr agents', 'agentuser'], ['Herdr missing', 'testuser']]) {
+        const saved = await page.evaluate(profile => new Promise(resolve => {
+            window.socket.emit('save_profile', profile, resolve);
+        }), { name, host: '127.0.0.1', port, username, auth_type: 'password', herdr: true, use_herdr: true });
+        expect(saved, JSON.stringify(saved)).toMatchObject({ success: true });
+    }
+    await page.close();
+});
 
 test.beforeEach(() => {
     expect(lab('reset').running).toBe(false);
