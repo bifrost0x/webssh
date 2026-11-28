@@ -39,6 +39,9 @@ func ldapArea() extension {
 		},
 		wire: func(sys *system) error {
 			svc.StepUp, svc.Gates = sys.stepup, sys.gates
+			svc.Attempts = func(ctx context.Context, subject string) (func(), bool) {
+				return sys.flow.ReserveSubjectAttempt(ctx, "ldap_login", subject)
+			}
 			cfg := sys.cfg
 			(&ldap.HTTP{Service: svc, AdminPanel: cfg.Accounts.AdminPanelEnabled, Limits: sys.factorLimits(),
 				StatusRule: auth.ParseRule(cfg.LDAP.LoginRateLimit, ruleLogin)}).Register(sys.edge.Mux())

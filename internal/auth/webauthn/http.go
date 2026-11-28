@@ -22,7 +22,7 @@ type StepUp interface {
 // DirectSignIn opens a browser session for a sign-in without a password
 // (provided by auth.Flow.SignInDirect).
 type DirectSignIn interface {
-	SignInDirect(w http.ResponseWriter, r *http.Request, userID int64, method string, assurance auth.Assurance) error
+	SignInDirect(w http.ResponseWriter, r *http.Request, userID int64, method string, assurance auth.Assurance, still func(context.Context) error) error
 }
 
 // HTTP serves the passkey routes. The edge mounts it behind session, CSRF

@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/crypto/ssh"
 
@@ -162,6 +164,9 @@ func (s *Store) Known(ctx context.Context, owner int64, host string, port int, k
 // meanwhile wins and this one fails with host_key_changed. The line is
 // appended without rewriting the rest of the file.
 func (s *Store) Record(ctx context.Context, owner int64, host string, port int, key ssh.PublicKey) error {
+	if !recordableHost(host) {
+		return errRecordName
+	}
 	name := LookupName(host, port)
 	return s.db.Write(ctx, func(tx *store.Tx) error {
 		f, err := s.load(ctx, tx, owner)
@@ -212,4 +217,23 @@ func ImportFile(ctx context.Context, tx *store.Tx, scope Scope, owner int64, raw
 		return fmt.Errorf("hostkey: import: %s file of user %d already exists", scope, owner)
 	}
 	return writeFile(ctx, tx, scope, owner, raw, modified)
+}
+
+var errRecordName = fault.New(fault.InvalidValue, "Invalid host format.")
+
+// recordableHost reports whether host can stand in a known_hosts line as
+// exactly one plain name: not empty, no white space or control
+// characters, none of the pattern characters , * ? ! | and no leading #
+// (a comment) or @ (a marker). Callers pass a canonical host; this is the
+// last check before the line is written.
+func recordableHost(host string) bool {
+	if host == "" || host[0] == '#' || host[0] == '@' {
+		return false
+	}
+	for _, r := range host {
+		if r <= ' ' || r == 0x7f || strings.ContainsRune(",*?!|", r) || unicode.IsSpace(r) || unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
 }

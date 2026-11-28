@@ -47,7 +47,15 @@ func closeFile(f *pkgsftp.File) { _ = f.Close() }
 
 // openFile opens p with flags through pkg/sftp within ctx.
 func (b *Backend) openFile(ctx context.Context, p string, flags int) (*pkgsftp.File, error) {
-	return await(ctx, func() (*pkgsftp.File, error) { return b.lib.OpenFile(p, flags) }, closeFile)
+	return await(ctx, func() (*pkgsftp.File, error) {
+		f, err := b.lib.OpenFile(p, flags)
+		if f == nil && err == nil {
+			// pkg/sftp takes a STATUS OK reply to OPEN for success
+			// without a handle.
+			return nil, &transportError{sent: true, err: errMalformed}
+		}
+		return f, err
+	}, closeFile)
 }
 
 // fstat reads the attributes of an open file (SSH_FXP_FSTAT).

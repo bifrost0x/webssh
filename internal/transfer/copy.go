@@ -3,6 +3,7 @@ package transfer
 import (
 	"context"
 	"io"
+	"path"
 	"slices"
 	"strings"
 
@@ -94,11 +95,19 @@ func (c *copier) run(ctx context.Context, from, to string) error {
 		c.members = 1
 		return c.file(ctx, from, to)
 	}
+	srcPin, err := pinRoot(ctx, c.src, from)
+	if err != nil {
+		return err
+	}
 	entries, err := c.bud.tree(ctx, c.src, from)
 	if err != nil {
 		return err
 	}
 	if err := c.directory(ctx, to, c.replace); err != nil {
+		return err
+	}
+	dstPin, err := pinRoot(ctx, c.dst, to)
+	if err != nil {
 		return err
 	}
 	prefix := strings.TrimSuffix(from, "/") + "/"
@@ -109,6 +118,9 @@ func (c *copier) run(ctx context.Context, from, to string) error {
 	dirs := slices.DeleteFunc(slices.Clone(entries), func(e files.Entry) bool { return !e.IsDir })
 	slices.SortStableFunc(dirs, func(a, b files.Entry) int { return strings.Count(a.Path, "/") - strings.Count(b.Path, "/") })
 	for _, e := range dirs {
+		if err := dstPin.check(ctx, path.Dir(dest(e))); err != nil {
+			return err
+		}
 		if err := c.directory(ctx, dest(e), true); err != nil {
 			return err
 		}
@@ -118,9 +130,51 @@ func (c *copier) run(ctx context.Context, from, to string) error {
 		if e.IsDir {
 			continue
 		}
+		if err := srcPin.check(ctx, path.Dir(e.Path)); err != nil {
+			return err
+		}
+		if err := dstPin.check(ctx, path.Dir(dest(e))); err != nil {
+			return err
+		}
 		if err := c.file(ctx, e.Path, dest(e)); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// pin is the canonical form of a copy root on its backend (Stat with
+// follow resolves links: REALPATH on SFTP). Requests name paths and the
+// server resolves links in their directories, so a local user may replace
+// a directory of either tree by a link while the copy runs. Before a
+// file is read or written, and before a directory is created, its
+// directory must still resolve to the root's canonical path plus the
+// relative path. The writer and the walk check again inside their own
+// steps; one round trip between check and request remains.
+type pin struct {
+	b          files.Backend
+	root, real string
+}
+
+func pinRoot(ctx context.Context, b files.Backend, root string) (pin, error) {
+	e, err := b.Stat(ctx, root, true)
+	if err != nil {
+		return pin{}, err
+	}
+	return pin{b: b, root: strings.TrimSuffix(root, "/"), real: e.Path}, nil
+}
+
+func (p pin) check(ctx context.Context, dir string) error {
+	want := p.real
+	if dir != p.root && dir != "/" {
+		want = path.Join(p.real, strings.TrimPrefix(dir, p.root+"/"))
+	}
+	e, err := p.b.Stat(ctx, dir, true)
+	if err != nil {
+		return err
+	}
+	if e.Path != want || !e.IsDir {
+		return fault.New(fault.SourceChanged, "")
 	}
 	return nil
 }

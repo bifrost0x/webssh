@@ -145,3 +145,7 @@ func nfkd(s []rune) []rune {
 	}
 	return out
 }
+
+// NFKC is the NFKC normalization of s as defined for nfkc (Unicode 3.2.0
+// decomposition, as Python's IDNA 2003 code applies it).
+func NFKC(s string) string { return string(nfkc([]rune(s))) }

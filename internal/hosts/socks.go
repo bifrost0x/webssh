@@ -36,7 +36,7 @@ func (s *Service) saveSOCKSProxy(ctx context.Context, owner int64, req protocol.
 		return nil, invalid("Invalid SOCKS proxy name")
 	}
 	host, ok := asString(req.Host)
-	if !ok || !validHost(host) {
+	if !ok || !validInputHost(host) {
 		return nil, invalid("Invalid host format")
 	}
 	host = pyStrip(host)

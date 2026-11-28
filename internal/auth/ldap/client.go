@@ -50,10 +50,23 @@ type Settings struct {
 }
 
 // Entry is the directory entry of a user: the canonical unique attribute
-// (the subject of the identity) and its distinguished name.
+// (the subject of the identity) and its distinguished name. LegacySubject
+// is the ambiguous subject the Python release stored for the same value
+// (Subjects), "" when there is none.
 type Entry struct {
-	Subject string
-	DN      string
+	Subject       string
+	DN            string
+	LegacySubject string
+}
+
+// matches reports whether id is the identity of e: bound to its subject,
+// or to its ambiguous Python subject (LegacySubject) and recorded for
+// the same distinguished name.
+func (e Entry) matches(id Identity) bool {
+	if id.Subject == e.Subject {
+		return true
+	}
+	return e.LegacySubject != "" && id.Subject == e.LegacySubject && strings.EqualFold(id.DistinguishedName, e.DN)
 }
 
 // Client talks to the directory: the service account searches, the user's
@@ -247,7 +260,7 @@ func (c *Client) entry(e ldapproto.Entry) (Entry, error) {
 	if len(values) != 1 {
 		return Entry{}, fmt.Errorf("%w: identity attribute must have exactly one value", ErrRejected)
 	}
-	subject, err := CanonicalSubject(values[0])
+	subject, legacy, err := Subjects(values[0])
 	if err != nil {
 		return Entry{}, fmt.Errorf("%w: %w", ErrRejected, err)
 	}
@@ -255,7 +268,7 @@ func (c *Client) entry(e ldapproto.Entry) (Entry, error) {
 	if dn == "" || utf8.RuneCountInString(dn) > maxDNRunes || strings.ContainsRune(dn, 0) {
 		return Entry{}, fmt.Errorf("%w: distinguished name is invalid", ErrRejected)
 	}
-	return Entry{Subject: subject, DN: dn}, nil
+	return Entry{Subject: subject, DN: dn, LegacySubject: legacy}, nil
 }
 
 // VerifyPassword binds as dn. A wrong password is false; a directory that

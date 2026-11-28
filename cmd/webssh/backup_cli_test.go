@@ -80,7 +80,9 @@ func TestBackupCommandsRoundTrip(t *testing.T) {
 	if code, _, e := runIn(t, "", "webssh", "backup", "create", "--destination", filepath.Join(dir, "x.tar"), "--confirm-offline"); code != 1 || !strings.Contains(e, "outside DATA_DIR") {
 		t.Fatalf("inside DATA_DIR: %d %q", code, e)
 	}
-	code, out, e := runIn(t, "", "webssh", "backup", "create", "--destination", archive, "--confirm-offline")
+	// SECRET_KEY comes from the environment here; --include-secret-key
+	// puts it in the archive (see TestBackupCreateLeavesOutTheEnvironmentSecret).
+	code, out, e := runIn(t, "", "webssh", "backup", "create", "--destination", archive, "--include-secret-key", "--confirm-offline")
 	if code != 0 || !strings.HasPrefix(out, "Backup created and verified: "+archive+" (") {
 		t.Fatalf("create: %d %q %q", code, out, e)
 	}

@@ -43,7 +43,7 @@ func (s *Service) VerifyStepUp(ctx context.Context, userID int64, password strin
 		}
 		return false, fault.Wrap(fault.Unavailable, err, messageOf(errDirectoryDown))
 	}
-	if id.Provider != s.Provider || entry.Subject != id.Subject {
+	if id.Provider != s.Provider || !entry.matches(id) {
 		return false, nil
 	}
 	ok, err := s.Directory.VerifyPassword(ctx, entry.DN, password)

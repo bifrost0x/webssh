@@ -124,6 +124,7 @@ func (s *system) handler() http.Handler {
 		reason, on := s.maintenance.Active()
 		if on && !isProbe(s.cfg.ApplicationRoot, r.URL.Path) &&
 			(reason != backup.MaintenanceRestore || strings.TrimPrefix(r.URL.Path, s.cfg.ApplicationRoot) != restoreStatusPath) {
+			httpapi.BoundAnswer(w, r, s.log)
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("Retry-After", "60")

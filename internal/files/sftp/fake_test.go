@@ -87,6 +87,14 @@ func (f *fakeServer) serve() {
 			_, _ = f.conn.Write(pkt(fxpStatus, id, statusBody(fxOpUnsupported)))
 			continue
 		}
+		if body[0] == fxpRealpath {
+			// Every server answers REALPATH (SFTP v3); the fake resolves
+			// nothing and returns the path.
+			rep := append(be32(1), str(d.bytesN(1<<20))...)
+			rep = append(append(rep, str(nil)...), attrsBody(0)...)
+			_, _ = f.conn.Write(pkt(fxpName, id, rep))
+			continue
+		}
 		f.mu.Lock()
 		f.seen = append(f.seen, name)
 		f.mu.Unlock()
@@ -209,7 +217,7 @@ func TestChmodNeverFollowsLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantCode(t, b.Chmod(context.Background(), "/link", 0o600), fault.UnsupportedOperation)
-	if got := f.requests(); got != "lstat,lsetstat@openssh.com,lstat,lstat" {
+	if got := f.requests(); got != "lstat,open,lsetstat@openssh.com,lstat,lstat" {
 		t.Fatalf("requests %s", got)
 	}
 	mu.Lock()
@@ -220,8 +228,11 @@ func TestChmodNeverFollowsLinks(t *testing.T) {
 
 func TestChmodModeMismatch(t *testing.T) {
 	b, _ := newFake(t, Options{ChmodEnabled: true}, func(typ byte, _ uint32, d *decoder) (byte, []byte) {
-		if typ == fxpLstat {
+		switch typ {
+		case fxpLstat:
 			return fxpAttrs, attrsBody(0o100644)
+		case fxpOpen:
+			return fxpStatus, statusBody(fxOpUnsupported)
 		}
 		return fxpStatus, statusBody(fxOK)
 	})
@@ -248,5 +259,19 @@ func TestNoPosixRenameRefusesReplace(t *testing.T) {
 	wantCode(t, err, fault.AtomicReplaceUnavailable)
 	if got := f.requests(); got != "lstat,lstat" {
 		t.Fatalf("requests %s: something was staged", got)
+	}
+}
+
+// A server that answers OPEN with STATUS OK sends no handle; pkg/sftp
+// returns neither a file nor an error for it.
+func TestOpenWithoutHandleFails(t *testing.T) {
+	b, _ := newFake(t, Options{}, func(typ byte, _ uint32, _ *decoder) (byte, []byte) {
+		if typ == fxpLstat {
+			return fxpAttrs, attrsBody(0o100644)
+		}
+		return fxpStatus, statusBody(fxOK)
+	})
+	if _, err := b.Open(context.Background(), "/file", files.Range{Length: -1}); err == nil {
+		t.Fatal("Open succeeded without a handle")
 	}
 }

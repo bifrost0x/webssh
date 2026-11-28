@@ -35,6 +35,12 @@ type Service struct {
 	// Admins reports names listed in ADMIN_USERS; their identity cannot
 	// be unlinked.
 	Admins func(username string) bool
+	// Attempts reserves one sign-in attempt for the directory entry
+	// (provider and subject) before its password is checked, so the
+	// ceiling per name holds whatever spelling of the name the directory
+	// matched (auth.Flow.ReserveSubjectAttempt). release is called after a
+	// successful sign-in; nil reserves nothing.
+	Attempts func(ctx context.Context, subject string) (release func(), ok bool)
 
 	Enabled       bool
 	Provider      string        // LDAP_PROVIDER_ID
@@ -86,6 +92,7 @@ func (s *Service) active(ctx context.Context) bool {
 var (
 	errAuthFailed  = fault.New(fault.AuthFailed, "Invalid username or password")
 	errUnavailable = fault.New(fault.Unavailable, "Directory sign-in is temporarily unavailable")
+	errTooMany     = fault.New(fault.RateLimited, "Too many login attempts")
 )
 
 // classify turns a directory error into the fault the routes answer:

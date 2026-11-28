@@ -19,7 +19,8 @@ DATA_DIR/
 |   |-- webssh.lock               one server per data directory
 |   |-- migration-report-<UTC>.json
 |   |-- restore-status.json
-|   |-- replaced-<UTC>/           databases set aside by migrate --replace
+|   |-- replaced-<UTC>/           databases set aside by migrate --replace,
+|   |                             and their keys once a restore replaced them
 |   `-- deleted_users/<id>-<UTC>/ copies of deleted accounts
 |-- logs/
 |   |-- security_audit.log

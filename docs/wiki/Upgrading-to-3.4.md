@@ -123,6 +123,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U27 | `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` add certificates to the system trust store instead of replacing it, and apply to OIDC and GitHub. LDAP trusts only `LDAP_CA_FILE`, as before. A missing or empty bundle is an error. | decided | Check that the bundle path exists. |
 | U92 | A `.env` file next to the binary (`/app/.env` in the image, the checkout for a build from source) is read with the rules of python-dotenv: variables already set in the environment win, `PYTHON_DOTENV_DISABLED` turns it off. A file that is not UTF-8, holds a NUL byte, is larger than 4 MiB or whose `${…}` interpolations add up to more than 4 MiB stops the start. The image does not contain a `.env`. | keep | Nothing, unless you mount a `.env` into `/app`. |
 | U28 | A second cookie `<SESSION_COOKIE_NAME>_binding` binds the CSRF token to the browser, and a known device gets `<SESSION_COOKIE_NAME>_device`. `REMEMBER_COOKIE_NAME` must not use either name; the start fails if it does. | new | Allow the cookies in cookie policies. |
+| U130 | New `ALLOWED_HOSTS`: comma-separated DNS names WebSSH answers to. Other names get 421 Misdirected Request; IP addresses, `localhost`, the hosts of `CORS_ORIGINS` and the probes are always served. Unset serves every name, as 3.3 did; the homelab profile logs a hint at start. | new | Set it to the names you open WebSSH with, especially for plain-HTTP homelab installs. |
 
 ### Reverse proxy and live connection
 
@@ -135,6 +136,9 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U33 | A request that changes data and comes from another site is refused with 403 `forbidden` (3.3: 400 `csrf_expired`). Browsers older than 2023 behind a proxy that rewrites the host need `TRUSTED_PROXIES`. | fix | Set `TRUSTED_PROXIES` and `TRUSTED_PROXY_CIDRS` behind such proxies. |
 | U94 | WebSSH holds at most 4096 HTTP connections at once, live connections included; further connections wait until one closes. There is no setting; 3.3 under Gunicorn held at most 1000. | new | Nothing. A proxy in front may set a lower limit. |
 | U34 | Forwarded headers with invalid values (an unparsable address, a scheme other than http or https, a host or prefix with path characters) are ignored and logged once. The `Forwarded` header is ignored, as before. | fix | Fix the proxy configuration if the log names it. |
+| U127 | An HTTP/1 answer to a request whose announced body was not read closes the connection, and every request has the 30 s read deadline, also requests that WebSSH answers without a handler (unknown route, wrong method, `/socket.io`, `/ws`, maintenance). 3.3 waited for the body. | fix | Nothing. |
+| U128 | Requests without a session (sign-in, registration, passkey sign-in) share a 16 MiB body budget, of which one client address (IPv6: its /64) holds at most 256 KiB, and their body must arrive within 10 s. Behind a proxy that is not listed in `TRUSTED_PROXIES`, all clients count as one address. | new | Set `TRUSTED_PROXIES`/`TRUSTED_PROXY_CIDRS` for your proxy. |
+| U129 | A realtime message above 128 KiB (the editor save) needs a share of a read budget: two such messages per account, at least 256 MiB in total. Without it within 5 s the connection closes with 1013 and the page reconnects. 3.3 had no bound. | new | Nothing. |
 
 ### Sign-in and accounts
 
@@ -151,6 +155,9 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U42 | Deleting an account writes a verified copy of its rows to `DATA_DIR/go/deleted_users/<id>-<UTC>/`. Copies are kept until an operator removes them. | decided | Remove old copies by hand when they are no longer needed. |
 | U43 | The routes `/api/totp/disable`, `/api/credentials/apply`, `/api/credentials/lock` and `/api/automation/vault/*` are removed; they had no caller in the interface. Two-factor sign-in is turned off from the account security page as before. | removed | Scripts that called them must use the interface. |
 | U102 | Every account taken over from 3.3 sees a notice once, when it first opens the workspace after the update: WebSSH now runs on a new server written in Go, the data was carried over, and problems can be reported as a [GitHub issue](https://github.com/bifrost0x/webssh/issues). The notice links to this page; below it, set apart, are the project's support links (GitHub Sponsors, Patreon, Buy Me a Coffee), unless an administrator hid the support links. "Got it", Escape or closing it marks it as read for the account on every device and after restarts. Accounts created on 3.4 never see it. The notice comes before the introduction tour. The migration records it per account next to the settings, which stay unchanged; after a way back and `migrate --replace` it is shown once more. | new | Nothing. |
+| U139 | LDAP identities are keyed by the full unique-ID value. 3.3 read a binary value starting with a digit and a NUL byte (possible for `objectGUID`) as that digit, so several directory accounts could share one key. A link stored that way keeps working for the entry it was recorded for (same DN) and moves to the full value at its next sign-in; any other entry is refused with `LDAP_LOGIN_REJECTED` (`ambiguous_subject`). | fix | If such an account's DN changed since its last sign-in, relink it in the administration. |
+| U140 | LDAP auto-provisioning refuses names that NFKC normalization changes (full-width, mathematical or circled letters), and the per-name sign-in ceiling of `/login/ldap` also counts per directory entry, so all spellings the directory matches share it. 3.3 created such accounts and counted every spelling separately. | fix | Nothing. |
+| U141 | OIDC sign-in starts are bounded per source (16 per IPv4 address or IPv6 /64); a full store drops the oldest start of the busiest source instead of answering "Identity provider unavailable" to everyone. Link and step-up starts of signed-in accounts have their own pool. | fix | Nothing. |
 
 ### SSH connections and hosts
 
@@ -174,6 +181,8 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U59 | A host import file with `NaN`, `Infinity` or more than 512 levels of nesting is refused with "Invalid JSON document.". | fix | Export the file again from WebSSH. |
 | U60 | A failed step-up for a global host key (invalid entry, unknown id) no longer uses up the confirmation. | fix | Nothing. |
 | U100 | Names are unique per user and kind, compared without surrounding spaces and without regard to case: saved hosts, jump hosts, SOCKS5 proxies, SSH keys and saved passwords. Saving a new record, renaming one or importing a host under a name another record of the same kind already has is refused at the name field (`duplicate_name`); similar hosts with other authentication or settings need their own name. A key upload with a taken name is refused before the confirmation and is never renamed silently. Records that 3.3 stored with the same name are migrated unchanged and stay editable under their name; the import of the old automation vault restores its names as they were. Save and Save & connect are locked while a save is running, so repeated clicks store a record once. | decided | Rename duplicates if you want to tell them apart; nothing else. |
+| U136 | An IPv6 address may carry a zone (`%…`) only on a link-local or interface-local address, and only as an interface name or number (letters, digits, `_`, `-`, `.`, at most 15 characters). Saving or importing a host with another zone is refused with "Invalid host format"; a stored host with such a zone still loads and is refused when connecting. 3.3 accepted any zone but could not connect with a non-numeric one. | fix | Use the plain address, or the link-local address with its interface. |
+| U137 | Numeric IPv4 forms such as `3405803781`, `0xcb007105` or `203.0.5` are treated as the IPv4 address they stand for: the network policy and the Tailscale rule check that address, and a jump host or SOCKS5 proxy is sent the dotted address instead of the name. Host keys stay stored under the name as typed. | fix | Nothing. |
 
 ### Terminal
 
@@ -195,6 +204,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U67 | Transfer links are valid once, for 300 seconds and only in the browser session that requested them. | fix | Nothing. |
 | U68 | Folder downloads no longer reserve the `QUOTA_TEMP_BYTES_*` quota; each archive stays limited to the smaller of `MAX_ZIP_DOWNLOAD_SIZE` and `QUOTA_TEMP_BYTES_PER_USER`. | fix | Nothing. |
 | U69 | SMB follows the same network policy as SSH: loopback and tailnet addresses are allowed unless `BLOCK_INTERNAL_SSH=true`. `SMB_ALLOWED_TARGETS` stays an exact allowlist. Share enumeration is removed. Windows status codes that 3.3 reported as `OPERATION_FAILED` now get specific codes, and on Windows servers a rename or upload whose reply was lost is reported as done when it took effect. | decided | Check `SMB_ALLOWED_TARGETS` if you relied on the stricter 3.3 address check. |
+| U132 | Folder copies, folder downloads and recursive deletes on SFTP stop with "The source changed during the operation" (SOURCE_CHANGED) when a folder of the tree is replaced by a link while they run; the link target is left untouched. Paths longer than 4096 bytes inside such a tree stop the operation. An SFTP upload or copy whose target folder is replaced by a link while it is written stops the same way. | fix | Nothing. |
 
 ### Saved passwords and automation
 
@@ -208,6 +218,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U74 | Background jobs keep their state across restarts: a periodic job continues from its last run, a run missed during downtime runs once, and an interrupted run is reported and not repeated. | new | Nothing. |
 | U75 | A runbook library with more than 100 runbooks is migrated in full and reported as `runbook_above_limit`; new runbooks need room below the limit. | decided | Remove unused runbooks. |
 | U98 | A connection that would use a saved password over plain HTTP is refused with the code `https_required` (3.3: `authentication_required`); the page still shows "Password management requires HTTPS." | fix | Serve WebSSH over HTTPS, or through a TLS proxy listed in `TRUSTED_PROXY_CIDRS`, to use saved passwords. |
+| U138 | A scheduled run whose check fails only because the scheduler ran out of time or storage failed is retried at the next tick instead of being paused as "needs review". | fix | Nothing. |
 
 ### Backup, restore and secret rotation
 
@@ -222,6 +233,10 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U82 | 3.4 archives are checked strictly before a restore: links, devices, absolute or non-canonical paths, `..`, backslashes, members missing from the manifest and members below `go/` or `logs/` are refused. 3.3 archives are read as tolerantly as before. | decided | Nothing. |
 | U83 | The restore state lives in `DATA_DIR/go/restore-status.json`, next to the data, instead of in `BACKUP_TEMP_DIR`. Online restore no longer requires `BACKUP_RECOVERY_DURABLE=true`. | fix | Nothing. |
 | U84 | `rotate-secret-key --confirm-offline` refuses while a WebSSH server uses the data directory and while the 3.3 data still exists. The recovery snapshot before the rotation is a 3.4 archive (`webssh-backup-<UTC>.tar`) instead of `<datadir>-pre-rotation-….zip`. Besides all browser sessions, a rotation also ends enrollments, two-factor sign-ins and passkey ceremonies in progress, step-up confirmations and open bootstrap codes. A rotation interrupted by a crash completes at the next start. | fix | Run `legacy purge` before the first rotation; stop the server. |
+| U120 | A 3.4 archive whose database holds anything 3.4 does not create (triggers, views, virtual tables, other tables or indexes, changed table definitions) is refused by the upload check, `backup verify` and the restore. Archives written by WebSSH are not affected. | fix | Nothing; use an unmodified archive. |
+| U121 | `legacy purge` names the files it removes that are no 3.3 data Go took over (for example a certificate, an export or a `.bak` copy in the volume) and puts them into its backup; `--skip-backup` is then refused. When the 3.3 data is already gone, a file that changed since the migration stays in place and is named. An interrupted purge removes only files of the migration record. | fix | Run the purge with a backup, or move your own files out of the data directory first. |
+| U123 | When `SECRET_KEY` is set in the environment, the online backup, `backup create` and the `legacy purge` backup no longer contain it; the keyring material stays in the archive. 3.3 never had such a key in DATA_DIR and so never in an archive. `backup create --include-secret-key` adds it on request. A key kept in `DATA_DIR/secret_key` is included as before. | fix | Restore such an archive with the same `SECRET_KEY`; keep the value with your recovery material. |
+| U124 | Beside the 3.3 data, restoring a 3.4 archive with the same `SECRET_KEY` but other keyring material (another host, a clone) reseals its secrets under the active key and keeps the material. Without 3.3 data, a restore that installs other key material or another `SECRET_KEY` first writes the previous ones as `keyring-material` and `secret_key` (0600) into each `go/replaced-<UTC>/`, so data set aside by `migrate --replace` still opens. | fix | Keep these files with the directory; remove the directory when it is no longer needed. |
 
 ### Administration and audit
 
@@ -327,18 +342,22 @@ docker compose up -d
   completed migration and while the report still lists data a later release
   has to take over.
 - It lists the paths it will remove, including left-over directories the
-  migration kept in place, and asks for confirmation (`--yes` skips the
+  migration kept in place and files that are no 3.3 data (they go into the
+  backup as well), and asks for confirmation (`--yes` skips the
   question, not the list).
 - Before it removes anything it writes a backup with the 3.4 database,
   `SECRET_KEY`, the keyring material and every left-over 3.3 file, reads it
   back and prints its path. Without `--backup-to` it writes next to
   `DATA_DIR` when that directory is writable, otherwise to
-  `BACKUP_TEMP_DIR`. `--skip-backup` is refused while left-over files exist.
+  `BACKUP_TEMP_DIR`. `--skip-backup` is refused while left-over files or
+  files that are no 3.3 data exist. A `SECRET_KEY` from the environment is
+  not written into the backup (`U123`).
 - The backup is not encrypted and has mode 0600. Whoever can read it can
   read every stored secret. Move it off the host.
 - `secret_key`, `logs/` and `go/` are never removed. The keyring material
   moves from `logs/.webssh-go/` to `go/keyring-material`.
-- An interrupted purge continues at the next start.
+- An interrupted purge continues at the next start and removes only files
+  of the migration record.
 
 After the purge the way back to 3.3 is gone. `rotate-secret-key` is
 available from then on.

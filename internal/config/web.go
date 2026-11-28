@@ -15,6 +15,9 @@ func loadWeb(p *parser, c *Config, in *pending) {
 		loadCORS(p, c, in)
 	}
 	c.Origins.SkipSameOrigin = p.flag("SOCKETIO_ALLOW_ANY_ORIGIN", "SOCKETIO_ALLOW_ANY_ORIGIN", "false")
+	if !p.failed() {
+		loadAllowedHosts(p, c)
+	}
 
 	discovery := pyStrip(p.raw("HOST_DISCOVERY_ENABLED", ""))
 	if discovery == "" {
@@ -98,6 +101,30 @@ func loadCORS(p *parser, c *Config, in *pending) {
 			p.warn(WarnInfo, "CORS_ORIGINS", "CORS_ORIGINS not set, using localhost only. Set CORS_ORIGINS for other origins.")
 		}
 		p.record("CORS_ORIGINS", c.Origins.List)
+	}
+}
+
+// allowedHostName is one ALLOWED_HOSTS entry: a DNS name without scheme,
+// port or path.
+var allowedHostName = regexp.MustCompile(`^[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?(\.[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?)*$`)
+
+// loadAllowedHosts reads ALLOWED_HOSTS, which the Go release adds: the
+// DNS names the server answers to (DNS rebinding). IP literals and
+// localhost are always served and need no entry.
+func loadAllowedHosts(p *parser, c *Config) {
+	for part := range strings.SplitSeq(p.raw("ALLOWED_HOSTS", ""), ",") {
+		name := strings.TrimSuffix(strings.ToLower(pyStrip(part)), ".")
+		if name == "" {
+			continue
+		}
+		if len(name) > 253 || !allowedHostName.MatchString(name) {
+			p.fail(configError("ALLOWED_HOSTS", "ALLOWED_HOSTS must list DNS names without scheme, port or path, separated by commas, e.g. ALLOWED_HOSTS=ssh.example.com"))
+			return
+		}
+		c.Origins.AllowedHosts = append(c.Origins.AllowedHosts, name)
+	}
+	if c.Origins.AllowedHosts == nil && c.Profile == ProfileHomelab {
+		p.warn(WarnOrigin, "ALLOWED_HOSTS", "ALLOWED_HOSTS is not set, so every host name is served; list the names you open WebSSH with to refuse pages that rebind their name to this server")
 	}
 }
 

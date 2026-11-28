@@ -138,27 +138,39 @@ func (c *Conn) hello() protocol.Hello {
 
 func (c *Conn) readLoop() {
 	for {
-		typ, data, err := c.ws.Read(c.io)
+		typ, data, release, err := c.readMessage()
+		if errors.Is(err, errReadBusy) {
+			c.closeWith(websocket.StatusTryAgainLater, "the server is busy")
+			return
+		}
 		if err != nil || c.ctx.Err() != nil {
 			// Nothing read after the connection began to close is acted
 			// on, so a revoked session cannot send input or requests.
+			if release != nil {
+				release()
+			}
 			return
 		}
 		switch typ {
 		case websocket.MessageText:
-			if err := c.srv.dispatch(c, data); err != nil {
+			if err := c.srv.dispatchHeld(c, data, release); err != nil {
 				c.closeWith(protocol.CloseProtocolViolation, "malformed message")
 				return
 			}
 		case websocket.MessageBinary:
 			if c.srv.binary == nil {
+				release()
 				c.closeWith(protocol.CloseProtocolViolation, "binary frames not accepted")
 				return
 			}
-			if err := c.srv.binary(c, data); err != nil {
+			err := c.srv.binary(c, data)
+			release()
+			if err != nil {
 				c.closeWith(protocol.CloseProtocolViolation, "malformed binary frame")
 				return
 			}
+		default:
+			release()
 		}
 	}
 }

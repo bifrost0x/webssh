@@ -42,9 +42,15 @@ func keepInstallation(t *testing.T, steps ...RotationStep) *Installation {
 // with a mark and one sealed record.
 func sealedArchive(t *testing.T) string {
 	t.Helper()
+	return sealedArchiveWith(t, hostASecret)
+}
+
+// sealedArchiveWith is sealedArchive made with secret and other material.
+func sealedArchiveWith(t *testing.T, secret []byte) string {
+	t.Helper()
 	dir := t.TempDir()
 	material := bytes.Repeat([]byte{0x5a}, keyring.MaterialSize)
-	ring, err := keyring.Open(hostASecret, material)
+	ring, err := keyring.Open(secret, material)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +76,7 @@ func sealedArchive(t *testing.T) string {
 		t.Fatal(err)
 	}
 	archive := filepath.Join(dir, "a.tar")
-	if err := WriteFile(archive, Contents{Database: path, SecretKey: hostASecret, Material: material, KeyID: ring.KeyID(),
+	if err := WriteFile(archive, Contents{Database: path, SecretKey: secret, Material: material, KeyID: ring.KeyID(),
 		Reason: ReasonPurge, Now: time.Now()}); err != nil {
 		t.Fatal(err)
 	}

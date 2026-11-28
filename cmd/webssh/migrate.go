@@ -108,7 +108,7 @@ func runLegacy(ctx context.Context, args []string, s streams) int {
 	if err != nil {
 		return fail(s, err)
 	}
-	o := legacy.PurgeOptions{Options: mo, BackupDir: *backupTo, SkipBackup: *skip, Backup: writeVerifiedBackup,
+	o := legacy.PurgeOptions{Options: mo, BackupDir: *backupTo, SkipBackup: *skip, Backup: purgeBackupWriter(envSecret(cfg)),
 		Confirm: func(p legacy.PurgePlan) bool { return confirmPurge(s, p, *yes) }}
 	out, err := legacy.Purge(ctx, o)
 	if errors.Is(err, legacy.ErrPurgeAborted) {
@@ -132,14 +132,27 @@ func runLegacy(ctx context.Context, args []string, s streams) int {
 }
 
 // confirmPurge shows what the purge removes, naming the legacy paths the
-// migration kept in place (they go into the backup), and asks unless
-// --yes was given.
+// migration kept in place and the files that are no Python data (both go
+// into the backup) and the changed files it leaves in place, and asks
+// unless --yes was given.
 func confirmPurge(s streams, p legacy.PurgePlan, yes bool) bool {
 	if len(p.Kept) > 0 {
 		write(s.stdout, "The migration kept these legacy paths in place; Go did not take them over. They are removed "+
 			"with the Python data and go into the backup:\n")
 		for _, k := range p.Kept {
 			write(s.stdout, fmt.Sprintf("  %s (%s, %d files)\n", k.Path, k.Reason, k.Files))
+		}
+	}
+	if len(p.Unclaimed) > 0 {
+		write(s.stdout, "These files are no Python data Go took over. They are removed and go into the backup:\n")
+		for _, f := range p.Unclaimed {
+			write(s.stdout, "  "+f+"\n")
+		}
+	}
+	if len(p.Changed) > 0 {
+		write(s.stdout, "These files changed since the migration and stay in place:\n")
+		for _, f := range p.Changed {
+			write(s.stdout, "  "+f+"\n")
 		}
 	}
 	if yes {
@@ -166,24 +179,33 @@ func confirmPurge(s streams, p legacy.PurgePlan, yes bool) bool {
 	return answer == "y" || answer == "yes"
 }
 
-// writeVerifiedBackup writes the purge backup and verifies it by reading
-// it back, including one sealed SSH key or TOTP secret when there is one.
-func writeVerifiedBackup(ctx context.Context, req legacy.BackupRequest) (string, error) {
-	path, err := backup.Write(req.Dir, backup.Contents{Database: req.Database, SecretKey: req.Secret, Material: req.Material,
-		KeyID: req.KeyID, Release: req.Release, Reason: "legacy-purge", Now: req.Now, DataDir: req.DataDir, Legacy: req.Legacy})
-	if err != nil {
-		return "", err
+// purgeBackupWriter writes the purge backup and verifies it by reading it
+// back, including one sealed SSH key or TOTP secret when there is one.
+// A SECRET_KEY from the environment stays out of the archive, as in every
+// export (envSecret); the archive then verifies with that key.
+func purgeBackupWriter(omitSecret bool) func(context.Context, legacy.BackupRequest) (string, error) {
+	return func(ctx context.Context, req legacy.BackupRequest) (string, error) {
+		c := backup.Contents{Database: req.Database, SecretKey: req.Secret, Material: req.Material,
+			KeyID: req.KeyID, Release: req.Release, Reason: "legacy-purge", Now: req.Now, DataDir: req.DataDir, Legacy: req.Legacy}
+		if omitSecret {
+			c.SecretKey = nil
+		}
+		path, err := backup.Write(req.Dir, c)
+		if err != nil {
+			return "", err
+		}
+		v, err := backup.VerifyWith(ctx, path, backup.VerifyOptions{Secret: req.Secret, RequireSecret: !omitSecret,
+			Probes: []backup.Probe{vault.ProbeSealed, totp.ProbeSealed}})
+		if err == nil {
+			err = holdsLegacy(v.Manifest, req.Legacy)
+		}
+		if err != nil {
+			// The archive may hold SECRET_KEY; one that does not
+			// verify is not left behind.
+			return "", errors.Join(err, os.Remove(path))
+		}
+		return path, nil
 	}
-	v, err := backup.Verify(ctx, path, vault.ProbeSealed, totp.ProbeSealed)
-	if err == nil {
-		err = holdsLegacy(v.Manifest, req.Legacy)
-	}
-	if err != nil {
-		// The archive holds SECRET_KEY; one that does not verify is
-		// not left behind.
-		return "", errors.Join(err, os.Remove(path))
-	}
-	return path, nil
 }
 
 // holdsLegacy checks that the verified archive holds every kept legacy

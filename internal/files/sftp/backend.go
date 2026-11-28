@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/fs"
 	"maps"
 	"net/netip"
 	"path"
@@ -248,45 +247,6 @@ func (b *Backend) Rename(ctx context.Context, from, to string) error {
 		return fault.New(fault.FileConflict, "")
 	}
 	return b.mapErr(err, true)
-}
-
-// Chmod implements files.Backend. It needs lsetstat@openssh.com, so the
-// mode of a link target never changes: the object at path is checked with
-// lstat before (no link, no set-id or sticky bits) and after the change.
-func (b *Backend) Chmod(ctx context.Context, p string, perm fs.FileMode) error {
-	if !b.caps.Ops.Has(files.CapChmod) {
-		return fault.New(fault.UnsupportedOperation, "")
-	}
-	if perm&^fs.ModePerm != 0 {
-		return fault.New(fault.InvalidRequest, "")
-	}
-	ctx, cancel, err := b.begin(ctx, true)
-	if err != nil {
-		return err
-	}
-	defer cancel()
-	before, err := b.w.lstat(ctx, p)
-	if err != nil {
-		return b.mapErr(err, false)
-	}
-	if !before.has(attrPermissions) || !isRegular(before.mode) && !isDir(before.mode) || before.mode&0o7000 != 0 {
-		return fault.New(fault.UnsupportedOperation, "")
-	}
-	want := uint32(perm.Perm())
-	if before.mode&0o777 == want {
-		return nil
-	}
-	if err := b.w.lsetstat(ctx, p, want); err != nil {
-		return b.mapErr(err, true)
-	}
-	after, err := b.w.lstat(ctx, p)
-	if err != nil {
-		return fault.Wrap(fault.OutcomeUnknown, err, "")
-	}
-	if after.mode&0o7777 != want || after.mode&0o170000 != before.mode&0o170000 {
-		return fault.New(fault.ModeMismatch, "")
-	}
-	return nil
 }
 
 // File type bits of st_mode.

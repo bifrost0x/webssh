@@ -286,18 +286,24 @@ func (j *PermissionJobs) guard(ctx context.Context, job *permJob, src PermSource
 // current reads the permission state of a planned object; set-id and
 // sticky bits are refused.
 func current(ctx context.Context, src PermSource, p string) (permSnapshot, error) {
+	_, s, err := currentEntry(ctx, src, p)
+	return s, err
+}
+
+// currentEntry is current with the lstat it compared.
+func currentEntry(ctx context.Context, src PermSource, p string) (PermEntry, permSnapshot, error) {
 	e, err := src.Lstat(ctx, p)
 	if err != nil {
-		return permSnapshot{}, mutationFailure(err, false)
+		return e, permSnapshot{}, mutationFailure(err, false)
 	}
 	s, err := snapshotOf(e)
 	if err != nil {
-		return s, err
+		return e, s, err
 	}
 	if s.Special != 0 {
-		return s, fault.New(fault.UnsupportedOperation, "")
+		return e, s, fault.New(fault.UnsupportedOperation, "")
 	}
-	return s, nil
+	return e, s, nil
 }
 
 func joinChild(dir, name string) (string, bool) {

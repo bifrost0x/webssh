@@ -39,7 +39,7 @@ func (p *Policy) OpenRouteRestricted(ctx context.Context, peer netip.Addr, onwar
 			return true
 		}
 		relay := i < len(onward)-1
-		addr, literal := parsePythonAddr(canonical)
+		addr, literal := policyAddr(canonical)
 		switch {
 		case literal && (t.targetRestricted(ctx, addr) || relay && t.relayRestricted(ctx, addr)):
 			return true

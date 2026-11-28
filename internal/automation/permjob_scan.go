@@ -194,7 +194,7 @@ func (j *PermissionJobs) apply(ctx context.Context, c PermCaller, job *permJob, 
 		if err := check(); err != nil {
 			return err
 		}
-		s, err := current(ctx, src, item.path)
+		e, s, err := currentEntry(ctx, src, item.path)
 		if err != nil {
 			return err
 		}
@@ -216,7 +216,7 @@ func (j *PermissionJobs) apply(ctx context.Context, c PermCaller, job *permJob, 
 			return err
 		}
 		perm, _ := ParseMode(mode)
-		if err := src.Chmod(ctx, item.path, perm); err != nil {
+		if err := src.Chmod(ctx, item.path, perm, e); err != nil {
 			return mutationFailure(err, true)
 		}
 		after, err := current(ctx, src, item.path)

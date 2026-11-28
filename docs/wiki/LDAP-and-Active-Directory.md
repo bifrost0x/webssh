@@ -38,7 +38,14 @@ Collect these values from the directory administrator:
 5. A PEM CA bundle containing the issuer chain needed by WebSSH.
 6. A user filter containing exactly one literal `{username}` placeholder.
 7. A stable unique-ID attribute: usually `entryUUID` for OpenLDAP or
-   `objectGUID` for Active Directory.
+   `objectGUID` for Active Directory. A binary value such as `objectGUID` is
+   keyed by its full bytes. 3.3 read a value that starts with a digit
+   followed by a NUL byte as that digit alone, so several directory accounts
+   could share one key. A link stored that way keeps working only for the
+   directory entry it was recorded for (same DN), and moves to the full
+   value at that entry's next sign-in. Any other entry is refused with
+   `LDAP_LOGIN_REJECTED` (`ambiguous_subject`) until an administrator
+   relinks it.
 8. The directory's real disabled or locked account rule.
 
 DNS and system time must work inside the WebSSH container. Do not use an IP
@@ -244,7 +251,12 @@ LDAP-managed WebSSH account only after the first successful directory password
 bind. Automatic provisioning never claims an existing local username, never
 creates an administrator, rejects invalid or overlong names without silently
 truncating them, and does not automatically delete stored data when a directory
-account later disappears.
+account later disappears. It also rejects names that NFKC normalization changes,
+such as full-width or mathematical letters (`ａｌｉｃｅ`), which many directories
+match to the plain name and which would look like another account.
+
+The per-name sign-in ceiling also counts per directory entry, so spellings of
+a name that the directory matches to the same entry share one ceiling.
 
 Linking stores the stable provider and subject plus the current DN and directory
 username. A renamed DN can be updated after successful authentication as long as

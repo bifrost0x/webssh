@@ -54,6 +54,7 @@ type Service struct {
 	kdfUser map[int64]bool // users holding a KDF slot
 
 	creds *credentials // saved passwords; nil until EnableCredentials
+	pub   publicKeys   // public keys of opened sealed keys
 }
 
 // New returns a Service.
@@ -302,6 +303,15 @@ func (s *Service) Delete(ctx context.Context, id, grant string) error {
 // Signer implements client.KeySource: it opens the owner's key for one
 // connection.
 func (s *Service) Signer(ctx context.Context, owner int64, keyID string) (ssh.Signer, error) {
+	r, err := s.usableRow(ctx, owner, keyID)
+	if err != nil {
+		return nil, err
+	}
+	return s.openKey(owner, keyID, r)
+}
+
+// usableRow reads the owner's key and refuses one WebSSH cannot use.
+func (s *Service) usableRow(ctx context.Context, owner int64, keyID string) (keyRow, error) {
 	var (
 		r     keyRow
 		found bool
@@ -310,14 +320,19 @@ func (s *Service) Signer(ctx context.Context, owner int64, keyID string) (ssh.Si
 		r, found, err = getRow(ctx, tx, owner, keyID)
 		return err
 	}); err != nil {
-		return nil, storage(err)
+		return keyRow{}, storage(err)
 	}
 	if !found {
-		return nil, notFound()
+		return keyRow{}, notFound()
 	}
 	if r.State != stateUsable {
-		return nil, fault.New(fault.InvalidValue, textUnusable)
+		return keyRow{}, fault.New(fault.InvalidValue, textUnusable)
 	}
+	return r, nil
+}
+
+// openKey opens the sealed key of r and parses it.
+func (s *Service) openKey(owner int64, keyID string, r keyRow) (ssh.Signer, error) {
 	plain, err := s.sealer.Open(keyring.SSHKey, aad(owner, keyID), r.Sealed)
 	if err != nil {
 		return nil, fault.Wrap(fault.InvalidValue, err, textUnusable)

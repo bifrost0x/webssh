@@ -138,6 +138,10 @@ type Origins struct {
 	// SkipSameOrigin is SOCKETIO_ALLOW_ANY_ORIGIN: with AllowAny, accept
 	// any origin instead of the same origin.
 	SkipSameOrigin bool
+	// AllowedHosts is ALLOWED_HOSTS (Go only): the DNS names the server
+	// answers to, lower case without a trailing dot. Empty serves every
+	// name, as the Python release did.
+	AllowedHosts []string
 }
 
 // Proxies describes the reverse proxies in front of WebSSH (D-19).

@@ -289,3 +289,89 @@ func TestUnauthenticatedBodiesDoNotHoldMemory(t *testing.T) {
 		t.Fatalf("%d connections allocated %d MiB", conns, grown>>20)
 	}
 }
+
+// One source holds at most its share of the anonymous budget, so a
+// client that opens many sign-in requests and never sends their bodies
+// cannot lock everybody else out of the sign-in forms. IPv6 sources are
+// counted per /64.
+func TestSourceShareOfTheAnonymousBudget(t *testing.T) {
+	e := newEdge(t)
+	entered, leave := make(chan struct{}), make(chan struct{})
+	e.h.Mux().HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) {
+		entered <- struct{}{}
+		<-leave
+		echo(w, r)
+	})
+	e.h.Mux().HandleFunc("POST /register", echo)
+	e.h.anonymous = newBodyBudget(1000)
+	e.h.sources = newSourceBudgets(100)
+	e.h.budgetWait = 20 * time.Millisecond
+	post := func(remote string, size int) *httptest.ResponseRecorder {
+		binding, token := e.csrf("")
+		return e.do(req{method: http.MethodPost, target: "/register", body: strings.Repeat("a", size), remote: remote,
+			binding: binding, headers: map[string]string{"X-CSRFToken": token, "Accept": "application/json"}})
+	}
+	binding, token := e.csrf("")
+	held := make(chan int)
+	go func() {
+		held <- e.do(req{method: http.MethodPost, target: "/login", body: strings.Repeat("a", 80), remote: "[2001:db8:1:2::1]:4000",
+			binding: binding, headers: map[string]string{"X-CSRFToken": token, "Accept": "application/json"}}).Code
+	}()
+	<-entered
+	if w := post("[2001:db8:1:2::ffff]:4001", 21); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("another address of the same /64 went over the source's share: %d", w.Code)
+	}
+	if w := post("[2001:db8:1:2::ffff]:4001", 20); w.Code != http.StatusOK {
+		t.Fatalf("within the source's share: %d", w.Code)
+	}
+	if w := post("[2001:db8:1:3::1]:4002", 100); w.Code != http.StatusOK {
+		t.Fatalf("another /64 was refused while the first held its share: %d", w.Code)
+	}
+	if w := post("192.0.2.7:4003", 100); w.Code != http.StatusOK {
+		t.Fatalf("an IPv4 source was refused: %d", w.Code)
+	}
+	close(leave)
+	if code := <-held; code != http.StatusOK {
+		t.Fatalf("held request: %d", code)
+	}
+	if n := len(e.h.sources.users); n != 0 {
+		t.Fatalf("%d source entries remain without a body in flight", n)
+	}
+}
+
+// The anonymous budget is not held by one source with the bodies of
+// many idle connections: a sign-in from another address still reaches
+// its handler. The numbers are those of the edge, over real connections.
+func TestIdleAnonymousBodiesOfOneSourceLeaveSignInOpen(t *testing.T) {
+	e := newEdge(t)
+	e.h.Mux().HandleFunc("POST /login", echo)
+	srv := httptest.NewUnstartedServer(e.h)
+	ConfigureServer(srv.Config)
+	srv.Start()
+	defer srv.Close()
+	addr := srv.Listener.Addr().String()
+
+	slots := int(anonymousBodyBudget / publicRequestLimit)
+	var held []net.Conn
+	defer func() {
+		for _, c := range held {
+			_ = c.Close()
+		}
+	}()
+	for range slots {
+		c, err := net.Dial("tcp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held = append(held, c)
+		fmt.Fprintf(c, "POST /login HTTP/1.1\r\nHost: %s\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\n\r\n", addr, publicRequestLimit)
+	}
+	time.Sleep(300 * time.Millisecond) // let the server reserve what it allows
+
+	binding, token := e.csrf("")
+	w := e.do(req{method: http.MethodPost, target: "/login", body: "username=alice&csrf_token=" + token, remote: "198.51.100.9:5000",
+		binding: binding, headers: map[string]string{"Content-Type": "application/x-www-form-urlencoded"}})
+	if w.Code != http.StatusOK {
+		t.Fatalf("sign-in from another source after %d idle bodies of one source: %d", slots, w.Code)
+	}
+}

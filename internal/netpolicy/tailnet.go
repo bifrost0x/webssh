@@ -162,6 +162,9 @@ func (t Tailnet) remoteNameRestricted(ctx context.Context, canonical string, res
 	if canonical == "ts.net" || strings.HasSuffix(canonical, ".ts.net") {
 		return true
 	}
+	if addr, numeric := inetAton(canonical); numeric {
+		return t.targetRestricted(ctx, addr)
+	}
 	candidates, err := resolve(ctx, canonical)
 	if err != nil {
 		return false

@@ -63,16 +63,42 @@ func validLabel(label string) bool {
 }
 
 // parsePythonAddr accepts what ipaddress.ip_address accepts for a string:
-// dotted IPv4 without leading zeros and IPv6 with an optional scope.
+// dotted IPv4 without leading zeros and IPv6 with an optional scope, the
+// scope restricted by zoneAllowed.
 func parsePythonAddr(s string) (netip.Addr, bool) {
 	addr, err := netip.ParseAddr(s)
-	if err != nil {
-		return netip.Addr{}, false
-	}
-	if zone := addr.Zone(); zone != "" && strings.Contains(zone, "%") {
+	if err != nil || !zoneAllowed(addr) {
 		return netip.Addr{}, false
 	}
 	return addr, true
+}
+
+// zoneAllowed reports whether the zone of addr, if any, is acceptable: an
+// interface name or index of at most 15 letters, digits, '_', '-' and '.'
+// on a link-local unicast, link-local multicast or interface-local
+// multicast IPv6 address. Python accepted any zone, but glibc refused
+// every non-numeric one when connecting. Go ignores the zone when dialing
+// other addresses, and the zone is part of the host-key identity and of
+// the known_hosts line, so known_hosts pattern characters or white space
+// in it would change what the line matches.
+func zoneAllowed(addr netip.Addr) bool {
+	zone := addr.Zone()
+	if zone == "" {
+		return true
+	}
+	if addr.Is4In6() || !(addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsInterfaceLocalMulticast()) {
+		return false
+	}
+	if len(zone) > 15 {
+		return false
+	}
+	for i := range len(zone) {
+		c := zone[i]
+		if c != '_' && c != '-' && c != '.' && (c < '0' || c > '9') && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
+			return false
+		}
+	}
+	return true
 }
 
 // pythonAddrString renders addr like str(ipaddress.ip_address(...)):

@@ -125,13 +125,24 @@ type fakeDirect struct {
 	mu      sync.Mutex
 	signins []string
 	refuse  map[int64]bool
+	// before runs ahead of the issue-time confirmation, where a
+	// concurrent factor reset would commit.
+	before func()
 }
 
-func (f *fakeDirect) SignInDirect(_ http.ResponseWriter, _ *http.Request, userID int64, method string, a auth.Assurance) error {
+func (f *fakeDirect) SignInDirect(_ http.ResponseWriter, r *http.Request, userID int64, method string, a auth.Assurance, still func(context.Context) error) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.refuse[userID] {
 		return fault.New(fault.AuthenticationNeeded, "")
+	}
+	if f.before != nil {
+		f.before()
+	}
+	if still != nil {
+		if err := still(r.Context()); err != nil {
+			return err
+		}
 	}
 	f.signins = append(f.signins, strconv.FormatInt(userID, 10)+"|"+method+"|"+string(a))
 	return nil

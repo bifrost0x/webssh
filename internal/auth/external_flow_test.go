@@ -18,10 +18,10 @@ func TestFlightsTakeOnceAndBindToBrowser(t *testing.T) {
 	now := time.Date(2026, 11, 26, 10, 0, 0, 0, time.UTC)
 	s := &Flights{Now: func() time.Time { return now }}
 	f := NewFlight(ProviderOIDC, PurposeSignIn, now)
-	if err := s.Put("", f); err == nil {
+	if err := s.Put("", "192.0.2.1", f); err == nil {
 		t.Fatal("flight without browser binding stored")
 	}
-	if err := s.Put("browser-a", f); err != nil {
+	if err := s.Put("browser-a", "192.0.2.1", f); err != nil {
 		t.Fatal(err)
 	}
 	// Another browser's callback with the same state finds nothing and
@@ -37,12 +37,12 @@ func TestFlightsTakeOnceAndBindToBrowser(t *testing.T) {
 		t.Fatal("flight taken twice")
 	}
 	old := NewFlight(ProviderOIDC, PurposeSignIn, now.Add(-FlightTTL))
-	_ = s.Put("browser-a", old)
+	_ = s.Put("browser-a", "192.0.2.1", old)
 	if _, err := s.Take("browser-a", old.State); !fault.Is(err, fault.AuthFailed) {
 		t.Fatal("expired flight accepted")
 	}
 	dropped := NewFlight(ProviderOIDC, PurposeSignIn, now)
-	_ = s.Put("browser-a", dropped)
+	_ = s.Put("browser-a", "192.0.2.1", dropped)
 	s.Drop("browser-a", dropped.State)
 	if _, err := s.Take("browser-a", dropped.State); err == nil {
 		t.Fatal("dropped flight taken")
@@ -57,7 +57,7 @@ func TestFlightsBounds(t *testing.T) {
 	for range MaxFlightsPerBinding + 3 {
 		f := NewFlight(ProviderOIDC, PurposeSignIn, now)
 		states = append(states, f.State)
-		if err := s.Put("browser", f); err != nil {
+		if err := s.Put("browser", "192.0.2.1", f); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -68,7 +68,7 @@ func TestFlightsBounds(t *testing.T) {
 		}
 	}
 	for i := range maxFlights + 10 {
-		_ = s.Put("b"+strings.Repeat("x", i%50)+string(rune('a'+i%26))+itoa(int64(i)), NewFlight(ProviderOIDC, PurposeSignIn, now))
+		_ = s.Put("b"+strings.Repeat("x", i%50)+string(rune('a'+i%26))+itoa(int64(i)), "10.0."+itoa(int64(i/256))+"."+itoa(int64(i%256)), NewFlight(ProviderOIDC, PurposeSignIn, now))
 	}
 	s.mu.Lock()
 	n := len(s.m)
@@ -84,7 +84,7 @@ func FuzzFlightsTake(f *testing.F) {
 		now := time.Now()
 		s := &Flights{Now: func() time.Time { return now }}
 		fl := NewFlight(ProviderOIDC, PurposeSignIn, now)
-		_ = s.Put("browser", fl)
+		_ = s.Put("browser", "192.0.2.1", fl)
 		if _, err := s.Take(binding, state); err == nil && (binding != "browser" || state != fl.State) {
 			t.Fatal("flight taken with other values")
 		}

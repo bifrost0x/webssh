@@ -6,8 +6,9 @@ the generated `SECRET_KEY`.
 
 Backups are sensitive. An archive contains the database with user
 configuration, host information, password hashes, second factors and
-provider secrets such as the encrypted GitHub client secret, and by default
-the application secret and key material that decrypt them. Store downloaded
+provider secrets such as the encrypted GitHub client secret, the key
+material and, when WebSSH manages `SECRET_KEY` in `DATA_DIR/secret_key`, the
+application secret that decrypts them. Store downloaded
 archives encrypted and off the host with restricted access.
 
 Upgrading from 3.3? Backups made with 3.3 restore on 3.4; 3.4 backups do
@@ -23,7 +24,7 @@ secret is included and a SHA-256 for every member. Members are stored below
 | Member | Content |
 |---|---|
 | `data/go/webssh.db` | the database, taken as a consistent snapshot |
-| `data/secret_key` | `SECRET_KEY`, unless `--without-secret-key` is given |
+| `data/secret_key` | `SECRET_KEY` when it comes from `DATA_DIR/secret_key`, unless `--without-secret-key` is given. A `SECRET_KEY` set in the environment is left out, as 3.3 did, unless `backup create --include-secret-key` is given; restore such an archive with the same `SECRET_KEY`. The online backup and the `legacy purge` backup follow the same rule. |
 | `data/go/keyring-material` | the key material that, together with `SECRET_KEY`, protects stored secrets |
 | `data/<path>` | only in the backup `legacy purge` writes: left-over files of the 3.3 data |
 
@@ -92,8 +93,9 @@ no longer needed. `rotate-secret-key` is refused until then.
   archive from another host works. The previous key is kept for rollback.
 - While the 3.3 data of a migrated installation still exists (before
   `webssh legacy purge`), `DATA_DIR/secret_key` belongs to that data and is
-  never changed. An archive made with another key is then sealed again
-  under the active key and key material while it is staged, with the same
+  never changed, and neither is the key material. An archive made with
+  another key, or with the same key and other key material, is then sealed
+  again under the active key and key material while it is staged, with the same
   steps as `rotate-secret-key`. SSH keys, saved passwords, second factors
   and the GitHub client secret open as before, and 3.3 still starts on its
   own data. An interrupted restore changes nothing.
@@ -102,6 +104,12 @@ no longer needed. `rotate-secret-key` is refused until then.
   the `SECRET_KEY` the archive was made with.
 - An archive made with `--without-secret-key` needs the same `SECRET_KEY`
   on the target.
+- `migrate --replace` keeps the replaced data in `go/replaced-<UTC>/`
+  without `SECRET_KEY` or key material; it opens with the installation's
+  keys. A restore that installs other key material or another `SECRET_KEY`
+  first writes the previous ones beside that data as `keyring-material`
+  and `secret_key` (mode 0600). Keep them with the directory; remove the
+  directory when the replaced data is no longer needed.
 - A 3.3 archive is restored through the migration: the environment value
   wins, otherwise the archive's `data/secret_key`, and the restored secrets
   are sealed again with the installation's key material.
@@ -131,7 +139,7 @@ docker compose up -d
 
 | Command | Notes |
 |---|---|
-| `backup create [--destination ARCHIVE] [--without-secret-key] --confirm-offline` | Without `--destination` the archive goes next to `DATA_DIR` when that directory is writable, otherwise below `BACKUP_TEMP_DIR`; the command prints the path. In the official image `/app` is read-only, so the archive lands in the recovery volume. |
+| `backup create [--destination ARCHIVE] [--without-secret-key \| --include-secret-key] --confirm-offline` | Without `--destination` the archive goes next to `DATA_DIR` when that directory is writable, otherwise below `BACKUP_TEMP_DIR`; the command prints the path. In the official image `/app` is read-only, so the archive lands in the recovery volume. |
 | `backup verify ARCHIVE` | Checks manifest, hashes, limits and the database without restoring. |
 | `backup restore ARCHIVE --confirm-offline [--recovery-snapshot]` | Restores 3.4 archives by their reason and 3.3 archives as exports. `--recovery-snapshot` restores a 3.3 recovery snapshot with its SSH keys and saved passwords. |
 

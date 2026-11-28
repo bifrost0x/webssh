@@ -78,7 +78,7 @@ func start(ctx context.Context, o Options, l layout, warnings []Warning) (*Start
 	case ev.state == S10 || ev.state == S4:
 		// Finish an interrupted purge from its stored list, and the move
 		// of the keyring material into go/ (section 5.9).
-		if err := completePurge(ctx, l, o, ev.keyID); err != nil {
+		if err := completePurge(ctx, l, o, ev); err != nil {
 			return nil, err
 		}
 		if ev.state == S10 {

@@ -189,20 +189,30 @@ func Stage(ctx context.Context, in *Installation, req StageRequest) (st Staged, 
 		}
 		st.Kind, st.KeyID, material, reason = KindGo, v.Ring.KeyID(), v.Material, v.Manifest.Reason
 		st.Export = req.Portable || reason == ReasonExport
-		if !bytes.Equal(v.Secret, in.SecretKey) {
+		otherSecret := !bytes.Equal(v.Secret, in.SecretKey)
+		if otherSecret {
 			if err := checkSecret(v.Secret); err != nil {
 				return st, fmt.Errorf("%w: %w", ErrInvalid, err)
 			}
-			if in.KeepSecret {
-				if reseal, err = restoreRotation(in, v.Ring); err != nil {
-					return st, err
-				}
-				st.KeyID, material = reseal.To().KeyID(), in.Material
-			} else {
-				st.Secret = true
-				if err := writePrivate(filepath.Join(st.Dir, stagedSecretName), v.Secret); err != nil {
-					return st, fmt.Errorf("backup: stage the SECRET_KEY: %w", err)
-				}
+		}
+		switch {
+		case in.KeepSecret && (otherSecret || otherMaterial(in, v.Ring)):
+			// Beside legacy data neither SECRET_KEY nor the material
+			// changes: the records are resealed under the active ring,
+			// whichever of the two differs.
+			if reseal, err = restoreRotation(in, v.Ring); err != nil {
+				return st, err
+			}
+			st.KeyID, material = reseal.To().KeyID(), in.Material
+		case otherSecret:
+			st.Secret = true
+			if err := writePrivate(filepath.Join(st.Dir, stagedSecretName), v.Secret); err != nil {
+				return st, fmt.Errorf("backup: stage the SECRET_KEY: %w", err)
+			}
+		}
+		if !in.KeepSecret && in.Material != nil && (st.Secret || !bytes.Equal(material, in.Material)) {
+			if err := keepReplacedKeys(in, st.Secret); err != nil {
+				return st, err
 			}
 		}
 	} else {
@@ -252,6 +262,16 @@ func stageLegacy(ctx context.Context, in *Installation, req StageRequest, f *os.
 	return st, nil
 }
 
+// otherMaterial reports an archive ring that is not the installation's
+// although SECRET_KEY is the same: the archive brings other material.
+func otherMaterial(in *Installation, archive *keyring.Ring) bool {
+	if in.Material == nil {
+		return false
+	}
+	active, err := keyring.Open(in.SecretKey, in.Material)
+	return err != nil || active.KeyID() != archive.KeyID()
+}
+
 // restoreRotation is the reseal of a Go archive's records from its ring
 // to the installation's ring (KeepSecret).
 func restoreRotation(in *Installation, archive *keyring.Ring) (*keyring.Rotation, error) {
@@ -274,8 +294,14 @@ func prepareStaged(ctx context.Context, in *Installation, path string, reseal *k
 	if err != nil {
 		return fmt.Errorf("%w: database: %w", ErrInvalid, err)
 	}
+	if err := checkStructure(ctx, db); err != nil {
+		return errors.Join(err, db.Close())
+	}
 	if err := db.ApplyAll(ctx, in.Schemas...); err != nil {
 		return errors.Join(fmt.Errorf("%w: %w", ErrIncompatible, err), db.Close())
+	}
+	if err := matchReference(ctx, db, in.Schemas, filepath.Dir(path)); err != nil {
+		return errors.Join(err, db.Close())
 	}
 	if in.Prepare != nil || reseal != nil {
 		err := db.Write(ctx, func(tx *store.Tx) error {

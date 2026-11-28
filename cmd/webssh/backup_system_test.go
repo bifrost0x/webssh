@@ -150,14 +150,15 @@ func TestOnlineBackupAndRestoreThroughTheServer(t *testing.T) {
 	if code, _ := rawPost(t, admin, ts.URL, "/admin/api/backups/"+id+"/download", nil, adminGrant(t, admin, ts.URL, "backup.download", id, pw)); code != http.StatusNotFound {
 		t.Fatalf("second download: %d", code)
 	}
-	// The export holds no SSH key and opens with the active SECRET_KEY.
+	// The export holds no SSH key and opens with the active SECRET_KEY,
+	// which comes from the environment and so is not in the archive.
 	p := filepath.Join(t.TempDir(), "export.tar")
 	if err := os.WriteFile(p, archive, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	exported := filepath.Join(t.TempDir(), "export.db")
 	v, err := backup.VerifyWith(t.Context(), p, backup.VerifyOptions{Secret: []byte(env["SECRET_KEY"]), Database: exported})
-	if err != nil || v.Manifest.Reason != backup.ReasonExport || !v.Manifest.IncludesSecretKey {
+	if err != nil || v.Manifest.Reason != backup.ReasonExport || v.Manifest.IncludesSecretKey {
 		t.Fatalf("export: %+v, %v", v.Manifest, err)
 	}
 	edb, err := store.Open(t.Context(), exported, store.Options{})

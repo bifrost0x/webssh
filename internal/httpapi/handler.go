@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/config"
@@ -54,6 +56,7 @@ type Handler struct {
 	pageData errorPageData
 	log      *slog.Logger
 	proxy    *proxyTrust
+	hosts    *hostPolicy
 	cop      *http.CrossOriginProtection
 	session  cookieJar
 	binding  cookieJar
@@ -64,13 +67,19 @@ type Handler struct {
 	// (StreamBody).
 	streamed map[string]bool
 	// signedIn and anonymous bound the buffered bodies in flight, users
-	// the share of one account within signedIn.
+	// the share of one account within signedIn, sources the share of one
+	// client source within anonymous.
 	signedIn, anonymous *bodyBudget
-	users               *userBudgets
+	users               *shareBudgets[int64]
+	sources             *shareBudgets[netip.Prefix]
 	budgetWait          time.Duration
-	ready               *readiness
+	// readTimeout is the read deadline of a request (requestReadTimeout).
+	readTimeout time.Duration
+	ready       *readiness
 	// signInRequired: Options.SignInRequired.
 	signInRequired func(r *http.Request)
+
+	lastHostLog atomic.Int64 // misdirected
 
 	finish    sync.Once
 	finishErr error
@@ -98,6 +107,7 @@ func New(o Options) (*Handler, error) {
 		cfg: cfg, sessions: o.Sessions, mac: o.MAC, renderer: o.Renderer,
 		pageData: o.ErrorPageData, log: log, signInRequired: o.SignInRequired,
 		proxy:   newProxyTrust(cfg.Proxies.Hops, cfg.Proxies.CIDRs, log),
+		hosts:   newHostPolicy(cfg.Origins),
 		cop:     http.NewCrossOriginProtection(),
 		session: cookieJar{name: cfg.Cookies.SessionName, path: path, secure: cfg.Cookies.Secure},
 		binding: cookieJar{name: bindingCookie, path: path, secure: cfg.Cookies.Secure},
@@ -106,7 +116,9 @@ func New(o Options) (*Handler, error) {
 
 		signedIn:  newBodyBudget(signedInBodyBudget),
 		anonymous: newBodyBudget(anonymousBodyBudget), budgetWait: bodyBudgetWait,
-		users: newUserBudgets(userBodyShare),
+		readTimeout: requestReadTimeout,
+		users:       newUserBudgets(userBodyShare),
+		sources:     newSourceBudgets(sourceBodyShare),
 	}
 	if h.session.name == "" {
 		return nil, errors.New("httpapi: the session cookie name is empty")
@@ -177,7 +189,7 @@ func (h *Handler) registered(pattern string) bool {
 }
 
 // ServeHTTP runs the pipeline in this order: client address, headers,
-// admin panel gate, edge-answered routes, deadlines, session, access level,
+// deadlines, host name, admin panel gate, edge-answered routes, session, access level,
 // origin, body limit and budget, CSRF, handler.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.Finish(); err != nil {
@@ -189,6 +201,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(withInfo(r.Context(), info))
 	setSecurityHeaders(w.Header(), h.cfg.Debug)
 	rec := &statusRecorder{ResponseWriter: w}
+	if announcesBody(r) && r.ProtoMajor == 1 {
+		rec.body = &bodyTracker{ReadCloser: r.Body, want: r.ContentLength}
+		r.Body = rec.body
+	}
+	setDeadlines(rec, h.readTimeout, h.log)
 	started := time.Now()
 	defer h.logRequest(rec, r, started)
 	defer h.recoverPanic(rec, r)
@@ -197,12 +214,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	_, pattern := h.mux.Handler(r)
+	access := h.access[patternKey(pattern)]
+	if host := infoFrom(r).Host; access != AccessProbe && !h.hosts.allows(host) {
+		h.misdirected(w, r, host)
+		return
+	}
 	if pattern == "" {
 		// Not found, wrong method or a redirect to the clean path.
 		h.mux.ServeHTTP(w, r)
 		return
 	}
-	access := h.access[patternKey(pattern)]
 	if adminGated(r.URL.Path) && !h.cfg.Accounts.AdminPanelEnabled {
 		h.fail(w, r, errNotFound, "", "")
 		return
@@ -212,7 +233,6 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		h.mux.ServeHTTP(w, r)
 		return
 	case AccessProbe:
-		setDeadlines(w, h.log)
 		h.mux.ServeHTTP(w, r)
 		return
 	case 0:
@@ -220,7 +240,6 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, errNotFound, "", "")
 		return
 	}
-	setDeadlines(w, h.log)
 	// The session, the access level and the origin are checked before the
 	// body is read: none of them depends on it, and a request that is
 	// refused makes the server buffer nothing.
@@ -256,6 +275,9 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer release()
+		if !signedIn {
+			setReadDeadline(w, min(h.readTimeout, publicBodyReadTimeout), h.log)
+		}
 		b, ok, err := readBody(w, r, limit)
 		if err != nil {
 			// The client stopped sending or the read deadline passed.
@@ -275,19 +297,27 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
-// reserveBody reserves n bytes for the body of r: from the anonymous
-// budget without a session, otherwise from the account's share first and
-// then from the signed-in budget, both within one wait. The returned
+// reserveBody reserves n bytes for the body of r: without a session from
+// the source's share and then the anonymous budget, otherwise from the
+// account's share and then the signed-in budget, both within one wait. The returned
 // function gives the bytes back.
 func (h *Handler) reserveBody(r *http.Request, p principal.Principal, signedIn bool, n int64) (func(), bool) {
 	ctx := r.Context()
+	deadline := time.Now().Add(h.budgetWait)
 	if !signedIn {
-		if !h.anonymous.acquire(ctx, n, h.budgetWait) {
+		src := sourceKey(ClientAddr(r))
+		if !h.sources.acquire(ctx, src, n, h.budgetWait) {
 			return nil, false
 		}
-		return func() { h.anonymous.release(n) }, true
+		if !h.anonymous.acquire(ctx, n, time.Until(deadline)) {
+			h.sources.release(src, n)
+			return nil, false
+		}
+		return func() {
+			h.anonymous.release(n)
+			h.sources.release(src, n)
+		}, true
 	}
-	deadline := time.Now().Add(h.budgetWait)
 	if !h.users.acquire(ctx, p.UserID, n, h.budgetWait) {
 		return nil, false
 	}

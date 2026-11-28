@@ -47,6 +47,9 @@ type Config struct {
 	RecheckInterval time.Duration
 	// InflightPerConn bounds concurrent async requests (default 16).
 	InflightPerConn int
+	// ReadBudget and ReadBudgetPerUser bound the bytes of large messages
+	// held at once in total and per account (readBudgetFor).
+	ReadBudget, ReadBudgetPerUser int64
 	// RejectSlots bounds connections that are accepted only to be closed
 	// with a readable reason when a connection limit is reached (default
 	// 64). Beyond it the upgrade is refused with plain HTTP 503.
@@ -149,6 +152,8 @@ type Server struct {
 	freezing sync.Once
 
 	readLimit       int64
+	reads           *readBudget
+	readWait        time.Duration // readBudgetWait
 	cap             *capacity
 	rejectSlots     chan struct{}
 	sessions        *sessionIndex
@@ -180,6 +185,7 @@ func NewServer(cfg Config, deps Deps) (*Server, error) {
 		reg:         registry{routes: map[string]protocol.Route{}},
 		cap:         newCapacity(cfg.MaxConns, cfg.MaxConnsPerUser),
 		rejectSlots: make(chan struct{}, cfg.RejectSlots),
+		readWait:    readBudgetWait,
 		sessions:    newSessionIndex(),
 	}
 	switch {
@@ -235,6 +241,7 @@ func (s *Server) mustNotServe() {
 func (s *Server) freeze() {
 	s.freezing.Do(func() {
 		s.readLimit = max(s.cfg.ReadLimit, int64(s.reg.maxPayload)+envelopeOverhead)
+		s.reads = readBudgetFor(s.cfg, s.readLimit)
 		s.frozen.Store(true)
 	})
 }

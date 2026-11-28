@@ -38,13 +38,15 @@ type PermEntry struct {
 // PermSource is one held file source that can change permissions (SFTP
 // with lsetstat@openssh.com while the admin switch SFTP_CHMOD_ENABLED is
 // on). Paths are canonical. Failures are *fault.Error with the upper-case
-// file codes; Chmod never follows a link and verifies the result
-// (MODE_MISMATCH, OUTCOME_UNKNOWN).
+// file codes; Chmod never follows a link, changes nothing unless the
+// object still matches want, the lstat the caller compared with its plan
+// (METADATA_CHANGED), and verifies the result (MODE_MISMATCH,
+// OUTCOME_UNKNOWN).
 type PermSource interface {
 	Lstat(ctx context.Context, path string) (PermEntry, error)
 	// Children calls fn with the name of every entry of the directory.
 	Children(ctx context.Context, dir string, fn func(name string) error) error
-	Chmod(ctx context.Context, path string, perm uint32) error
+	Chmod(ctx context.Context, path string, perm uint32, want PermEntry) error
 }
 
 // PermSources resolves the sources of the file workspace for permission

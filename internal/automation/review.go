@@ -188,6 +188,9 @@ func (s *Service) keyDigests(ctx context.Context, userID int64, targets []Frozen
 			continue
 		}
 		public, err := s.o.Keys.PublicKey(ctx, userID, h.KeyID)
+		if fault.Is(err, fault.StorageError) {
+			return nil, storageErr(err)
+		}
 		if err != nil || h.KeyID == "" || len(public) == 0 {
 			return nil, Fail("key_unavailable")
 		}

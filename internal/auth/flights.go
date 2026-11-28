@@ -3,20 +3,30 @@ package auth
 import (
 	"crypto/sha256"
 	"crypto/subtle"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 )
 
-// Bounds of the flight store: a browser keeps at most
+// Bounds of the flight store. A browser keeps at most
 // MaxFlightsPerBinding redirects in progress (oidc_service.py
-// _MAX_STATES_PER_BINDING); its oldest gives way. The process keeps at
-// most maxFlights; a full store refuses new starts, so that starts from
-// many bindings cannot push out the flights of other browsers.
+// _MAX_STATES_PER_BINDING) and a source at most maxFlightsPerSource; the
+// oldest gives way. Sign-in starts and the link and step-up flights of
+// signed-in accounts have separate pools of maxFlights and
+// maxAccountFlights, so unauthenticated starts never block an account.
+// A full pool gives way at the source holding the most flights in it:
+// a flood from many addresses pushes out its own flights first, and
+// other browsers keep theirs and can still start.
 const (
 	MaxFlightsPerBinding = 8
+	maxFlightsPerSource  = 16
 	maxFlights           = 4096
+	maxAccountFlights    = 4096
+	// flightSourcePrefix groups IPv6 sources by /64, the usual
+	// allocation of one subscriber, whatever RATELIMIT_IPV6_PREFIX says.
+	flightSourcePrefix = 64
 )
 
 // Flights holds the redirect flights of the external providers in
@@ -35,6 +45,10 @@ type Flights struct {
 
 type storedFlight struct {
 	binding [32]byte
+	// source is the client source of a sign-in start, or the account of
+	// a link or step-up flight (account set).
+	source  string
+	account bool
 	flight  Flight
 	expires time.Time
 	seq     uint64
@@ -50,15 +64,22 @@ func (s *Flights) now() time.Time {
 func digest(v string) [32]byte { return sha256.Sum256([]byte(v)) }
 
 var (
-	errFlight      = fault.New(fault.AuthFailed, "")
-	errFlightsFull = fault.New(fault.Unavailable, "")
+	errFlight = fault.New(fault.AuthFailed, "")
 )
 
 // Put stores f for the browser binding until f.IssuedAt plus FlightTTL.
-// A browser without binding cannot start a redirect.
-func (s *Flights) Put(binding string, f Flight) error {
+// address is the client address of the start; flights with a UserID count
+// against the account instead. A browser without binding cannot start a
+// redirect.
+func (s *Flights) Put(binding, address string, f Flight) error {
 	if binding == "" || f.State == "" || len(f.State) > maxCallbackField {
 		return fault.New(fault.InvalidRequest, "")
+	}
+	account := f.UserID != 0
+	source := "addr:" + SourceBucket(address, flightSourcePrefix)
+	limit := maxFlights
+	if account {
+		source, limit = "user:"+strconv.FormatInt(f.UserID, 10), maxAccountFlights
 	}
 	now := s.now()
 	s.mu.Lock()
@@ -67,38 +88,57 @@ func (s *Flights) Put(binding string, f Flight) error {
 		s.m = map[[32]byte]storedFlight{}
 	}
 	b := digest(binding)
-	var mine [][32]byte
 	for k, v := range s.m {
-		switch {
-		case !now.Before(v.expires):
+		if !now.Before(v.expires) {
 			delete(s.m, k)
-		case v.binding == b:
-			mine = append(mine, k)
 		}
 	}
-	for len(mine) >= MaxFlightsPerBinding {
+	for {
+		mine := s.keys(func(v storedFlight) bool { return v.binding == b })
+		if len(mine) < MaxFlightsPerBinding {
+			break
+		}
 		s.dropOldest(mine)
-		mine = s.keysOf(b)
 	}
-	if len(s.m) >= maxFlights {
-		if len(mine) == 0 {
-			return errFlightsFull
+	for {
+		same := s.keys(func(v storedFlight) bool { return v.account == account && v.source == source })
+		if len(same) < maxFlightsPerSource {
+			break
 		}
-		s.dropOldest(mine) // a full store only gives way to the same browser
+		s.dropOldest(same)
+	}
+	if pool := s.keys(func(v storedFlight) bool { return v.account == account }); len(pool) >= limit {
+		s.dropOldest(s.largestSource(pool))
 	}
 	s.seq++
-	s.m[digest(f.State)] = storedFlight{binding: b, flight: f, expires: f.IssuedAt.Add(FlightTTL), seq: s.seq}
+	s.m[digest(f.State)] = storedFlight{binding: b, source: source, account: account, flight: f,
+		expires: f.IssuedAt.Add(FlightTTL), seq: s.seq}
 	return nil
 }
 
-func (s *Flights) keysOf(b [32]byte) [][32]byte {
+func (s *Flights) keys(match func(storedFlight) bool) [][32]byte {
 	var out [][32]byte
 	for k, v := range s.m {
-		if v.binding == b {
+		if match(v) {
 			out = append(out, k)
 		}
 	}
 	return out
+}
+
+// largestSource returns the flights of pool that belong to the source
+// holding the most of them.
+func (s *Flights) largestSource(pool [][32]byte) [][32]byte {
+	by := map[string][][32]byte{}
+	var top string
+	for _, k := range pool {
+		src := s.m[k].source
+		by[src] = append(by[src], k)
+		if len(by[src]) > len(by[top]) {
+			top = src
+		}
+	}
+	return by[top]
 }
 
 // dropOldest removes the oldest flight among keys.
