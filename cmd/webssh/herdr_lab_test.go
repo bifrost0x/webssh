@@ -172,12 +172,12 @@ func TestHerdrLabHostWithoutHerdr(t *testing.T) {
 	}
 }
 
-// A snapshot that hangs is answered with timeout, the session is then
-// paced, and the host-side limit ends the stuck process, since closing the
-// channel does not. Python answers after its three-second budget; Go
-// waits until OpenSSH confirms the closed channel, which it does only once
-// the host-side limit (five seconds) has ended the process (reported as a
-// deviation in the rc0 Herdr report).
+// A snapshot that hangs is answered with timeout after its three-second
+// budget, as in Python, the session is then paced, and the stuck process
+// ends on the host: by the signal and close of its channel or, on a host
+// that ignores both, by the host-side limit of the snapshot command. Only
+// the channel ends; the terminal on the same connection keeps working
+// (RC0-1).
 func TestHerdrLabStuckSnapshotIsEndedOnTheHost(t *testing.T) {
 	lab := readHerdrLab(t)
 	plain := lab.side(t, "testuser")
@@ -193,7 +193,7 @@ func TestHerdrLabStuckSnapshotIsEndedOnTheHost(t *testing.T) {
 	}
 	d := time.Since(started)
 	t.Logf("timeout answered after %v", d)
-	if d < 3*time.Second || d > 7*time.Second {
+	if d < 3*time.Second || d > 3500*time.Millisecond {
 		t.Fatalf("timeout after %v", d)
 	}
 	if r := reason(term.snapshot()); r != "busy" {
@@ -205,9 +205,6 @@ func TestHerdrLabStuckSnapshotIsEndedOnTheHost(t *testing.T) {
 			t.Fatal("stuck Herdr call survived the host limit")
 		}
 		time.Sleep(250 * time.Millisecond)
-	}
-	if d := time.Since(started); d < 5*time.Second {
-		t.Fatalf("ended after %v, before the host limit", d)
 	}
 	// The session's connection survived the stuck call.
 	term.input(1, "printf 'still%s\\n' alive\r")

@@ -211,6 +211,18 @@ func TestChannelSetupIsBounded(t *testing.T) {
 				case <-time.After(10 * budget):
 					t.Fatalf("mode %d: still waiting after %v", mode, time.Since(start))
 				}
+				if name == "exec" {
+					// A command ends on its own; the terminal on the
+					// connection stays (RC0-1).
+					select {
+					case <-c.Done():
+						t.Fatal("a stalled command closed the connection")
+					case <-time.After(2 * budget):
+					}
+					_ = c.Close()
+					s.waitClosed(t)
+					return
+				}
 				select {
 				case <-c.Done():
 				case <-time.After(time.Second):
@@ -271,24 +283,46 @@ func TestChannelGuardEndsAfterSetup(t *testing.T) {
 }
 
 // A server that never confirms the close of a channel after the command
-// started must not hold Exec: the setup budget after the end of ctx closes
-// the connection (final review, Exec.Wait).
+// started must not hold Exec: it returns at its deadline and leaves the
+// connection open. The unconfirmed channels are counted, and with
+// maxAbandoned of them Exec refuses new commands instead of piling up
+// sessions on the host (RC0-1).
 func TestExecEndsWhenTheServerIgnoresTheClose(t *testing.T) {
 	s, c := dialStalling(t, stallClose, 300*time.Millisecond)
-	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-	defer cancel()
-	start := time.Now()
-	_, err := c.Exec(ctx, "sleep 60", nil, nil, nil)
-	if fault.CodeOf(err) != fault.Timeout {
-		t.Fatalf("exec: %v", err)
+	for i := range maxAbandoned {
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		start := time.Now()
+		_, err := c.Exec(ctx, "sleep 60", nil, nil, nil)
+		cancel()
+		if fault.CodeOf(err) != fault.Timeout {
+			t.Fatalf("exec %d: %v", i, err)
+		}
+		if took := time.Since(start); took > time.Second {
+			t.Fatalf("exec %d returned after %v", i, took)
+		}
 	}
-	if took := time.Since(start); took > 3*time.Second {
-		t.Fatalf("Exec returned after %v", took)
+	if _, err := c.Exec(t.Context(), "true", nil, nil, nil); fault.CodeOf(err) != fault.Busy {
+		t.Fatalf("exec beyond the limit: %v, want busy", err)
 	}
 	select {
 	case <-c.Done():
-	case <-time.After(time.Second):
-		t.Fatal("the connection is still open")
+		t.Fatal("the connection was closed")
+	default:
+	}
+	// Closing the connection ends the waiting goroutines.
+	_ = c.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		c.execMu.Lock()
+		n := c.abandoned
+		c.execMu.Unlock()
+		if n == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d command goroutines still wait after Close", n)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	s.waitClosed(t)
 }

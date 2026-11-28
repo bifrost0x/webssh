@@ -28,6 +28,11 @@ type Conn struct {
 
 	route  Route
 	routed bool
+
+	// execMu guards abandoned: Exec channels whose caller left before
+	// the server confirmed their end.
+	execMu    sync.Mutex
+	abandoned int
 }
 
 // Route is the network path of an ordinary connection, kept so that an

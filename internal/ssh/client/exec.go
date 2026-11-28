@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
@@ -57,45 +58,65 @@ func (c *Conn) CommandShell(ctx context.Context, command string, rows, cols int)
 
 // Exec runs command on its own channel without a PTY and returns its exit
 // status. stdin, stdout and stderr may be nil; stdin must reach EOF, the
-// writers must not block. Opening the channel and starting the command
-// are bounded by the handshake timeout; a peer that stalls there, or the
-// end of ctx meanwhile, closes the whole connection. After the start the
-// end of ctx closes the channel only. Exec does not bound the run time or
-// output: internal/ssh/remotecmd does.
+// writers must not block and may still be written to after Exec returned.
+//
+// Every command has its own end: the end of ctx, or the setup budget
+// while the channel opens and the command starts. Either ends this
+// command only. Exec returns at once; the channel gets SIGTERM and is
+// closed, as paramiko closed it, and a goroutine waits for the server to
+// confirm while the connection, and the terminal on it, stay open.
+// Channels a server never confirms stay counted against the connection;
+// with maxAbandoned of them Exec refuses new commands. Exec does not bound
+// the run time or output: internal/ssh/remotecmd does.
 func (c *Conn) Exec(ctx context.Context, command string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
 	if err := checkCommand(command); err != nil {
 		return -1, err
 	}
-	gctx, disarm := c.guard(ctx)
-	s, err := c.client.NewSession()
+	if err := ctx.Err(); err != nil {
+		return -1, fail(ctx, RoleTarget, false, err)
+	}
+	run, err := c.startExec(command, stdin, stdout, stderr)
 	if err != nil {
-		return -1, setupFail(ctx, gctx, disarm(), err)
+		return -1, err
 	}
-	defer func() { _ = s.Close() }()
-	s.Stdin, s.Stdout, s.Stderr = stdin, stdout, stderr
-	if err := s.Start(command); err != nil {
-		return -1, unconfirmed(setupFail(ctx, gctx, disarm(), err))
+	budget := c.setup
+	if budget <= 0 {
+		budget = DefaultHandshakeTimeout
 	}
-	if disarm() {
-		return -1, unconfirmed(setupFail(ctx, gctx, true, nil))
+	setup := time.NewTimer(budget)
+	defer setup.Stop()
+	select {
+	case err := <-run.started:
+		if err != nil {
+			if run.abandon() {
+				return -1, unconfirmed(fail(ctx, RoleTarget, false, err))
+			}
+			return -1, fail(ctx, RoleTarget, false, err)
+		}
+	case <-ctx.Done():
+		return -1, run.giveUp(fail(ctx, RoleTarget, false, ctx.Err()))
+	case <-setup.C:
+		return -1, run.giveUp(fail(ctx, RoleTarget, true, context.DeadlineExceeded))
 	}
-	// Running is bounded by ctx (internal/ssh/remotecmd); its end closes
-	// the channel only, so the connection stays usable for a fallback.
-	// Wait returns when the server confirms the close. A server that never
-	// does would hold the caller and its quota slot, so after the setup
-	// budget the whole connection is closed, as the channel guard does
-	// before the start.
-	waited := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() {
-		_ = s.Close()
-		c.closeUnlessDone(waited)
-	})
-	defer stop()
-	err = s.Wait()
-	close(waited)
-	if ctx.Err() != nil {
+	select {
+	case err := <-run.finished:
+		return exitOf(ctx, err)
+	case <-ctx.Done():
+		run.abandon()
 		return -1, fail(ctx, RoleTarget, false, ctx.Err())
 	}
+}
+
+// giveUp abandons a run whose setup did not finish and adds
+// ErrExecUnconfirmed when the exec request may have left.
+func (r *execRun) giveUp(err error) error {
+	if r.abandon() {
+		return unconfirmed(err)
+	}
+	return err
+}
+
+func exitOf(ctx context.Context, err error) (int, error) {
 	if err == nil {
 		return 0, nil
 	}
