@@ -34,6 +34,7 @@ func (f *Flow) registerPage(w http.ResponseWriter, r *http.Request) {
 		f.redirect(w, r, f.url("/login"))
 	case f.signedIn(r):
 		f.redirect(w, r, f.url("/"))
+	case f.refuseFirstAccount(w, r, bootstrap, ""):
 	default:
 		f.Pages.Register(w, r, http.StatusOK, FormView{Flashes: f.TakeFlashes(r)})
 	}
@@ -55,6 +56,9 @@ func (f *Flow) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+	if f.refuseFirstAccount(w, r, bootstrap, r.PostFormValue("username")) {
+		return
+	}
 	ip := f.clientIP(r)
 	if f.Limits.Enabled {
 		if ok, _ := f.Limiter.Allow("register:"+SourceBucket(ip, f.ipPrefix(ctx)), f.Limits.Default); !ok {
@@ -70,7 +74,8 @@ func (f *Flow) register(w http.ResponseWriter, r *http.Request) {
 		f.Pages.Register(w, r, http.StatusOK, FormView{Flashes: []Flash{{"error", "Passwords do not match"}}})
 		return
 	}
-	acc, err := f.Accounts.Create(ctx, accounts.CreateRequest{Username: username, Password: password, FirstOnly: !ongoing})
+	acc, err := f.Accounts.Create(ctx, accounts.CreateRequest{Username: username, Password: password, FirstOnly: !ongoing,
+		NotFirst: f.untrustedHost(r)})
 	if err != nil {
 		_, code, msg := fault.Status(err)
 		if code != fault.InvalidValue && code != fault.Forbidden {

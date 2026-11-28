@@ -82,7 +82,8 @@ func (s *system) buildCapabilities(in bootInput) error {
 		Limiter: s.limiter, Audit: s.audit, Root: cfg.ApplicationRoot,
 		Limits: auth.Limits{Enabled: cfg.RateLimits.Enabled, Login: auth.ParseRule(cfg.RateLimits.Login, ruleLogin),
 			Default: auth.ParseRule(cfg.RateLimits.Default, ruleDefault)},
-		Bootstrap: cfg.Accounts.BootstrapRegistrationEnabled, ClientAddr: httpapi.ClientAddr, Logger: s.log}
+		Bootstrap: cfg.Accounts.BootstrapRegistrationEnabled, FirstAccountHost: httpapi.FirstAccountHost(cfg.Origins.AllowedHosts),
+		ClientAddr: httpapi.ClientAddr, Logger: s.log}
 
 	var err error
 	s.vault, err = vault.New(vault.Options{DB: s.db, Sealer: s.ring, StepUp: s.stepup,

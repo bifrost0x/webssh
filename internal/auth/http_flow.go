@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/accounts"
@@ -110,6 +111,10 @@ type Flow struct {
 	Root string
 	// Bootstrap is BOOTSTRAP_REGISTRATION_ENABLED.
 	Bootstrap bool
+	// FirstAccountHost reports whether the host of a request may register
+	// the first account, which becomes administrator
+	// (httpapi.FirstAccountHost); nil allows every host.
+	FirstAccountHost func(*http.Request) bool
 	// ClientAddr returns the client address after the proxy rules of the
 	// HTTP edge (httpapi.ClientAddr); nil uses the connection's address.
 	ClientAddr func(*http.Request) netip.Addr
@@ -117,6 +122,8 @@ type Flow struct {
 	Now        func() time.Time
 
 	flash flashes
+	// lastHostLog is when refuseFirstAccount last logged (Unix seconds).
+	lastHostLog atomic.Int64
 }
 
 func (f *Flow) now() time.Time {

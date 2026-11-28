@@ -43,17 +43,8 @@ func (p *hostPolicy) allows(host string) bool {
 	if p == nil {
 		return true
 	}
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	name := hostName(strings.TrimSuffix(strings.TrimPrefix(host, "["), "]"))
-	if name == "" {
-		return false
-	}
-	if _, err := netip.ParseAddr(name); err == nil || name == "localhost" {
-		return true
-	}
-	return p.names[name]
+	name, literal := requestHostName(host)
+	return literal || (name != "" && p.names[name])
 }
 
 func hostName(h string) string { return strings.TrimSuffix(strings.ToLower(h), ".") }
@@ -69,4 +60,37 @@ func (h *Handler) misdirected(w http.ResponseWriter, r *http.Request, host strin
 	}
 	w.Header().Set("Connection", "close")
 	writePlain(w, http.StatusMisdirectedRequest, "This server does not answer to that host name.")
+}
+
+// FirstAccountHost returns the check of the first-account registration:
+// while no account exists, the browser may register (and so become
+// administrator) only through a host name nobody can rebind to this
+// server, an IP literal or localhost, or through a name of allowed
+// (ALLOWED_HOSTS). The host is the one the edge resolved, X-Forwarded-Host
+// behind a trusted proxy. The hosts of CORS_ORIGINS do not count: with
+// CORS_ORIGINS=* they would admit every name.
+func FirstAccountHost(allowed []string) func(*http.Request) bool {
+	names := map[string]bool{}
+	for _, n := range allowed {
+		names[hostName(n)] = true
+	}
+	return func(r *http.Request) bool {
+		name, literal := requestHostName(infoFrom(r).Host)
+		return literal || (name != "" && names[name])
+	}
+}
+
+// requestHostName is the lower-case name of host (host[:port] as the
+// browser sent it) without port, brackets or trailing dot; literal
+// reports an IP literal or localhost, which cannot be rebound.
+func requestHostName(host string) (name string, literal bool) {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	name = hostName(strings.TrimSuffix(strings.TrimPrefix(host, "["), "]"))
+	if name == "" {
+		return "", false
+	}
+	_, err := netip.ParseAddr(name)
+	return name, err == nil || name == "localhost"
 }

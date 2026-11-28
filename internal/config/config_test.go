@@ -554,4 +554,20 @@ func TestAllowedHosts(t *testing.T) {
 	if e := loadErr(t, map[string]string{"ALLOWED_HOSTS": "ssh.example.com:443"}); e == nil || e.Variable != "ALLOWED_HOSTS" {
 		t.Fatalf("a host with a port: %v", e)
 	}
+	// ALLOWED_HOSTS stays optional in the production profile too: the
+	// start goes on with the hint, which names the first-account rule.
+	c, warns = mustLoad(t, map[string]string{
+		"DEPLOYMENT_PROFILE": "production", "CORS_ORIGINS": "https://ssh.example.com",
+		"BLOCK_INTERNAL_SSH": "true", "TRUSTED_PROXIES": "1", "TRUSTED_PROXY_CIDRS": "172.31.250.10",
+	})
+	if c.Profile != ProfileProduction || c.Origins.AllowedHosts != nil || !slices.ContainsFunc(warns, func(w Warning) bool {
+		return w.Variable == "ALLOWED_HOSTS" && w.Kind == WarnOrigin && strings.Contains(w.Message, "first account")
+	}) {
+		t.Fatalf("production without ALLOWED_HOSTS: %v %v", c.Profile, warns)
+	}
+	if _, warns = mustLoad(t, map[string]string{"ALLOWED_HOSTS": "ssh.example.com"}); slices.ContainsFunc(warns, func(w Warning) bool {
+		return w.Variable == "ALLOWED_HOSTS"
+	}) {
+		t.Fatalf("hint with ALLOWED_HOSTS set: %v", warns)
+	}
 }
