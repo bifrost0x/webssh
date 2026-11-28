@@ -25,15 +25,16 @@ var (
 // this release does not know, the detected facts of the same endpoint and
 // the position in the group.
 func (s *Service) SaveProfile(ctx context.Context, owner int64, req protocol.HostsProfileSave) (jsontext.Value, error) {
-	return s.saveProfile(ctx, owner, req, false)
+	return s.saveProfile(ctx, owner, req, false, nil)
 }
 
 // saveProfile is upsert_profile. With importing it is the variant the
 // host import uses (skip_duplicate): it never updates a host, refuses a
 // host with the same name or the same endpoint as a saved one with
 // errDuplicateProfile, and leaves the Tailscale access check to the
-// launch, as the Python import route did.
-func (s *Service) saveProfile(ctx context.Context, owner int64, req protocol.HostsProfileSave, importing bool) (jsontext.Value, error) {
+// launch, as the Python import route did. then, if set, runs in the
+// transaction after the host is written.
+func (s *Service) saveProfile(ctx context.Context, owner int64, req protocol.HostsProfileSave, importing bool, then Created) (jsontext.Value, error) {
 	p := profilePayload(req)
 	if s.Variants != nil && !importing {
 		// handle_save_profile checks Tailscale SSH access before the
@@ -132,7 +133,10 @@ func (s *Service) saveProfile(ctx context.Context, owner int64, req protocol.Hos
 		if err := checkGrowth(s.Limits, profileKind, all, next); err != nil {
 			return err
 		}
-		return replace(ctx, tx, profileTable, owner, next)
+		if err := replace(ctx, tx, profileTable, owner, next); err != nil {
+			return err
+		}
+		return runCreated(ctx, tx, then, saved)
 	})
 	if err != nil {
 		return nil, classify(err, "Failed to save profile")

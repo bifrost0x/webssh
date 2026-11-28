@@ -520,9 +520,21 @@ func ImportLegacyVaultTx(ctx, tx *store.Tx, userID int64, document []byte, versi
   (`preview_changed`). Replacing an assigned credential needs the
   confirmation of the old one (`replacement_confirmation_required`).
 - Step-up: binding a saved secret (assign, import, authorize a one-off
-  target) consumes a grant for `credentials.vault` with the intent token
-  as target. After one grant, further bindings of the same session need
+  target, and since 3.4 creating a resource with a saved password)
+  consumes a grant for `credentials.vault` with the intent token as
+  target. After one grant, further bindings of the same session need
   none for 300 seconds (Python `BINDING_ASSURANCE_SECONDS`).
+- `create_for_resource` (T4, new in 3.4) takes either a new password
+  (`name`, `password`) or a saved one (`credential_id`, refused together
+  with `name` or `password`). The resource and its assignment are stored
+  in one transaction: `ResourceWriter.CreateResource` runs the vault's
+  `Within` in the transaction that writes the record, so a failed
+  assignment leaves no record (3.3 and the M2 build removed the record
+  again afterwards). A taken host name is `duplicate_name`; other
+  refusals of the resource stay `invalid_targets`. The state carries
+  `assign_on_create: true`, which tells the page to use this instead of
+  save-then-assign; without it (Python) the page confirms the step-up
+  first (`authorize_target`) and then saves and assigns.
 - Legacy vault (D-06): the file stays byte for byte in
   `vault_legacy_automation`; `ImportLegacy` decrypts it with the user's
   passphrase (scrypt N=131072, r=8, p=1, AES-GCM, AAD

@@ -145,6 +145,9 @@ func (s *Service) State(ctx context.Context) (jsontext.Value, error) {
 		{Name: "enabled", Value: boolJSON(enabled)}, {Name: "credentials", Value: pyjson.Array(creds)},
 		{Name: "profiles", Value: pyjson.Array(profiles)}, {Name: "legacy_vault", Value: boolJSON(waiting)},
 		{Name: "vault", Value: vault},
+		// New in 3.4: create_for_resource also takes a saved password, so
+		// the page creates a resource and its assignment in one step.
+		{Name: "assign_on_create", Value: jsonTrue},
 	}), nil
 }
 

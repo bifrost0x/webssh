@@ -15,6 +15,10 @@ import (
 // password belongs to the credential store, which this release does not
 // build, so connecting through it is refused (Resolve).
 func (s *Service) SaveSOCKSProxy(ctx context.Context, owner int64, req protocol.HostsSOCKSSave) (jsontext.Value, error) {
+	return s.saveSOCKSProxy(ctx, owner, req, nil)
+}
+
+func (s *Service) saveSOCKSProxy(ctx context.Context, owner int64, req protocol.HostsSOCKSSave, then Created) (jsontext.Value, error) {
 	// The handler's defaults for absent members.
 	def := func(v, d jsontext.Value) jsontext.Value {
 		if len(v) == 0 {
@@ -96,7 +100,10 @@ func (s *Service) SaveSOCKSProxy(ctx context.Context, owner int64, req protocol.
 		if err := checkGrowth(s.Limits, socksKind, all, next); err != nil {
 			return err
 		}
-		return replace(ctx, tx, socksTable, owner, next)
+		if err := replace(ctx, tx, socksTable, owner, next); err != nil {
+			return err
+		}
+		return runCreated(ctx, tx, then, r)
 	})
 	if err != nil {
 		return nil, classify(err, "Failed to save SOCKS proxy")

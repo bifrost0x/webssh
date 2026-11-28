@@ -13,6 +13,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/pyjson"
+	"github.com/bifrost0x/webssh/internal/store"
 )
 
 // fakeStores holds the records of the resources per user.
@@ -21,6 +22,11 @@ type fakeStores struct {
 	records map[int64]*Records
 	fail    error
 	created int
+	// db runs the transaction of CreateResource; refuse fails it before
+	// anything is stored; rolledBack counts the records dropped again.
+	db         *store.DB
+	refuse     error
+	rolledBack int
 }
 
 func (f *fakeStores) Records(_ context.Context, userID int64) (Records, error) {
@@ -46,10 +52,15 @@ func (f *fakeStores) set(userID int64, r Records) {
 	f.records[userID] = &r
 }
 
-// CreateResource and DeleteResource make fakeStores a ResourceWriter.
-func (f *fakeStores) CreateResource(_ context.Context, userID int64, kind ResourceKind, payload jsontext.Value) (jsontext.Value, error) {
+// CreateResource makes fakeStores a ResourceWriter. It stores the record in
+// memory, runs within in a write transaction of db and drops the record
+// again when within fails, as the real stores roll back.
+func (f *fakeStores) CreateResource(ctx context.Context, userID int64, kind ResourceKind, payload jsontext.Value, within Within) (jsontext.Value, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
+	if f.refuse != nil {
+		f.mu.Unlock()
+		return nil, f.refuse
+	}
 	if f.records == nil {
 		f.records = map[int64]*Records{}
 	}
@@ -62,37 +73,21 @@ func (f *fakeStores) CreateResource(_ context.Context, userID int64, kind Resour
 	members, _ := pyjson.Members(payload)
 	id := "new" + string(rune('0'+f.created))
 	stored := pyjson.Object(append([]pyjson.Member{{Name: "id", Value: pyjson.String(id)}}, members...))
-	switch kind {
-	case ResourceSSH:
-		r.Profiles = append(r.Profiles, stored)
-	case ResourceJump:
-		r.JumpHosts = append(r.JumpHosts, stored)
-	case ResourceSOCKS:
-		r.SOCKSProxies = append(r.SOCKSProxies, stored)
-	case ResourceSMB:
-		r.SMBShares = append(r.SMBShares, stored)
+	list := map[ResourceKind]*[]jsontext.Value{ResourceSSH: &r.Profiles, ResourceJump: &r.JumpHosts,
+		ResourceSOCKS: &r.SOCKSProxies, ResourceSMB: &r.SMBShares}[kind]
+	*list = append(*list, stored)
+	snapshot := Records{Profiles: slices.Clone(r.Profiles), JumpHosts: slices.Clone(r.JumpHosts),
+		SOCKSProxies: slices.Clone(r.SOCKSProxies), SMBShares: slices.Clone(r.SMBShares), SMB: r.SMB}
+	f.mu.Unlock()
+	err := f.db.Write(ctx, func(tx *store.Tx) error { return within(ctx, tx, stored, snapshot) })
+	if err != nil {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		*list = slices.DeleteFunc(*list, func(v jsontext.Value) bool { s, _ := stringMember(v, "id"); return s == id })
+		f.rolledBack++
+		return nil, err
 	}
 	return stored, nil
-}
-
-func (f *fakeStores) DeleteResource(_ context.Context, userID int64, kind ResourceKind, id string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	r := f.records[userID]
-	drop := func(list []jsontext.Value) []jsontext.Value {
-		return slices.DeleteFunc(list, func(v jsontext.Value) bool { s, _ := stringMember(v, "id"); return s == id })
-	}
-	switch kind {
-	case ResourceSSH:
-		r.Profiles = drop(r.Profiles)
-	case ResourceJump:
-		r.JumpHosts = drop(r.JumpHosts)
-	case ResourceSOCKS:
-		r.SOCKSProxies = drop(r.SOCKSProxies)
-	case ResourceSMB:
-		r.SMBShares = drop(r.SMBShares)
-	}
-	return nil
 }
 
 type fakePolicy struct {
@@ -143,6 +138,7 @@ type credRig struct {
 func newCredRig(t testing.TB) *credRig {
 	t.Helper()
 	r := &credRig{rig: newRig(t, Limits{}), stores: &fakeStores{}, policy: &fakePolicy{revision: "rev1"}, audit: &fakeAudit{}}
+	r.stores.db = r.db
 	if err := r.svc.EnableCredentials(CredentialOptions{Stores: r.stores, Writer: r.stores, Policy: r.policy,
 		Accounts: fakeAccounts{7: "2026-11-20T08:15:30.123456", 1: "2026-01-01T00:00:00"}, Audit: r.audit}); err != nil {
 		t.Fatal(err)

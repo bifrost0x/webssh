@@ -169,3 +169,87 @@ func TestCredentialsWiring(t *testing.T) {
 		}
 	}
 }
+
+// A resource created with its password through the real stores: the
+// assignment runs in the transaction of the record, so a failure stores
+// neither, and a saved password needs the step-up before anything exists.
+func TestCreateForResourceIsAtomic(t *testing.T) {
+	sys, ts := openTestSystem(t, nil)
+	signUp(t, ts.URL, "admin1", "first-password-1")
+	enableCredentials(t, sys)
+	ctx := principal.With(t.Context(), principal.Principal{UserID: 1, SessionID: "s1"})
+	apply := func(method string, payload map[string]any) (jsontext.Value, error) {
+		mutation := map[string]any{"method": method}
+		maps.Copy(mutation, payload)
+		body, _ := json.Marshal(map[string]any{"operation": "native", "mutation": mutation})
+		out, err := sys.vault.Prepare(ctx, body)
+		if err != nil {
+			return nil, err
+		}
+		var in struct {
+			Intent string `json:"intent"`
+		}
+		_ = json.Unmarshal(out, &in)
+		payload["intent"] = in.Intent
+		body, _ = json.Marshal(payload)
+		return sys.vault.Apply(ctx, method, "", body, "")
+	}
+	stored := func() int {
+		l, err := sys.hosts.Profiles(t.Context(), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		j, err := sys.hosts.JumpHosts(t.Context(), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(l) + len(j)
+	}
+	host := map[string]any{"name": "Box", "host": "box.example", "port": 22, "username": "root", "auth_type": "password"}
+	// The password name is invalid: the host is rolled back with it.
+	if _, err := apply(vault.MethodCreateForResource, map[string]any{"resource_kind": "ssh", "confirm_target": true,
+		"name": " ", "password": "x", "resource": host}); fault.CodeOf(err) != fault.InvalidRequest {
+		t.Fatalf("invalid password name: %v", err)
+	}
+	if n := stored(); n != 0 {
+		t.Fatalf("%d records stored without their password", n)
+	}
+	if _, err := apply(vault.MethodCreate, map[string]any{"name": "Shared", "password": "shared-secret"}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := sys.vault.State(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view struct {
+		Credentials []struct {
+			ID string `json:"id"`
+		} `json:"credentials"`
+		Profiles []jsontext.Value `json:"profiles"`
+	}
+	if err := json.Unmarshal(state, &view); err != nil || len(view.Credentials) != 1 {
+		t.Fatalf("state %s %v", state, err)
+	}
+	for _, kind := range []string{"ssh", "jump"} {
+		_, err := apply(vault.MethodCreateForResource, map[string]any{"resource_kind": kind, "confirm_target": true,
+			"credential_id": view.Credentials[0].ID, "resource": host})
+		if fault.CodeOf(err) != fault.StepUpRequired {
+			t.Fatalf("%s with a saved password and no step-up: %v", kind, err)
+		}
+		if n := stored(); n != 0 {
+			t.Fatalf("%s: %d records stored before the step-up", kind, n)
+		}
+	}
+	if state, err = sys.vault.State(ctx); err != nil || strings.Contains(string(state), `"credential_id":"`) {
+		t.Fatalf("assignments after refused creates: %s %v", state, err)
+	}
+	// A taken name is reported as such.
+	if _, err := sys.hosts.SaveProfile(ctx, 1, protocol.HostsProfileSave{Name: jsontext.Value(`"Box"`), Host: jsontext.Value(`"a.example"`),
+		Username: jsontext.Value(`"u"`), AuthType: jsontext.Value(`"password"`)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := apply(vault.MethodCreateForResource, map[string]any{"resource_kind": "ssh", "confirm_target": true,
+		"name": "N", "password": "x", "resource": host}); fault.CodeOf(err) != fault.DuplicateName {
+		t.Fatalf("taken name: %v", err)
+	}
+}

@@ -40,6 +40,10 @@ func (s *Service) list(ctx context.Context, t table, owner int64, message string
 // SaveJumpHost creates or updates a jump host (add_jump_host). It never
 // stores a password.
 func (s *Service) SaveJumpHost(ctx context.Context, owner int64, req protocol.HostsJumpSave) (jsontext.Value, error) {
+	return s.saveJumpHost(ctx, owner, req, nil)
+}
+
+func (s *Service) saveJumpHost(ctx context.Context, owner int64, req protocol.HostsJumpSave, then Created) (jsontext.Value, error) {
 	port := req.Port
 	if len(port) == 0 {
 		port = jsonInt(22) // the handler's default
@@ -125,7 +129,10 @@ func (s *Service) SaveJumpHost(ctx context.Context, owner int64, req protocol.Ho
 		if err := checkGrowth(s.Limits, jumpKind, all, next); err != nil {
 			return err
 		}
-		return replace(ctx, tx, jumpTable, owner, next)
+		if err := replace(ctx, tx, jumpTable, owner, next); err != nil {
+			return err
+		}
+		return runCreated(ctx, tx, then, r)
 	})
 	if err != nil {
 		return nil, classify(err, "Failed to save jump host")

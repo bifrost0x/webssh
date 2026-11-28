@@ -100,7 +100,7 @@ type ImportOutcome struct {
 // ImportProfile creates one host from an import (upsert_profile with
 // skip_duplicate). It never updates a saved host.
 func (s *Service) ImportProfile(ctx context.Context, owner int64, req protocol.HostsProfileSave) ImportOutcome {
-	saved, err := s.saveProfile(ctx, owner, req, true)
+	saved, err := s.saveProfile(ctx, owner, req, true, nil)
 	switch {
 	case errors.Is(err, errDuplicateProfile):
 		return ImportOutcome{Duplicate: true}

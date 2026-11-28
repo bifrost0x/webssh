@@ -116,9 +116,10 @@ func (s *Service) freeze(ctx context.Context, c *credentials, p principal.Princi
 
 // bindsSavedSecret reports the mutations that let the server send an
 // existing saved secret to a destination chosen in this request; they need
-// a step-up, as reading the secret would.
+// a step-up, as reading the secret would. A new resource created with a
+// saved password (new in 3.4) is one of them.
 func bindsSavedSecret(method string, data jsontext.Value) bool {
-	if method == MethodAssign {
+	if method == MethodAssign || method == MethodCreateForResource {
 		v, _ := field(data, "credential_id")
 		return truthy(v)
 	}
