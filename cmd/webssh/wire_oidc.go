@@ -21,7 +21,6 @@ import (
 )
 
 // oidcArea wires the area "oidc" (ID2): OpenID Connect sign-in (internal/auth/oidc).
-// ID2 fills in the hooks; no other package edits this file.
 //
 // The identity table exists and E05 is migrated whether or not OIDC is
 // enabled; routes and the step-up method exist only with OIDC_ENABLED.

@@ -24,7 +24,6 @@ import (
 )
 
 // schedulesArea wires the area "schedules" (AU2): automation schedules and permission jobs (internal/automation).
-// AU2 fills in the hooks; no other package edits this file.
 //
 // The schedules review and run through the run side of automation
 // (scheduleWorkflows); without it they can be listed, paused and deleted,

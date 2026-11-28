@@ -14,7 +14,6 @@ import (
 var _ terminal.Quotas = (*quota.Policy)(nil)
 
 // jobsArea wires the area "jobs" (RT1): quotas, background jobs and cron (internal/quota, internal/jobs, internal/cron).
-// RT1 fills in the hooks; no other package edits this file.
 //
 // The quota policy and the job registry are core services (buildRuntime,
 // called by buildCore), so every area can reserve quotas and register

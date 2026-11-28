@@ -16,7 +16,6 @@ import (
 )
 
 // hostcontextArea wires the area "hostcontext" (HO3): host context, global host trust and profile exchange (internal/hostops, internal/ssh/hostkey, internal/hosts).
-// HO3 fills in the hooks; no other package edits this file.
 //
 // The host context checks command-set references with
 // hostops.Contexts.Sets, the command library (area "commands").

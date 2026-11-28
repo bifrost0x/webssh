@@ -29,7 +29,6 @@ import (
 )
 
 // backupArea wires the area "backup" (OP1): backup and restore (internal/backup, restore of Python backups through internal/migrate/legacy).
-// OP1 fills in the hooks; no other package edits this file.
 func backupArea() extension {
 	return extension{name: "backup", migrate: migrateBackup, prepare: prepareBackup, wire: wireBackup}
 }

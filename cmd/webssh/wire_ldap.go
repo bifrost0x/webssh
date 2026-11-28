@@ -18,7 +18,6 @@ import (
 )
 
 // ldapArea wires the area "ldap" (ID1): LDAP and Active Directory sign-in (internal/auth/ldap, internal/ldapproto).
-// ID1 fills in the hooks; no other package edits this file.
 //
 // The service exists in every build: with LDAP_ENABLED false it keeps
 // LDAP-managed accounts signed out, as the Python release did. A

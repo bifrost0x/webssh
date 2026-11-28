@@ -13,7 +13,6 @@ import (
 )
 
 // filesArea wires the area "files" (FS1): the file workspace and the editor (internal/files).
-// FS1 fills in the hooks; no other package edits this file.
 //
 // The registry and the service exist after prepare, so the backend areas
 // that follow (sftp, smb) register their source kinds on sys.fileSources.

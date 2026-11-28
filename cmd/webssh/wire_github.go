@@ -18,7 +18,6 @@ import (
 )
 
 // githubArea wires the area "github" (ID3): GitHub sign-in and the factor bootstrap (internal/auth/github).
-// ID3 fills in the hooks; no other package edits this file.
 //
 // The migration steps of E04 and E06 are part of the release's registry
 // (legacy.RegisterM1), which must cover every entity on its own.

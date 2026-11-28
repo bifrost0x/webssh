@@ -13,7 +13,6 @@ import (
 )
 
 // transfersArea wires the area "transfers" (TR1): transfers (internal/transfer).
-// TR1 fills in the hooks; no other package edits this file.
 //
 // The manager is built after the file area, whose source registry holds
 // the sources while a transfer runs. Its HTTP routes are the token-bound
