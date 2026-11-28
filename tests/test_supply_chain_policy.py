@@ -176,6 +176,17 @@ def test_container_build_inputs_and_ci_services_are_digest_pinned():
     assert all(IMAGE_DIGEST.search(reference) for reference in redis_references)
 
 
+def test_images_built_inside_workflows_are_digest_pinned():
+    # Dockerfiles written inline in a run step, such as the netns tools.
+    found = []
+    for workflow in sorted(WORKFLOWS.glob('*.yml')):
+        text = workflow.read_text(encoding='utf-8')
+        for match in re.finditer(r'FROM ([^\s\\]+)', text):
+            found.append(match.group(1))
+            assert re.search(r'@sha256:[0-9a-f]{64}$', match.group(1)), (workflow.name, match.group(1))
+    assert found
+
+
 def test_container_build_applies_available_base_image_security_updates():
     dockerfile = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
 

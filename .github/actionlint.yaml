@@ -1,0 +1,13 @@
+# actionlint 1.7.12 does not know the documented concurrency key `queue`
+# (rhysd/actionlint#657, fix pending in #654). Remove the entries once a
+# release accepts it.
+paths:
+  .github/workflows/docker-publish.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'
+  .github/workflows/image-retention.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'
+  .github/workflows/wiki-sync.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'

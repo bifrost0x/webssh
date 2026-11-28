@@ -505,7 +505,7 @@ jobs:
             mcr.microsoft.com/playwright:v1.65.1-noble@sha256:1507cbfc550a63a6b7396791ca4f00df17beb56342d2447b3f106c306f525579 \
             node /work/node_modules/playwright/cli.js run-server --host 127.0.0.1 --port 4355
           ready=false
-          for attempt in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if timeout 2 bash -c 'echo >/dev/tcp/127.0.0.1/4355' 2>/dev/null; then
               ready=true
               break
@@ -678,7 +678,7 @@ jobs:
           port="${binding##*:}"
           ready=0
 
-          for attempt in {1..30}; do
+          for _ in {1..30}; do
             ready_status="$(curl --output /dev/null --silent --show-error --write-out '%{http_code}' "http://127.0.0.1:${port}/ready" || true)"
             if docker logs "$WEBSSH_CI_CONTAINER" 2>&1 | grep --quiet --fixed-strings "Using worker: gthread" \
               && [ "$ready_status" = "200" ]; then

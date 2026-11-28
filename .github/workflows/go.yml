@@ -64,6 +64,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           go build -trimpath -o "$RUNNER_TEMP/webssh-$GOOS-$GOARCH" ./cmd/webssh
+          # shellcheck disable=SC2086 # GO_PACKAGES is a list of package patterns, split on purpose
           go vet $GO_PACKAGES
 
   checks:
@@ -99,31 +100,40 @@ jobs:
           fi
 
       - name: Vet
-        run: go vet $GO_PACKAGES
+        run: |
+          # shellcheck disable=SC2086 # GO_PACKAGES is a list of package patterns, split on purpose
+          go vet $GO_PACKAGES
 
       # The lab tests run only against the lab and the disposable Herdr and
       # Warpgate hosts; vetting them keeps their builds from rotting.
       - name: Vet the lab builds
         run: |
           for tags in lab herdr warpgate; do
+            # shellcheck disable=SC2086 # GO_PACKAGES is a list of package patterns, split on purpose
             go vet -tags "$tags" $GO_PACKAGES
           done
 
       - name: Check for pending go fix rewrites
-        run: go fix -diff $GO_PACKAGES
+        run: |
+          # shellcheck disable=SC2086 # GO_PACKAGES is a list of package patterns, split on purpose
+          go fix -diff $GO_PACKAGES
 
       - name: Install staticcheck
         run: go install "honnef.co/go/tools/cmd/staticcheck@$STATICCHECK_VERSION"
 
       - name: Staticcheck
-        run: staticcheck $GO_PACKAGES
+        run: |
+          # shellcheck disable=SC2086 # GO_PACKAGES is a list of package patterns, split on purpose
+          staticcheck $GO_PACKAGES
 
       # Includes the architecture tests: package map, import rules, file
       # sizes, package names and the module allowlist.
       # internal/migrate/legacy replays the golden data directories with
       # the race detector and needs more than the default ten minutes.
       - name: Test with race detector
-        run: go test -race -count=1 -timeout 30m $GO_PACKAGES
+        run: |
+          # shellcheck disable=SC2086 # GO_PACKAGES is a list of package patterns, split on purpose
+          go test -race -count=1 -timeout 30m $GO_PACKAGES
 
       # The end-to-end harness is built only with the tag e2e; keep that
       # build vetted and tested so it does not rot between browser runs.
@@ -169,11 +179,14 @@ jobs:
         run: |
           for target in linux/amd64 linux/arm64; do
             echo "govulncheck for $target"
+            # shellcheck disable=SC2086 # GO_PACKAGES is a list of package patterns, split on purpose
             GOOS="${target%/*}" GOARCH="${target#*/}" govulncheck $GO_PACKAGES
           done
 
       - name: Gosec
-        run: gosec -quiet $GO_PACKAGES
+        run: |
+          # shellcheck disable=SC2086 # GO_PACKAGES is a list of package patterns, split on purpose
+          gosec -quiet $GO_PACKAGES
 
   # third_party/go-smb2 is a patched fork of go-smb2 v2 in its own module
   # (third_party/README.md). Its packages are outside GO_PACKAGES, so its
@@ -336,7 +349,7 @@ jobs:
           cache: false
 
       - name: Build an image with iproute2
-        run: printf 'FROM alpine:3\nRUN apk add --no-cache iproute2\n' | docker build -t webssh-netns-tools -
+        run: printf 'FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf\nRUN apk add --no-cache iproute2\n' | docker build -t webssh-netns-tools -
 
       - name: Route tests in a crafted namespace
         env:

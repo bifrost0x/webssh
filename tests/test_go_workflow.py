@@ -29,7 +29,7 @@ def vetted_tags():
         if 'go vet' in line:
             tags.update(re.findall(r'-tags\s+"?(\w+)', line))
     # A step that vets several builds in a loop: for tags in a b; do go vet -tags "$tags" ...
-    for loop in re.finditer(r'for tags in ([\w ]+); do\n\s*go vet -tags "\$tags"', text):
+    for loop in re.finditer(r'for tags in ([\w ]+); do\n(?:\s*#[^\n]*\n)?\s*go vet -tags "\$tags"', text):
         tags.update(loop.group(1).split())
     return tags
 
