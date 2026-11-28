@@ -67,7 +67,10 @@ account menu spec, which expects a release version, fails.
 that unlocks it, the capability of the build it needs (`--with`), or the
 decision that drops what it checks (`"decision": "ADR 0005"`, such as long
 polling).
-`--workers N` runs the specs in parallel; specs marked `serial` change the
+`--spec a.spec.js,b.spec.js` runs only those files of the plan (a file the
+plan leaves out is an error). A run stopped by SIGINT or SIGTERM, for
+example by `timeout`, stops Playwright and its backend, so the port is free
+afterwards. `--workers N` runs the specs in parallel; specs marked `serial` change the
 stored settings of a seed account (`e2e_admin`) that other specs read and
 run afterwards on one worker. A package that builds an area adds its
 specs to `go-suite.json` and removes the exclusions it unlocks.

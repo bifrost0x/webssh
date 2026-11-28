@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const {plan} = require('../e2e/run-go-suite.js');
+const {plan, select, runPlaywright} = require('../e2e/run-go-suite.js');
 
 const suite = JSON.parse(fs.readFileSync(path.join(__dirname, '../e2e/go-suite.json'), 'utf8'));
 const exists = file => fs.existsSync(path.join(__dirname, '../e2e', file));
@@ -55,4 +55,41 @@ test('go-suite.json lists every spec of the main suite', () => {
     const listed = new Set(suite.specs.map(spec => spec.file));
     const missing = fs.readdirSync(path.join(__dirname, '../e2e')).filter(file => file.endsWith('.spec.js') && !listed.has(file));
     assert.deepEqual(missing, []);
+});
+
+test('--spec narrows the plan to named files and refuses names outside it', () => {
+    const planned = plan(suite, new Set(Object.keys(suite.requires)), exists);
+    const [first, second] = planned.all.map(file => path.basename(file));
+    const narrowed = select(planned, `${first},${second}`);
+    assert.deepEqual(narrowed.all, planned.all.slice(0, 2));
+    assert.equal(narrowed.parallel.length + narrowed.serial.length, 2);
+    assert.equal(select(planned, null), planned);
+    assert.throws(() => select(planned, 'no-such.spec.js'), /not in the Go suite plan/);
+    assert.throws(() => select(planned, ','), /at least one/);
+});
+
+test('a signal to the runner stops Playwright and frees the backend port', async () => {
+    const {spawn} = require('node:child_process');
+    const {EventEmitter} = require('node:events');
+    const net = require('node:net');
+    const signals = new EventEmitter();
+    let port;
+    const ready = new Promise(resolve => {
+        signals.ready = resolve;
+    });
+    const spawnChild = (command, argv, options) => {
+        const child = spawn(process.execPath, [path.join(__dirname, 'fixtures', 'held-port.js')], {...options, stdio: ['ignore', 'pipe', 'inherit']});
+        child.stdout.on('data', chunk => { port = Number(String(chunk).trim()); signals.ready(); });
+        return child;
+    };
+    const done = runPlaywright([], {spawnChild, signals, graceMs: 300});
+    await ready;
+    signals.emit('SIGTERM');
+    assert.equal(await done, 130);
+    const open = await new Promise(resolve => {
+        const socket = net.connect(port, '127.0.0.1');
+        socket.on('connect', () => { socket.destroy(); resolve(true); });
+        socket.on('error', () => resolve(false));
+    });
+    assert.equal(open, false, `port ${port} is still held`);
 });
