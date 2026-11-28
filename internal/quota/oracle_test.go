@@ -20,8 +20,8 @@ import (
 
 // The differential tests compare the policy with app/quota_manager.py and
 // the storage rule with bounded_text of app/storage_quota.py. The oracle
-// is testdata/oracle.py, run by the repository's virtual environment (or
-// WEBSSH_PYTHON); its answers are checked in as
+// is testdata/oracle.py, run with the Python release (internal/oracletest,
+// WEBSSH_PYTHON_ROOT); its answers are checked in as
 // testdata/python_vectors.jsonl, and -update rewrites them.
 var update = flag.Bool("update", false, "rewrite the Python vectors in testdata from the oracle")
 
@@ -131,13 +131,6 @@ type oracle struct {
 	out *bufio.Scanner
 }
 
-func pythonPath() string {
-	if p := os.Getenv("WEBSSH_PYTHON"); p != "" {
-		return p
-	}
-	return filepath.Join(repoRoot, ".venv", "bin", "python")
-}
-
 // startOracle starts the Python oracle under -update and in the live and
 // record modes of internal/oracletest; in replay mode it returns nil.
 func startOracle(t testing.TB) *oracle {
@@ -145,14 +138,8 @@ func startOracle(t testing.TB) *oracle {
 	var python, root string
 	switch {
 	case *update:
-		python = pythonPath()
-		if _, err := os.Stat(python); err != nil {
-			t.Fatalf("-update needs the Python oracle: %v", err)
-		}
-		var err error
-		if root, err = filepath.Abs(repoRoot); err != nil {
-			t.Fatal(err)
-		}
+		rel := oracletest.Require(t)
+		python, root = rel.Python, rel.Root
 	case oracletest.CurrentMode(t) != oracletest.Replay:
 		rel := oracletest.RequireLive(t)
 		python, root = rel.Python, rel.Root

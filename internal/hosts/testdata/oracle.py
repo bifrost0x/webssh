@@ -1,9 +1,9 @@
 """Record how the Python stores save, organize, move and delete hosts.
 
 Writes a corpus with the expected results so the Go tests replay it without
-Python. Run from the repository root with the project virtual environment:
+Python. Run from the repository root with the venv in $WEBSSH_PYTHON_ROOT:
 
-    WS=$PWD .venv/bin/python -I internal/hosts/testdata/oracle.py \
+    WS=$WEBSSH_PYTHON_ROOT $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/hosts/testdata/oracle.py \
         internal/hosts/testdata/oracle.json
 
 The store functions run unchanged; only what lies outside the three stores
@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 WS = Path(os.environ['WS'])
+# The golden data sets live in this repository, not in the Python release.
+REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(WS))
 os.environ.setdefault('SECRET_KEY', '0' * 64)
 os.environ['DATA_DIR'] = tempfile.mkdtemp(prefix='hosts-oracle-')
@@ -91,7 +93,7 @@ uuid.uuid4 = lambda: uuid.UUID(next(IDS))
 
 def golden_stores():
     tmp = Path(tempfile.mkdtemp(prefix='hosts-oracle-golden-'))
-    with tarfile.open(WS / 'tests/golden/fixture/datadir.tar') as archive:
+    with tarfile.open(REPO / 'tests/golden/fixture/datadir.tar') as archive:
         archive.extractall(tmp, filter='data')
     base = tmp / 'data/users/user_3'
     return {name: json.loads((base / name).read_text()) for name in

@@ -1,9 +1,9 @@
 """Record how app/host_platform.py reads probe answers.
 
 Writes a corpus with the expected results so the Go tests replay it without
-Python. Run from the repository root with the project virtual environment:
+Python. Run from the repository root with the venv in $WEBSSH_PYTHON_ROOT:
 
-    WS=$PWD .venv/bin/python -I internal/hosts/testdata/platform_oracle.py \
+    WS=$WEBSSH_PYTHON_ROOT $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/hosts/testdata/platform_oracle.py \
         internal/hosts/testdata/platform_oracle.json \
         internal/hostops/testdata/banner_oracle.json
 

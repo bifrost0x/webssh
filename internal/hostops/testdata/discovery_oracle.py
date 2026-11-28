@@ -1,9 +1,9 @@
 """Record how app/discovery_routes.py reads the scan input.
 
 Writes a corpus with the expected results so the Go tests replay it without
-Python. Run from the repository root with the project virtual environment:
+Python. Run from the repository root with the venv in $WEBSSH_PYTHON_ROOT:
 
-    WS=$PWD .venv/bin/python -I internal/hostops/testdata/discovery_oracle.py \
+    WS=$WEBSSH_PYTHON_ROOT $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/hostops/testdata/discovery_oracle.py \
         internal/hostops/testdata/discovery_oracle.json
 """
 import ipaddress

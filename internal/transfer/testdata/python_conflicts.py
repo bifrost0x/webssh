@@ -1,9 +1,9 @@
 """Record the copy and conflict rules of the Python release as test vectors.
 
-Usage (from the repository root, with the project virtual environment):
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
     SECRET_KEY=$(openssl rand -hex 32) DATA_DIR=$(mktemp -d) \
-        .venv/bin/python -I internal/transfer/testdata/python_conflicts.py . \
+        $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/transfer/testdata/python_conflicts.py "$WEBSSH_PYTHON_ROOT" \
         internal/transfer/testdata/python_conflicts.json
 
 app/remote_transfer.py and app/transfer_errors.py are loaded unchanged

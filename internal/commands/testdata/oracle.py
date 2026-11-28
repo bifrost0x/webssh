@@ -1,9 +1,9 @@
 """Record how the Python release resolves command sets.
 
 Writes a corpus with the expected results so the Go tests replay it without
-Python. Run from the repository root with the project virtual environment:
+Python. Run from the repository root with the venv in $WEBSSH_PYTHON_ROOT:
 
-    WS=$PWD .venv/bin/python -I internal/commands/testdata/oracle.py \
+    WS=$WEBSSH_PYTHON_ROOT $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/commands/testdata/oracle.py \
         internal/commands/testdata/oracle.json
 
 Three kinds of case: "chain" resolves a stored set without parameters

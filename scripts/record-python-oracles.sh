@@ -1,15 +1,21 @@
 #!/bin/sh
 # Records every answer of the Python release that the Go differential
 # tests compare with. Without Python the Go tests replay these recordings
-# (internal/oracletest); this script is the only place that needs the
-# Python release, which leaves main with the cut-over and stays reachable
-# through the tag of the last Python release.
+# (internal/oracletest); this script and the oracle modes are the only
+# places that need the Python release, which left the repository with
+# 3.4.0. It runs against a worktree of that release:
 #
-#   PYTHON              interpreter with requirements-test.txt
-#                       (default: .venv/bin/python)
-#   WEBSSH_PYTHON_ROOT  checkout of the Python release, for example a
-#                       worktree of the last Python tag (default: this
-#                       repository)
+#   git worktree add --detach ../py-3.3.1 "$PYTHON_RELEASE"
+#   (cd ../py-3.3.1 && uvx uv@0.13.5 venv && \
+#     VIRTUAL_ENV=$PWD/.venv uvx uv@0.13.5 pip install --require-hashes -r requirements-test.txt)
+#   WEBSSH_PYTHON_ROOT=../py-3.3.1 scripts/record-python-oracles.sh
+#
+#   WEBSSH_PYTHON_ROOT  worktree of the Python release at PYTHON_RELEASE
+#                       (required); the application comes from there, the
+#                       recorders and the golden data sets from this
+#                       repository
+#   PYTHON              interpreter with that release's requirements-test.txt
+#                       (default: .venv/bin/python in WEBSSH_PYTHON_ROOT)
 #   NETNS=crafted       also record the kernel route answers of
 #                       internal/netpolicy/testdata/netns-test.sh in its own
 #                       namespace (Docker); NETNS=lab also inside the
@@ -19,13 +25,23 @@
 # sources in its header. scripts/check-python-oracles.sh records, checks
 # that nothing changed and compares Go with the live release.
 set -eu
+# The last Python release: the commit of 3.3.1 on main until the tag
+# v3.3.1 exists, then the tag.
+PYTHON_RELEASE=7d8831353ec44d7e5ed7b3e7644fa09c608bfc01
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
-PYTHON=${PYTHON:-$root/.venv/bin/python}
-pyroot=${WEBSSH_PYTHON_ROOT:-$root}
-pyroot=$(cd "$pyroot" && pwd)
+if [ -z "${WEBSSH_PYTHON_ROOT:-}" ]; then
+	echo "record-python-oracles: set WEBSSH_PYTHON_ROOT to a worktree of $PYTHON_RELEASE" >&2
+	exit 1
+fi
+pyroot=$(cd "$WEBSSH_PYTHON_ROOT" && pwd)
+PYTHON=${PYTHON:-$pyroot/.venv/bin/python}
 sources="app config.py start.py entrypoint.sh deployment"
 
+if [ "$(git -C "$pyroot" rev-parse HEAD)" != "$(git -C "$pyroot" rev-parse "$PYTHON_RELEASE^{commit}")" ]; then
+	echo "record-python-oracles: $pyroot is not at the Python release $PYTHON_RELEASE" >&2
+	exit 1
+fi
 if [ ! -x "$PYTHON" ]; then
 	echo "record-python-oracles: no interpreter at $PYTHON (set PYTHON)" >&2
 	exit 1
@@ -47,6 +63,14 @@ export WEBSSH_PYTHON="$PYTHON" WEBSSH_PYTHON_ROOT="$pyroot" WS="$pyroot"
 export WEBSSH_PYTHON_ORACLE_SOURCE="$commit (app/ tree $tree)"
 export WEBSSH_PYTHON_ORACLE_VERSION="$version"
 echo "recording with $version from $WEBSSH_PYTHON_ORACLE_SOURCE"
+
+# The variable names of config.py, for TestRegistryCoversConfigPy.
+echo "recording internal/config names"
+{
+	printf '# Every quoted upper-case name in config.py of the last Python release\n'
+	printf '# (%s), one per line. scripts/record-python-oracles.sh writes it.\n' "$(git -C "$pyroot" rev-parse --short=8 "$commit")"
+	grep -o -E "['\"][A-Z][A-Z0-9_]{3,}['\"]" "$pyroot/config.py" | tr -d "'\"" | LC_ALL=C sort -u
+} >internal/config/testdata/python_config_names.txt
 
 record() {
 	echo "recording $1"

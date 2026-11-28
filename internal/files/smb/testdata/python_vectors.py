@@ -1,8 +1,8 @@
 """Record the rules of the Python SMB modules as test vectors.
 
-Usage (from the repository root, with the project virtual environment):
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
-    .venv/bin/python -I internal/files/smb/testdata/python_vectors.py . \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/files/smb/testdata/python_vectors.py "$WEBSSH_PYTHON_ROOT" \
         > internal/files/smb/testdata/python_vectors.json
 
 app/smb_paths.py, app/smb_share_manager.py, app/smb_pool.py,

@@ -11,11 +11,12 @@
 //	record   every answer is asked and the recordings are written again
 //	         (scripts/record-python-oracles.sh)
 //
-// WEBSSH_PYTHON names the interpreter of the Python release with
-// requirements-test.txt installed; it defaults to .venv/bin/python in the
-// repository root. WEBSSH_PYTHON_ROOT names the checkout that holds the
-// Python sources (app/, config.py); it defaults to the repository root and
-// points to a worktree of the last Python release once app/ is gone.
+// WEBSSH_PYTHON_ROOT names a worktree of the last Python release, which
+// holds the Python sources (app/, config.py); the commit to check out is
+// PYTHON_RELEASE in scripts/record-python-oracles.sh. WEBSSH_PYTHON names
+// the interpreter with that release's requirements-test.txt installed; it
+// defaults to .venv/bin/python in that worktree. Fixtures and recorders
+// come from this repository.
 // Recording also needs WEBSSH_PYTHON_ORACLE_SOURCE, the commit of the
 // Python sources, and WEBSSH_PYTHON_ORACLE_VERSION, the version of the
 // interpreter; both go into the header of each file. The package starts
@@ -100,28 +101,36 @@ func RepoRoot(t testing.TB) string {
 // Python release fails without it.
 func release(t testing.TB) Release {
 	t.Helper()
-	repo := RepoRoot(t)
+	r := os.Getenv(RootEnv)
+	if r == "" {
+		t.Fatalf("oracletest: %s=%s needs the Python release in %s, a worktree of it (%s)", ModeEnv, CurrentMode(t), RootEnv, recorder)
+	}
+	root, err := filepath.Abs(r)
+	if err != nil {
+		t.Fatalf("oracletest: %s: %v", RootEnv, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "app", "__init__.py")); err != nil { // #nosec G703 -- the developer's own checkout setting, in tests only
+		t.Fatalf("oracletest: no Python release in %s (%s): %v", root, RootEnv, err)
+	}
 	python := os.Getenv(PythonEnv)
 	if python == "" {
-		python = filepath.Join(repo, ".venv", "bin", "python")
+		python = filepath.Join(root, ".venv", "bin", "python")
 	}
 	abs, err := filepath.Abs(python)
 	if err == nil {
 		_, err = os.Stat(abs) // #nosec G703 -- the developer's own interpreter setting, in tests only
 	}
 	if err != nil {
-		t.Fatalf("oracletest: %s=%s needs the Python release (%s): %v", ModeEnv, CurrentMode(t), PythonEnv, err)
-	}
-	root := repo
-	if r := os.Getenv(RootEnv); r != "" {
-		if root, err = filepath.Abs(r); err != nil {
-			t.Fatalf("oracletest: %s: %v", RootEnv, err)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(root, "app", "__init__.py")); err != nil { // #nosec G703 -- the developer's own checkout setting, in tests only
-		t.Fatalf("oracletest: no Python release in %s (%s): %v", root, RootEnv, err)
+		t.Fatalf("oracletest: %s=%s needs the Python release's interpreter (%s): %v", ModeEnv, CurrentMode(t), PythonEnv, err)
 	}
 	return Release{Python: abs, Root: root}
+}
+
+// Require returns the Python release for the tests that record vectors
+// with their own -update flags. It fails the test without the release.
+func Require(t testing.TB) Release {
+	t.Helper()
+	return release(t)
 }
 
 // RequireLive returns the Python release for a check that has no

@@ -243,19 +243,30 @@ func TestEveryVariableHasEffect(t *testing.T) {
 	}
 }
 
-// The registry knows every variable config.py names.
+// The registry knows every variable config.py of the Python release names
+// (testdata/python_config_names.txt, recorded from its source).
 func TestRegistryCoversConfigPy(t *testing.T) {
-	src, err := os.ReadFile(filepath.Join(repoRoot, "config.py"))
+	raw, err := os.ReadFile(filepath.Join("testdata", "python_config_names.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	quotaKinds := map[string]bool{"SSH_SESSION": true, "QUICK_CONNECTION": true, "TRANSFER": true, "TEMP_BYTES": true, "BACKGROUND_JOB": true}
-	names := regexp.MustCompile(`['"]([A-Z][A-Z0-9_]{3,})['"]`).FindAllSubmatch(src, -1)
-	if len(names) < 150 {
-		t.Fatalf("only %d names in config.py", len(names))
+	valid := regexp.MustCompile(`^[A-Z][A-Z0-9_]{3,}$`)
+	var names []string
+	for line := range strings.Lines(string(raw)) {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if !valid.MatchString(line) {
+			t.Fatalf("python_config_names.txt: %q is not a variable name", line)
+		}
+		names = append(names, line)
 	}
-	for _, m := range names {
-		name := string(m[1])
+	if len(names) < 150 {
+		t.Fatalf("only %d names recorded from config.py", len(names))
+	}
+	for _, name := range names {
 		if _, ok := variables[name]; !ok && !quotaKinds[name] {
 			t.Errorf("config.py names %s, the registry does not", name)
 		}

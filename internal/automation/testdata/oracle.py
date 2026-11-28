@@ -5,7 +5,7 @@ Writes a corpus with the expected results so the Go tests replay it
 without Python. Run from the repository root with the project virtual
 environment:
 
-    WS=$PWD .venv/bin/python -I internal/automation/testdata/oracle.py \
+    WS=$WEBSSH_PYTHON_ROOT $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/automation/testdata/oracle.py \
         internal/automation/testdata/oracle.json
 
 The functions run unchanged: normalize_runbook and digest of
@@ -22,6 +22,8 @@ import tempfile
 from pathlib import Path
 
 WS = Path(os.environ['WS'])
+# The golden data sets live in this repository, not in the Python release.
+REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(WS))
 os.environ.setdefault('SECRET_KEY', '0' * 64)
 os.environ['DATA_DIR'] = tempfile.mkdtemp(prefix='automation-oracle-')
@@ -252,7 +254,7 @@ def golden():
     """The exports of every run in the golden data sets, keyed by archive."""
     import tarfile
     out = {}
-    for archive in [WS / 'tests/golden/fixture/datadir.tar', *sorted((WS / 'tests/golden/fixture/legacy').glob('*.tar'))]:
+    for archive in [REPO / 'tests/golden/fixture/datadir.tar', *sorted((REPO / 'tests/golden/fixture/legacy').glob('*.tar'))]:
         with tarfile.open(archive) as tar:
             for member in tar.getmembers():
                 if member.name.endswith('/automation.json'):

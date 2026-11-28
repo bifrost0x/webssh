@@ -1,8 +1,8 @@
 """Record the prompt state rules of the Python release (input_idle).
 
-Usage (from the repository root, with the project virtual environment):
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
-    .venv/bin/python -I internal/terminal/testdata/prompt_oracle.py . \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/terminal/testdata/prompt_oracle.py "$WEBSSH_PYTHON_ROOT" \
         > internal/terminal/testdata/prompt_oracle.json
 
 The patterns and _note_prompt_output, _note_prompt_input and

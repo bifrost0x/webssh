@@ -2,9 +2,9 @@
 
 Writes the stores, the summaries Python lists and the outcome of recovery
 deletions, so the Go tests replay them without Python. Run from the
-repository root with the project virtual environment:
+repository root with the venv in $WEBSSH_PYTHON_ROOT:
 
-    WS=$PWD .venv/bin/python -I internal/hosts/testdata/recovery_oracle.py \
+    WS=$WEBSSH_PYTHON_ROOT $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/hosts/testdata/recovery_oracle.py \
         internal/hosts/testdata/recovery_oracle.json
 """
 import json

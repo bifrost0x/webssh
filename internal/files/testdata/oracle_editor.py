@@ -1,7 +1,7 @@
 """Record how app/editor_text.py encodes editor text (FS1 oracle).
 
 Run from the repository root with the project venv:
-    .venv/bin/python internal/files/testdata/oracle_editor.py > internal/files/testdata/encode-vectors.json
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python internal/files/testdata/oracle_editor.py > internal/files/testdata/encode-vectors.json
 """
 
 import base64

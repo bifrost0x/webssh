@@ -5,9 +5,13 @@
 // (tests/golden/lab_variant.py), Go migrates it at the first start and
 // then connects over the migrated records with the server's own wiring:
 //
-//	WEBSSH_LAB_JSON=…/tests/lab/runtime/lab.json go test -tags lab -run TestLabMigrated ./cmd/webssh
+//	WEBSSH_PYTHON_ROOT=…/py-3.3.1 WEBSSH_LAB_JSON=…/tests/lab/runtime/lab.json \
+//	  go test -tags lab -run TestLabMigrated ./cmd/webssh
 //
-// It fails, not skips, when the lab or the Python environment is missing.
+// The Python release comes from WEBSSH_PYTHON_ROOT, a worktree of the
+// last Python release (internal/oracletest); tests/golden comes from this
+// repository. It fails, not skips, when the lab or the Python release is
+// missing.
 package main
 
 import (
@@ -23,6 +27,7 @@ import (
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/automation"
+	"github.com/bifrost0x/webssh/internal/oracletest"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
 	"github.com/bifrost0x/webssh/internal/store"
 )
@@ -40,6 +45,17 @@ type refuseHostKey struct{}
 func (refuseHostKey) HostKey(context.Context, client.HostKeyPrompt) (bool, error) { return false, nil }
 func (refuseHostKey) Banner(context.Context, client.BannerPrompt) (bool, error)   { return true, nil }
 
+// labVariantCommand runs tests.golden.lab_variant of this repository with
+// the application of the Python release on the import path.
+func labVariantCommand(t *testing.T, dir, labJSON string) *exec.Cmd {
+	t.Helper()
+	rel := oracletest.Require(t)
+	cmd := exec.CommandContext(t.Context(), rel.Python, "-m", "tests.golden.lab_variant", "--out", dir, "--lab", labJSON) // #nosec G204 -- test helper
+	cmd.Dir = repoRoot
+	cmd.Env = append(os.Environ(), append(helperTempDir(t), "PYTHONPATH="+rel.Root)...)
+	return cmd
+}
+
 func TestLabMigratedConnections(t *testing.T) {
 	labJSON := os.Getenv("WEBSSH_LAB_JSON")
 	if labJSON == "" {
@@ -52,14 +68,8 @@ func TestLabMigratedConnections(t *testing.T) {
 	if _, err := os.Stat(labJSON); err != nil {
 		t.Fatalf("lab not available (set WEBSSH_LAB_JSON): %v", err)
 	}
-	python, err := filepath.Abs(pythonPath())
-	if err != nil {
-		t.Fatal(err)
-	}
 	dir := filepath.Join(t.TempDir(), "data")
-	cmd := exec.CommandContext(t.Context(), python, "-m", "tests.golden.lab_variant", "--out", dir, "--lab", labJSON)
-	cmd.Dir = repoRoot
-	cmd.Env = append(os.Environ(), helperTempDir(t)...)
+	cmd := labVariantCommand(t, dir, labJSON)
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Python lab data: %v\n%s", err, out)

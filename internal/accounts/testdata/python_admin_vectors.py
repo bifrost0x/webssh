@@ -1,8 +1,8 @@
 """Record the answers of the Python account administration as test vectors.
 
-Usage (from the repository root, with the project virtual environment):
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
-    .venv/bin/python -I internal/accounts/testdata/python_admin_vectors.py . \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/accounts/testdata/python_admin_vectors.py "$WEBSSH_PYTHON_ROOT" \
         > internal/accounts/testdata/python_admin_vectors.json
 
 The Flask application of the given checkout runs unchanged with a

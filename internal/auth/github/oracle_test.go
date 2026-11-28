@@ -7,15 +7,16 @@ import (
 	"math/rand/v2"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/bifrost0x/webssh/internal/oracletest"
 )
 
 // The differential tests compare the pure functions of this package with
-// the Python release, answered by testdata/pyprobe.py through the
-// repository's virtual environment (or WEBSSH_PYTHON). The answers are
+// the Python release, answered by testdata/pyprobe.py through its
+// interpreter (internal/oracletest, WEBSSH_PYTHON_ROOT). The answers are
 // checked in (testdata/python_vectors.json), so the comparison also runs
 // without Python; -update records them again.
 var update = flag.Bool("update", false, "record the Python answers in testdata/python_vectors.json")
@@ -36,20 +37,10 @@ type probeCase struct {
 	Answer  json.RawMessage `json:"answer"`
 }
 
-func pythonPath() string {
-	if p := os.Getenv("WEBSSH_PYTHON"); p != "" {
-		return p
-	}
-	return filepath.Join("..", "..", "..", ".venv", "bin", "python")
-}
-
 func askPython(t *testing.T, reqs []probeRequest) []json.RawMessage {
 	t.Helper()
-	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.CommandContext(t.Context(), pythonPath(), "testdata/pyprobe.py", root) // #nosec G204 -- test oracle
+	rel := oracletest.Require(t)
+	cmd := exec.CommandContext(t.Context(), rel.Python, "testdata/pyprobe.py", rel.Root) // #nosec G204 -- test oracle
 	cmd.Env = []string{"LANG=C.UTF-8", "PATH=" + os.Getenv("PATH"), "DATA_DIR=" + t.TempDir(), "PYTHONWARNINGS=ignore",
 		"SECRET_KEY=probe-test-only-0123456789abcdef0123456789"}
 	var in strings.Builder

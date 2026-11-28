@@ -1,8 +1,8 @@
 """Record the decisions of the Python Tailscale SSH policy as test vectors.
 
-Usage (from the repository root, with the project virtual environment):
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
-    .venv/bin/python -I internal/ssh/tailscale/testdata/python_vectors.py . \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/ssh/tailscale/testdata/python_vectors.py "$WEBSSH_PYTHON_ROOT" \
         > internal/ssh/tailscale/testdata/python_vectors.json
 
 app/tailscale_ssh.py and app/network_policy.py are loaded unchanged from

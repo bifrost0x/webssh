@@ -1,8 +1,8 @@
 """Record rate_limit_address of the Python release as test vectors.
 
-Usage (from the repository root, with the project virtual environment):
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
-    .venv/bin/python -I internal/auth/testdata/python_source_bucket.py . \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/auth/testdata/python_source_bucket.py "$WEBSSH_PYTHON_ROOT" \
         > internal/auth/testdata/python_source_bucket.json
 
 The function is taken unchanged from app/auth.py (by its syntax tree);

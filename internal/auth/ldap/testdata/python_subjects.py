@@ -2,9 +2,9 @@
 
 Bonsai's berval2PyObject (bonsai 1.5.5, src/_bonsai/utils.c, keepbytes=0)
 is emulated in Python; _canonical_subject is loaded from app/ldap_service.py.
-Usage (from the repository root, with the project virtual environment):
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
-    .venv/bin/python -I internal/auth/ldap/testdata/python_subjects.py \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/auth/ldap/testdata/python_subjects.py \
         app/ldap_service.py internal/auth/ldap/testdata/python_subjects.json
 """
 import importlib.util

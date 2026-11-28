@@ -1,8 +1,8 @@
 """Record the decisions of the Python network policy as test vectors.
 
-Usage (from the repository root, with the project virtual environment):
+Usage (from the repository root, with the venv in $WEBSSH_PYTHON_ROOT):
 
-    .venv/bin/python -I internal/netpolicy/testdata/python_vectors.py . \
+    $WEBSSH_PYTHON_ROOT/.venv/bin/python -I internal/netpolicy/testdata/python_vectors.py "$WEBSSH_PYTHON_ROOT" \
         > internal/netpolicy/testdata/python_vectors.json
 
 app/network_policy.py and app/socks5_client.py are loaded unchanged from
