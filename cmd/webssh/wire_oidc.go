@@ -54,7 +54,7 @@ func oidcArea() extension {
 				Gates: sys.gates, Binding: httpapi.BrowserBinding,
 				Limits: auth.FactorLimits{Limiter: sys.limiter, Enabled: cfg.RateLimits.Enabled,
 					Login:  auth.ParseRule(cfg.OIDC.LoginRateLimit, ruleOIDCLogin),
-					Reauth: auth.ParseRule(cfg.RateLimits.Reauth, ruleReauth), ClientAddr: clientAddrString},
+					Reauth: auth.ParseRule(cfg.RateLimits.Reauth, ruleReauth), ClientAddr: clientAddrString, Settings: sys.flow.Settings},
 				Root: cfg.ApplicationRoot, Audit: sys.audit, Logger: sys.log,
 			}).Register(sys.edge.Mux())
 			sys.stepup.External = append(sys.stepup.External, oidcStepUp{links: links, gates: sys.gates})

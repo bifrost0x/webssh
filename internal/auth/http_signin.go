@@ -48,6 +48,9 @@ type FactorLimits struct {
 	// ClientAddr returns the normalised client address of r (from the HTTP
 	// edge, after TRUSTED_PROXIES).
 	ClientAddr func(r *http.Request) string
+	// Settings supplies ratelimit_ipv6_prefix, which groups IPv6 sources
+	// as on the sign-in forms; nil keeps one bucket per address.
+	Settings SignInSettings
 }
 
 func (l FactorLimits) addr(r *http.Request) string {
@@ -55,7 +58,7 @@ func (l FactorLimits) addr(r *http.Request) string {
 		return "unknown"
 	}
 	if a := l.ClientAddr(r); a != "" {
-		return a
+		return SourceBucket(a, sourcePrefix(r.Context(), l.Settings))
 	}
 	return "unknown"
 }
