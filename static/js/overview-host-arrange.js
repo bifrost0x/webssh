@@ -86,7 +86,8 @@
             timer = 0;
             const ids = pending;
             pending = null;
-            if (ids === undefined) return;
+            // Nothing waits: a reset already saved the default order.
+            if (ids === null) return;
             save(ids).then(ok => {
                 if (!ok) announce(tw('arrangeSaveFailed', 'The order could not be saved. It applies until you reload.'));
             });
