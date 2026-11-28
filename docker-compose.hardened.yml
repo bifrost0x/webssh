@@ -11,6 +11,3 @@ services:
     mem_limit: ${WEBSSH_MEMORY_LIMIT:-2g}
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=${WEBSSH_TMPFS_SIZE:-128m},mode=1777
-      - /run/webssh:rw,noexec,nosuid,nodev,size=1m,uid=${WEBSSH_RUNTIME_UID:-1000},gid=${WEBSSH_RUNTIME_GID:-1000},mode=700
-    environment:
-      XDG_RUNTIME_DIR: /run/webssh
