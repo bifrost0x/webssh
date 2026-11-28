@@ -74,6 +74,11 @@ afterwards. `--workers N` runs the specs in parallel; specs marked `serial` chan
 stored settings of a seed account (`e2e_admin`) that other specs read and
 run afterwards on one worker. A package that builds an area adds its
 specs to `go-suite.json` and removes the exclusions it unlocks.
+A spec marked `"go_only": "<reason>"` checks behaviour only the Go server
+has (`overview-host-order`, `record-unique-names`). `playwright.config.js`
+leaves it out when the default Python backend runs (no
+`WEBSSH_E2E_SERVER_COMMAND`), because Python is no longer part of main
+after the switch to Go.
 
 `go run -tags e2e ./cmd/webssh e2e` works as well but compiles on every
 start. The Go applier is stricter than `run_app.py`: unknown members, a

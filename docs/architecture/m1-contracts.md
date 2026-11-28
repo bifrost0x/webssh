@@ -200,9 +200,13 @@ of the Python handlers: `in_use` (with `details.usages`),
 `hosts.jump.save`, `hosts.socks.save`, `keys.upload` and `keys.rename`
 refuse a name another record of the same kind and user already has with
 `duplicate_name` (names compared trimmed and case-folded, `internal/naming`;
-a record that keeps its own name is never refused). `PUT /api/overview/preferences`
+a record that keeps its own name is never refused; the migration and the
+legacy vault import check no names). `PUT /api/overview/preferences`
 keeps the codes of the Python route: `invalid_layout`,
-`invalid_dismissed` and `storage`.
+`invalid_dismissed` and `storage`. New in 3.4 (T7): its optional member
+`host_order` is refused with `invalid_value` (400, "Invalid host order.")
+unless it is `null` or a list of at most 1000 distinct host IDs of 1 to 64
+characters without control characters.
 
 `tailscale_route_restricted` is every refusal by the tailnet rule of the
 network policy (cause `netpolicy.ErrTailnetRestricted`); the page shows its
@@ -1124,6 +1128,30 @@ Consumer interfaces, adapted by D4:
 - `hostops.HostTrust.Trusted(ctx, owner, host, port) (bool, error)` from
   `internal/ssh/hostkey` (host canonicalised as `canonicalize_hostname`; an
   invalid host is `false, nil`).
+
+Additions in 3.4, both additive:
+
+- `host_order` (T7): `PUT /api/overview/preferences` takes the optional
+  member `host_order`, the account's own order of the overview host cards,
+  stored as the user setting `overview_host_order`. `null` removes it.
+  Entries that are no longer usable are dropped when read instead of
+  failing the settings. The answer and the page block
+  `#overviewPreferences` carry `host_order` only when the account stored
+  one; without it both stay as before. Host records (`sort_order`) are not
+  touched. The Python route refuses the member with 400.
+- One-time notices (T8): `settings_notices(user_id, notice,
+  acknowledged_us)` is migration 2 of the owner `settings`; a row with
+  `acknowledged_us IS NULL` is open. `settings.GrantNotice` opens a notice
+  for an account (an acknowledged one stays acknowledged),
+  `settings.VerifyNotice` checks that it is present and open. The only
+  notice is `upgrade-3.4`, granted by the migration (E25) to every account
+  taken over from 3.3; accounts created on 3.4 get none. `GET
+  /api/account/notices` returns `{"notices": [...]}`, `POST
+  /api/account/notices/acknowledge` with exactly `{"notice": "upgrade-3.4"}`
+  marks it read and returns the remaining notices. Both are `AccessUser`
+  and act only on the caller's account; other members are refused with
+  400, a repeated acknowledgement changes nothing. Rows follow the account
+  on deletion (`user_id`).
 
 `settings.New(db, Environment{Values, Explicit, Production,
 AuditBackupCount})` is filled from `internal/config`. The page data takes

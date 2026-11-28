@@ -4,9 +4,10 @@ const {login}=require('./helpers');
 
 // Names of jump hosts, SOCKS5 proxies and SSH keys are unique per user from
 // 3.4 (U100): a name in use, in any case and with surrounding spaces, is
-// refused at the name field and nothing is stored. The Python release
-// stored the second record, so there the tests are expected to fail and
-// remove what Python stored.
+// refused at the name field and nothing is stored. Go only (go_only in
+// go-suite.json): the default Python run leaves this file out. Run against
+// Python with another server command, the Python release stores the second
+// record, so the tests are expected to fail and remove what it stored.
 const goBackend=page=>page.evaluate(()=>Boolean(window.WebSSHRealtimeAreas));
 const message='This name is already in use. Choose another name.';
 

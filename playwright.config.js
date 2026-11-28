@@ -14,11 +14,19 @@ const outputDir = process.env.WEBSSH_E2E_OUTPUT_DIR || (process.env.CI ? 'test-r
 const timingOutput = process.env.WEBSSH_E2E_TIMING_FILE
     || path.join(outputDir, 'e2e-timing-full.json');
 
+// Specs of go-suite.json marked go_only check behaviour that only the Go
+// server has. The default Python backend leaves them out; Python is no
+// longer part of main once 3.4 replaces it.
+const pythonBackend = !process.env.WEBSSH_E2E_SERVER_COMMAND;
+const goOnlySpecs = pythonBackend
+    ? require('./tests/e2e/go-suite.json').specs.filter(spec => spec.go_only).map(spec => spec.file)
+    : [];
+
 module.exports = {
     testDir: './tests/e2e',
     // The M1 and M2 acceptance specs start their own backends and need the
-    // lab (tests/e2e/m1, tests/e2e/m2).
-    testIgnore: ['m1/**', 'm2/**'],
+    // lab (tests/e2e/m1, tests/e2e/m2); goOnlySpecs see above.
+    testIgnore: ['m1/**', 'm2/**', ...goOnlySpecs],
     // Test-level sharding keeps independent CI servers evenly loaded.
     fullyParallel: true,
     workers: 1,

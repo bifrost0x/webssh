@@ -512,6 +512,26 @@ func ImportLegacyVaultTx(ctx, tx *store.Tx, userID int64, document []byte, versi
 - `Resources` (consumer interface of the vault, compiled) returns the
   current `Target` of a resource; `cmd/webssh` provides it over
   `internal/hosts` and `internal/files/smb`.
+- `ResourceWriter` (consumer interface of the vault, compiled; changed in
+  3.4 by T2/T10) stores a resource together with its password:
+
+  ```go
+  type ResourceWriter interface {
+      CreateResource(ctx, userID int64, kind ResourceKind, payload jsontext.Value, within Within) (jsontext.Value, error)
+      UpdateResource(ctx, userID int64, kind ResourceKind, recordID string, payload jsontext.Value, within Within) (jsontext.Value, error)
+  }
+  type Within func(ctx, tx *store.Tx, stored jsontext.Value, records Records) error
+  ```
+
+  Both validate the payload as the resource's own save does, store the
+  record and run `within` in the same transaction; an error of `within`
+  stores nothing. `UpdateResource` serves saved hosts, jump hosts and SOCKS
+  proxies, not SMB shares. It replaces `CreateResource` without `within`
+  plus `DeleteResource`, with which the M2 build removed a record again
+  after a failed assignment. `cmd/webssh` provides it over
+  `internal/hosts` (`CreateProfile`, `CreateJumpHost`, `CreateSOCKSProxy`,
+  `UpdateProfile`, `UpdateJumpHost`, `UpdateSOCKSProxy`) and
+  `internal/files/smb` (`Shares.Create`).
 - A credential that is assigned to a live resource cannot be deleted
   (`credential_in_use`); assignments of deleted resources are removed.
 - Intents: every change is prepared as an intent (300 seconds, 8 per

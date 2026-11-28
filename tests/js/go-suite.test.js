@@ -57,6 +57,30 @@ test('go-suite.json lists every spec of the main suite', () => {
     assert.deepEqual(missing, []);
 });
 
+test('go_only specs name a reason and are left out of the Python run only', () => {
+    const goOnly = suite.specs.filter(spec => spec.go_only !== undefined);
+    assert.deepEqual(goOnly.map(spec => spec.file).sort(), ['overview-host-order.spec.js', 'record-unique-names.spec.js']);
+    const load = env => {
+        const config = require.resolve('../../playwright.config.js');
+        const saved = process.env.WEBSSH_E2E_SERVER_COMMAND;
+        delete require.cache[config];
+        if (env === undefined) delete process.env.WEBSSH_E2E_SERVER_COMMAND;
+        else process.env.WEBSSH_E2E_SERVER_COMMAND = env;
+        try {
+            return require(config).testIgnore;
+        } finally {
+            delete require.cache[config];
+            if (saved === undefined) delete process.env.WEBSSH_E2E_SERVER_COMMAND;
+            else process.env.WEBSSH_E2E_SERVER_COMMAND = saved;
+        }
+    };
+    const python = load(undefined);
+    for (const spec of goOnly) assert.ok(python.includes(spec.file), spec.file);
+    const go = load('.test-run.tmp/webssh-e2e e2e');
+    for (const spec of goOnly) assert.ok(!go.includes(spec.file), spec.file);
+    assert.throws(() => plan({requires: {}, specs: [{file: 'mfa.spec.js', go_only: ' ', exclude: []}]}, new Set(), exists), /go_only needs a reason/);
+});
+
 test('--spec narrows the plan to named files and refuses names outside it', () => {
     const planned = plan(suite, new Set(Object.keys(suite.requires)), exists);
     const [first, second] = planned.all.map(file => path.basename(file));

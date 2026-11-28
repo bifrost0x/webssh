@@ -5,6 +5,8 @@ const {login, waitForInventory, installSshConnectTrap, sshAttempts, assertNoExte
 // across groups, stored on the server in the overview preferences.
 // Favourites always come first; the order applies inside the favourites
 // and inside the other hosts.
+// Go only (go_only in go-suite.json): the Python route refuses host_order,
+// so the default Python run leaves this file out.
 
 const csrf = page => page.locator('meta[name="csrf-token"]').getAttribute('content');
 const resetOrder = async page => {

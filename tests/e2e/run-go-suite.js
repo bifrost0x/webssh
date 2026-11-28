@@ -37,6 +37,7 @@ function plan(suite, enabled, specExists) {
         seen.add(spec.file);
         if (spec.requires && !(spec.requires in suite.requires)) throw new Error(`${spec.file}: unknown requirement ${spec.requires}`);
         if (spec.serial !== undefined && !SERIAL_ACCOUNTS.has(spec.serial)) throw new Error(`${spec.file}: unknown serial account ${spec.serial}`);
+        if (spec.go_only !== undefined && (typeof spec.go_only !== 'string' || !spec.go_only.trim())) throw new Error(`${spec.file}: go_only needs a reason`);
         for (const entry of spec.exclude) {
             if (!entry.title || !entry.reason) throw new Error(`${spec.file}: an excluded test needs a title and a reason`);
             const unlocked = entry.requires ? entry.requires in suite.requires : PACKAGES.has(entry.package);
