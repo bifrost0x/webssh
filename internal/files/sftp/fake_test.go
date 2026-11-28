@@ -87,6 +87,14 @@ func (f *fakeServer) serve() {
 			_, _ = f.conn.Write(pkt(fxpStatus, id, statusBody(fxOpUnsupported)))
 			continue
 		}
+		if body[0] == fxpRealpath {
+			// Every server answers REALPATH (SFTP v3); the fake resolves
+			// nothing and returns the path.
+			rep := append(be32(1), str(d.bytesN(1<<20))...)
+			rep = append(append(rep, str(nil)...), attrsBody(0)...)
+			_, _ = f.conn.Write(pkt(fxpName, id, rep))
+			continue
+		}
 		f.mu.Lock()
 		f.seen = append(f.seen, name)
 		f.mu.Unlock()

@@ -230,12 +230,6 @@ func deepServer(t *testing.T) *Backend {
 		switch typ {
 		case fxpLstat:
 			return fxpAttrs, dirAttrs
-		case fxpRealpath:
-			p := d.bytesN(1 << 20)
-			body := be32(1)
-			body = append(body, str(p)...)
-			body = append(body, str(nil)...)
-			return fxpName, append(body, attrsBody(0)...)
 		case fxpOpendir:
 			next++
 			return fxpHandle, str(fmt.Appendf(nil, "h%d", next))

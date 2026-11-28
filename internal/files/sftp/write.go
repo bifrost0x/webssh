@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"io"
 	"os"
+	"path"
 	"slices"
 
 	pkgsftp "github.com/pkg/sftp"
@@ -30,6 +31,7 @@ type writeJob struct {
 	original snapshot
 	revision string // editor: the revision seen before staging
 	tmp      string
+	parent   string // canonical directory of target (REALPATH)
 	created  bool
 	publish  bool
 }
@@ -82,6 +84,9 @@ func (j *writeJob) run(ctx context.Context) (files.WriteResult, error) {
 		purpose = "tmp"
 	}
 	j.tmp = stagingPath(j.target, purpose)
+	if err := j.sameParent(ctx); err != nil {
+		return files.WriteResult{}, err
+	}
 	rctx, cancel := b.request(ctx, true)
 	f, err := b.openFile(rctx, j.tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
 	cancel()
@@ -131,6 +136,9 @@ func (j *writeJob) inspect(ctx context.Context) error {
 	b := j.b
 	rctx, cancel := b.request(ctx, false)
 	defer cancel()
+	if err := j.pinParent(rctx); err != nil {
+		return err
+	}
 	a, err := b.w.lstat(rctx, j.target)
 	if isStatus(err, fxNoSuchFile) {
 		if j.editor {
@@ -156,6 +164,9 @@ func (j *writeJob) inspect(ctx context.Context) error {
 			return fault.New(fault.OperationFailed, msgLinkUnresolved)
 		}
 		j.target = clean
+		if err := j.pinParent(rctx); err != nil {
+			return err
+		}
 		if a, err = b.w.lstat(rctx, j.target); err != nil {
 			return b.mapErr(err, false)
 		}
@@ -282,6 +293,9 @@ func (j *writeJob) publishTmp(ctx context.Context) error {
 	b := j.b
 	rctx, cancel := b.request(ctx, true)
 	defer cancel()
+	if err := j.sameParent(rctx); err != nil {
+		return err
+	}
 	if !j.exists {
 		if b.exists(rctx, j.target) {
 			return fault.New(fault.FileConflict, "")
@@ -326,4 +340,33 @@ func (j *writeJob) publishTmp(ctx context.Context) error {
 		return fault.Wrap(fault.SaveOutcomeUnknown, err, msgSaveUncertain)
 	}
 	return fault.Wrap(fault.OutcomeUnknown, err, "")
+}
+
+// pinParent records the canonical directory of the target. Every request
+// of a write names a path, and the server resolves links in its
+// directories: a directory replaced by a link during the write would
+// redirect the staging file and the rename. sameParent checks before the
+// staging file is created and before the rename that the directory still
+// resolves to the pinned path; one round trip remains (SFTP v3 has no
+// *at() requests).
+func (j *writeJob) pinParent(ctx context.Context) error {
+	p, err := j.b.w.resolve(ctx, path.Dir(j.target))
+	if err != nil {
+		return j.b.mapErr(err, false)
+	}
+	j.parent = p
+	return nil
+}
+
+func (j *writeJob) sameParent(ctx context.Context) error {
+	rctx, cancel := j.b.request(ctx, false)
+	defer cancel()
+	p, err := j.b.w.resolve(rctx, path.Dir(j.target))
+	if err != nil {
+		return j.b.mapErr(err, false)
+	}
+	if p != j.parent {
+		return j.fails(fault.EditConflict, fault.SourceChanged, msgFileChanged)
+	}
+	return nil
 }
