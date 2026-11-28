@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -117,6 +120,18 @@ func TestMaintenanceAnswersOnlyTheProbes(t *testing.T) {
 	}
 	if resp, _ := get(t, c, ts.URL+"/health"); resp.StatusCode != http.StatusOK {
 		t.Fatalf("health in maintenance: %d", resp.StatusCode)
+	}
+	// A request whose announced body never comes is answered at once
+	// and the connection closed; net/http would wait for the body.
+	conn, err := net.Dial("tcp", strings.TrimPrefix(ts.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	fmt.Fprintf(conn, "POST /login HTTP/1.1\r\nHost: x\r\nContent-Length: 1000\r\n\r\n")
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if resp, err := http.ReadResponse(bufio.NewReader(conn), nil); err != nil || resp.StatusCode != http.StatusServiceUnavailable || !resp.Close {
+		t.Fatalf("maintenance answer to an unsent body: %v %v", resp, err)
 	}
 	if resp, body := get(t, c, ts.URL+"/ready"); resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(body, "maintenance") {
 		t.Fatalf("ready in maintenance: %d %s", resp.StatusCode, body)

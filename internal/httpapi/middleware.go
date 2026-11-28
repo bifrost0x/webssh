@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -48,20 +50,66 @@ func setSecurityHeaders(h http.Header, debugMode bool) {
 
 // Per-request deadlines. The listener has only a header timeout and an
 // idle timeout, because a server-wide read or write timeout would stay on
-// hijacked WebSocket connections; every other request gets these.
+// hijacked WebSocket connections; every request gets these before it is
+// routed. net/http lifts them on a connection it hands over (Hijack).
 const (
 	requestReadTimeout  = 30 * time.Second
 	requestWriteTimeout = 2 * time.Minute
 )
 
-func setDeadlines(w http.ResponseWriter, log *slog.Logger) {
+func setDeadlines(w http.ResponseWriter, read time.Duration, log *slog.Logger) {
 	rc := http.NewResponseController(w)
 	now := time.Now()
-	errR := rc.SetReadDeadline(now.Add(requestReadTimeout))
+	errR := rc.SetReadDeadline(now.Add(read))
 	errW := rc.SetWriteDeadline(now.Add(requestWriteTimeout))
 	if err := errors.Join(errR, errW); err != nil && !errors.Is(err, http.ErrNotSupported) {
 		log.Debug("request deadline not set", "err", err)
 	}
+}
+
+// BoundAnswer prepares an answer written in front of the edge (the
+// maintenance answer of the composition root): it sets the request
+// deadlines and, when the request announced a body that nobody reads,
+// closes the connection after the answer instead of letting net/http
+// wait for the body.
+func BoundAnswer(w http.ResponseWriter, r *http.Request, log *slog.Logger) {
+	setDeadlines(w, requestReadTimeout, log)
+	if announcesBody(r) && r.ProtoMajor == 1 {
+		w.Header().Set("Connection", "close")
+	}
+}
+
+// announcesBody reports whether r has a body: a Content-Length above zero
+// or a chunked body of unknown length.
+func announcesBody(r *http.Request) bool {
+	return r.ContentLength != 0 && r.Body != nil && r.Body != http.NoBody
+}
+
+// bodyTracker notes how much of a request body was read, so the answer
+// can close an HTTP/1 connection whose body is left unread. net/http
+// would otherwise read and discard up to 256 KiB of it before the answer,
+// waiting on a client that may never send it.
+type bodyTracker struct {
+	io.ReadCloser
+	want int64 // Content-Length, -1 when unknown
+	read atomic.Int64
+	done atomic.Bool
+}
+
+func (b *bodyTracker) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	b.read.Add(int64(n))
+	if err != nil {
+		b.done.Store(true)
+	}
+	return n, err
+}
+
+func (b *bodyTracker) unread() bool {
+	if b.done.Load() {
+		return false
+	}
+	return b.want < 0 || b.read.Load() < b.want
 }
 
 // ConfigureServer sets the listener limits that belong to the edge: a
@@ -82,10 +130,15 @@ type statusRecorder struct {
 	status int
 	bytes  int64
 	userID int64 // the signed-in user, for the log
+	// body is the tracked body of an HTTP/1 request that announced one.
+	body *bodyTracker
 }
 
 func (s *statusRecorder) WriteHeader(code int) {
 	if s.status == 0 {
+		if code >= http.StatusOK {
+			s.closeOnUnreadBody()
+		}
 		s.status = code
 	}
 	s.ResponseWriter.WriteHeader(code)
@@ -93,11 +146,18 @@ func (s *statusRecorder) WriteHeader(code int) {
 
 func (s *statusRecorder) Write(b []byte) (int, error) {
 	if s.status == 0 {
+		s.closeOnUnreadBody()
 		s.status = http.StatusOK
 	}
 	n, err := s.ResponseWriter.Write(b)
 	s.bytes += int64(n)
 	return n, err
+}
+
+func (s *statusRecorder) closeOnUnreadBody() {
+	if s.body != nil && s.body.unread() {
+		s.Header().Set("Connection", "close")
+	}
 }
 
 // Unwrap lets http.ResponseController reach the connection.

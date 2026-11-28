@@ -68,7 +68,9 @@ type Handler struct {
 	signedIn, anonymous *bodyBudget
 	users               *userBudgets
 	budgetWait          time.Duration
-	ready               *readiness
+	// readTimeout is the read deadline of a request (requestReadTimeout).
+	readTimeout time.Duration
+	ready       *readiness
 	// signInRequired: Options.SignInRequired.
 	signInRequired func(r *http.Request)
 
@@ -106,7 +108,8 @@ func New(o Options) (*Handler, error) {
 
 		signedIn:  newBodyBudget(signedInBodyBudget),
 		anonymous: newBodyBudget(anonymousBodyBudget), budgetWait: bodyBudgetWait,
-		users: newUserBudgets(userBodyShare),
+		readTimeout: requestReadTimeout,
+		users:       newUserBudgets(userBodyShare),
 	}
 	if h.session.name == "" {
 		return nil, errors.New("httpapi: the session cookie name is empty")
@@ -177,7 +180,7 @@ func (h *Handler) registered(pattern string) bool {
 }
 
 // ServeHTTP runs the pipeline in this order: client address, headers,
-// admin panel gate, edge-answered routes, deadlines, session, access level,
+// deadlines, admin panel gate, edge-answered routes, session, access level,
 // origin, body limit and budget, CSRF, handler.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.Finish(); err != nil {
@@ -189,6 +192,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(withInfo(r.Context(), info))
 	setSecurityHeaders(w.Header(), h.cfg.Debug)
 	rec := &statusRecorder{ResponseWriter: w}
+	if announcesBody(r) && r.ProtoMajor == 1 {
+		rec.body = &bodyTracker{ReadCloser: r.Body, want: r.ContentLength}
+		r.Body = rec.body
+	}
+	setDeadlines(rec, h.readTimeout, h.log)
 	started := time.Now()
 	defer h.logRequest(rec, r, started)
 	defer h.recoverPanic(rec, r)
@@ -212,7 +220,6 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		h.mux.ServeHTTP(w, r)
 		return
 	case AccessProbe:
-		setDeadlines(w, h.log)
 		h.mux.ServeHTTP(w, r)
 		return
 	case 0:
@@ -220,7 +227,6 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, errNotFound, "", "")
 		return
 	}
-	setDeadlines(w, h.log)
 	// The session, the access level and the origin are checked before the
 	// body is read: none of them depends on it, and a request that is
 	// refused makes the server buffer nothing.
