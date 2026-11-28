@@ -11,6 +11,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/auth"
 	"github.com/bifrost0x/webssh/internal/principal"
+	"github.com/bifrost0x/webssh/internal/store"
 )
 
 func code(t *testing.T, out map[string]jsontext.Value) string {
@@ -381,5 +382,28 @@ func TestConcurrentAnswers(t *testing.T) {
 	wg.Wait()
 	if ok.Load() != 1 {
 		t.Fatalf("same counter accepted %d times", ok.Load())
+	}
+}
+
+// TestUsernamelessSignInRefusedWhenPasskeyRemoved: a passkey removed (MFA
+// reset, deletion) after its assertion was verified signs nobody in.
+func TestUsernamelessSignInRefusedWhenPasskeyRemoved(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	a, id := e.enrol(t, user(7), AlgEdDSA, "phone")
+	br := browserID(1)
+	ch, _ := e.signInOptions(t, br)
+	e.direct.before = func() {
+		err := e.svc.DB.Write(t.Context(), func(tx *store.Tx) error {
+			_, err := tx.ExecContext(t.Context(), `DELETE FROM webauthn_credentials WHERE id = ?`, id)
+			return err
+		})
+		if err != nil {
+			t.Error(err)
+		}
+	}
+	status, _ := e.do(t, call{method: "POST", path: "/api/webauthn/auth/verify", browser: br, body: map[string]any{"credential": a.assert(t, ch, assertOpts{})}})
+	if status != 401 || len(e.direct.signins) != 0 {
+		t.Fatalf("removed passkey: %d %v", status, e.direct.signins)
 	}
 }

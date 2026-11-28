@@ -1,6 +1,8 @@
 package webauthn
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -59,7 +61,7 @@ func (h *HTTP) signIn(w http.ResponseWriter, r *http.Request) {
 	}
 	body := auth.ReadObject(w, r)
 	pending := h.pendingUser(r)
-	userID, err := h.Service.SignIn(ctx, h.binding(r), pending, body["credential"])
+	userID, passkeyID, err := h.Service.SignInPasskey(ctx, h.binding(r), pending, body["credential"])
 	if err == nil {
 		if pending != 0 {
 			var continuation string
@@ -68,7 +70,7 @@ func (h *HTTP) signIn(w http.ResponseWriter, r *http.Request) {
 				auth.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "continuation": continuation})
 				return
 			}
-		} else if err = h.SignIn.SignInDirect(w, r, userID, "passkey", auth.AssurancePhishingResistant); err == nil {
+		} else if err = h.SignIn.SignInDirect(w, r, userID, "passkey", auth.AssurancePhishingResistant, h.stillOwned(userID, passkeyID)); err == nil {
 			auth.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 			return
 		}
@@ -95,4 +97,20 @@ func isoformat(t time.Time) string {
 		return t.Format("2006-01-02T15:04:05")
 	}
 	return t.Format("2006-01-02T15:04:05.000000")
+}
+
+// stillOwned confirms at issue that the passkey that signed is still the
+// account's: an MFA reset or a deletion after the assertion ends the
+// sign-in.
+func (h *HTTP) stillOwned(userID, passkeyID int64) func(context.Context) error {
+	return func(ctx context.Context) error {
+		ok, err := h.Service.Owned(ctx, userID, passkeyID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fault.Wrap(fault.AuthenticationNeeded, errors.New("passkey removed during the sign-in"), "Passkey authentication failed")
+		}
+		return nil
+	}
 }

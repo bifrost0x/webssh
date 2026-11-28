@@ -148,6 +148,15 @@ func (f *Flow) login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// The session is bound to the auth_generation in effect before the
+	// password was checked: a password change, reset or MFA reset that
+	// commits while the hash is verified raises it, and the sign-in is
+	// refused instead of outliving the change.
+	before, err := f.Accounts.ByUsername(ctx, username)
+	if err != nil && !fault.Is(err, fault.NotFound) {
+		f.fail(w, r, err)
+		return
+	}
 	userID, err := f.Password.Authenticate(ctx, username, password)
 	if err != nil {
 		if !fault.Is(err, fault.AuthFailed) {
@@ -164,6 +173,11 @@ func (f *Flow) login(w http.ResponseWriter, r *http.Request) {
 	acc, err := f.Accounts.Get(ctx, userID)
 	if err != nil {
 		f.fail(w, r, err)
+		return
+	}
+	if before.ID != userID || before.AuthGeneration != acc.AuthGeneration {
+		f.logger().WarnContext(ctx, "sign-in refused: credentials changed during the check", "user_id", userID)
+		f.Pages.Login(w, r, http.StatusOK, LoginView{AuthSource: "local", Flashes: []Flash{{"error", "Invalid username or password"}}})
 		return
 	}
 	f.Devices.Remember(w, acc, username)

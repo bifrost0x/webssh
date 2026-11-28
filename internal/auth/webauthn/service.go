@@ -183,7 +183,7 @@ func (s *Service) AssertionOptions(ctx context.Context, userID int64, binding st
 
 // VerifyAssertion checks a step-up assertion (stepup.Passkeys).
 func (s *Service) VerifyAssertion(ctx context.Context, userID int64, binding string, credential jsontext.Value) error {
-	_, err := s.assert(ctx, purposeStepUp, userID, binding, credential)
+	_, _, err := s.assert(ctx, purposeStepUp, userID, binding, credential)
 	return err
 }
 
@@ -203,6 +203,14 @@ func (s *Service) SignInOptions(ctx context.Context, binding string, pendingUser
 // SignIn verifies a sign-in assertion started by SignInOptions with the
 // same pendingUser and returns the account it proves.
 func (s *Service) SignIn(ctx context.Context, binding string, pendingUser int64, credential jsontext.Value) (int64, error) {
+	userID, _, err := s.SignInPasskey(ctx, binding, pendingUser, credential)
+	return userID, err
+}
+
+// SignInPasskey is SignIn that also returns the row id of the passkey
+// that signed, for the caller to confirm it still exists (Owned) when the
+// session is issued.
+func (s *Service) SignInPasskey(ctx context.Context, binding string, pendingUser int64, credential jsontext.Value) (userID, passkeyID int64, err error) {
 	if pendingUser == 0 {
 		return s.assert(ctx, purposeLogin, 0, binding, credential)
 	}
@@ -232,22 +240,22 @@ func (s *Service) options(ctx context.Context, purpose string, userID int64, bin
 // the stored credential and records its use. userID 0 accepts any
 // account's passkey, identified by its user handle. Refusals are
 // ErrAssertion wrapping the reason; storage failures pass through.
-func (s *Service) assert(ctx context.Context, purpose string, userID int64, binding string, credential jsontext.Value) (int64, error) {
+func (s *Service) assert(ctx context.Context, purpose string, userID int64, binding string, credential jsontext.Value) (int64, int64, error) {
 	challenge, err := s.challenges().consume(ctx, purpose, userID, binding)
 	if err != nil {
-		return 0, refused(err)
+		return 0, 0, refused(err)
 	}
 	a, err := ParseAssertion(credential)
 	if err != nil {
-		return 0, refused(err)
+		return 0, 0, refused(err)
 	}
 	r, err := s.lookup(ctx, a.CredentialID, userID)
 	if err != nil {
-		return 0, refused(err)
+		return 0, 0, refused(err)
 	}
 	v, err := s.RP.Verify(a, r.stored, Expect{Challenge: challenge, HandleRequired: purpose == purposeLogin})
 	if err != nil {
-		return 0, refused(err)
+		return 0, 0, refused(err)
 	}
 	err = s.DB.Write(ctx, func(tx *store.Tx) error {
 		if err := s.recordUse(ctx, tx, r, v); err != nil {
@@ -256,9 +264,9 @@ func (s *Service) assert(ctx context.Context, purpose string, userID int64, bind
 		return auth.ClearTx(ctx, tx, r.userID)
 	})
 	if err != nil {
-		return 0, refused(err)
+		return 0, 0, refused(err)
 	}
-	return r.userID, nil
+	return r.userID, r.id, nil
 }
 
 // refused maps a failed assertion to ErrAssertion, keeping the cause for

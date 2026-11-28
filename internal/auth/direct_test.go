@@ -25,7 +25,7 @@ func TestSignInDirect(t *testing.T) {
 		return httptest.NewRecorder(), r
 	}
 	w, r := req()
-	if err := e.flow.SignInDirect(w, r, a.ID, "passkey", AssurancePhishingResistant); err != nil {
+	if err := e.flow.SignInDirect(w, r, a.ID, "passkey", AssurancePhishingResistant, nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range w.Result().Cookies() {
@@ -46,7 +46,7 @@ func TestSignInDirect(t *testing.T) {
 	}
 	// Unknown and ineligible accounts get no session.
 	w, r = req()
-	if err := e.flow.SignInDirect(w, r, a.ID+100, "passkey", AssurancePhishingResistant); fault.CodeOf(err) != fault.AuthenticationNeeded {
+	if err := e.flow.SignInDirect(w, r, a.ID+100, "passkey", AssurancePhishingResistant, nil); fault.CodeOf(err) != fault.AuthenticationNeeded {
 		t.Fatalf("unknown account: %v", err)
 	}
 	_ = e.flow.DB.Write(t.Context(), func(tx *store.Tx) error {
@@ -54,7 +54,7 @@ func TestSignInDirect(t *testing.T) {
 		return err
 	})
 	w, r = req()
-	if err := e.flow.SignInDirect(w, r, a.ID, "passkey", AssurancePhishingResistant); fault.CodeOf(err) != fault.AuthenticationNeeded {
+	if err := e.flow.SignInDirect(w, r, a.ID, "passkey", AssurancePhishingResistant, nil); fault.CodeOf(err) != fault.AuthenticationNeeded {
 		t.Fatalf("locked account: %v", err)
 	}
 	if len(w.Result().Cookies()) != 0 {
