@@ -994,7 +994,7 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
     await page.locator('.terminal-pane.active .xterm-helper-textarea').focus();
     await expect.poll(() => page.evaluate(() => TerminalManager.terminals['workspace-linux']?.cols || 0)).toBeGreaterThanOrEqual(80);
     const referenceTerminal = await page.evaluate(() => { const term = TerminalManager.terminals['workspace-linux']; return {cols: term.cols, rows: term.rows, fontSize: term.options.fontSize}; });
-    await page.screenshot({path: path.resolve('plans/workspace-reference-render.png'), scale: 'css'});
+    await page.screenshot({path: test.info().outputPath('workspace-reference-render.png'), scale: 'css'});
     await page.setViewportSize({width: 1280, height: 720});
     const overlayTerminalWidth = await page.locator('#terminalGrid').evaluate(element => element.getBoundingClientRect().width);
     await filesTab.click();
@@ -1007,7 +1007,7 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
     const laptopTerminal = await page.evaluate(() => { const term = TerminalManager.terminals['workspace-linux']; return {cols: term.cols, rows: term.rows, fontSize: term.options.fontSize}; });
     await testInfo.attach('terminal-geometry', {body: JSON.stringify({reference1586: referenceTerminal, laptop1280: laptopTerminal}, null, 2), contentType: 'application/json'});
     console.log('Terminal geometry:', JSON.stringify({reference1586: referenceTerminal, laptop1280: laptopTerminal}));
-    await page.screenshot({path: path.resolve('plans/workspace-1280-render.png'), scale: 'css'});
+    await page.screenshot({path: test.info().outputPath('workspace-1280-render.png'), scale: 'css'});
     await page.setViewportSize({width: 1920, height: 1080});
 
     await page.locator('#sessionFilesOpenManager').click();
@@ -1023,7 +1023,7 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
     await page.locator('#fmLeftList .fm-file-item').filter({hasText: 'compose.yaml'}).click();
     await expect(page.locator('#fmLeftPane [data-pane-action="preview"]')).toBeEnabled();
     await page.setViewportSize({width: 1586, height: 991});
-    await page.screenshot({path: path.resolve('plans/files-reference-render.png'), scale: 'css'});
+    await page.screenshot({path: test.info().outputPath('files-reference-render.png'), scale: 'css'});
     await page.setViewportSize({width: 1920, height: 1080});
     await page.locator('#workspaceNavBtn').click();
     await expect(page.locator('#sessionFilesPanel')).toBeVisible();

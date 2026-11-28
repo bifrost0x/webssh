@@ -23,7 +23,7 @@ for (const width of [1440,390]) {
         await expect(page.locator('.automation-run-output').first()).toContainText('Available storage is below');
         await expect(page.locator('.automation-run').first().getByRole('link',{name:'Export JSON'})).toHaveAttribute('href',/failed-fixture\/export\?format=json$/);
         expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-        const folder=path.join(process.cwd(),'plans','results-refinement'); fs.mkdirSync(folder,{recursive:true});
+        const folder=test.info().outputPath(); fs.mkdirSync(folder,{recursive:true});
         await page.screenshot({path:path.join(folder,`results-detail-${width}.png`),fullPage:true});
         if (width < 600) {
             await page.locator('.automation-run').first().locator(':scope > summary').click();

@@ -53,7 +53,7 @@ test('continue working joins legacy layouts and persists dragging, resizing, hid
     await page.mouse.wheel(0, 160);
     await expect.poll(() => body.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
     await body.evaluate(el => { el.scrollTop = 0; });
-    await page.screenshot({path:'plans/continue-panel/resized-1440.png'});
+    await page.screenshot({path:test.info().outputPath('resized-1440.png')});
 
     await page.getByRole('button', {name:'Hide Continue working', exact:true}).click();
     await expect(panel).toBeHidden();
@@ -99,7 +99,7 @@ test('continue working stacks on mobile and can be hidden and restored with tran
     await expect(panel.locator('[data-panel-handle]')).toHaveAttribute('aria-label', /Weiterarbeiten/);
     expect(await panel.evaluate(el => el.querySelector('.od-panel-tools').getBoundingClientRect().bottom
         <= el.querySelector('.od-panel-head').getBoundingClientRect().top)).toBe(true);
-    await page.screenshot({path:'plans/continue-panel/edit-390.png'});
+    await page.screenshot({path:test.info().outputPath('edit-390.png')});
     await panel.getByRole('button', {name:/Weiterarbeiten ausblenden/}).click();
     await expect(panel).toBeHidden();
     await page.locator('#odLayoutDone').click();

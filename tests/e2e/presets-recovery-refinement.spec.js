@@ -10,7 +10,7 @@ for(const width of [1440,390]) {
     await installSshConnectTrap(page);
     let presets=[];
     await page.route('**/api/account/workspace-presets',route=>{if(route.request().method()==='PUT')presets=route.request().postDataJSON().presets;return route.fulfill({json:{presets}});});
-    const folder=path.join(process.cwd(),'plans','presets-recovery-refinement');fs.mkdirSync(folder,{recursive:true});
+    const folder=test.info().outputPath();fs.mkdirSync(folder,{recursive:true});
     await expect(page.locator('#accountDropdownHeader [data-workspace-presets]')).toHaveCount(0);
     const layout=page.locator('#workspaceLayoutPicker > summary');
     await layout.click();

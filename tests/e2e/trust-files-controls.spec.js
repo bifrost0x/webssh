@@ -26,7 +26,7 @@ for (const width of [390, 1440]) {
         await page.locator('#fmQueueList details summary').click();
         await page.evaluate(() => window.sftpFileManager.renderTransferQueue());
         await expect(page.locator('#fmQueueList details')).toHaveAttribute('open', '');
-        await page.screenshot({path:`plans/trust-files-controls/transfers-${width}.png`,fullPage:true});
+        await page.screenshot({path:test.info().outputPath(`transfers-${width}.png`),fullPage:true});
         await page.locator('#fmQueueFilter').selectOption('active');
         await page.locator('[data-transfer-cancel="old-active"]').click();
         await expect(page.locator('#fmQueueList .fm-transfer-item')).toHaveCount(0);
@@ -58,7 +58,7 @@ for (const width of [390, 1440]) {
         await expect(page.locator('.trust-deletion-dialog')).toContainText('Global · Effective');
         await expect(page.locator('.trust-deletion-dialog')).toContainText('SHA256:global-after-delete');
         await expect(page.locator('.trust-deletion-dialog')).toContainText('Their remaining trust is unknown');
-        await page.screenshot({path:`plans/trust-files-controls/trust-deletion-${width}.png`,fullPage:true});
+        await page.screenshot({path:test.info().outputPath(`trust-deletion-${width}.png`),fullPage:true});
         await page.locator('.trust-deletion-dialog').getByRole('button',{name:'Cancel',exact:true}).click();
         expect(deletions).toBe(0);
         await page.locator('#hostKeyList button').click();
@@ -66,7 +66,7 @@ for (const width of [390, 1440]) {
         await expect.poll(()=>deletions).toBe(1);
         await expect(page.locator('#hostKeyList')).toContainText('orphan.example');
         await page.locator('#effectiveHostTrust h3').scrollIntoViewIfNeeded();
-        await page.screenshot({path:`plans/trust-files-controls/trust-${width}.png`,fullPage:true});
+        await page.screenshot({path:test.info().outputPath(`trust-${width}.png`),fullPage:true});
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     });
 
@@ -83,7 +83,7 @@ for (const width of [390, 1440]) {
         await page.evaluate(() => window.openConnectionAssetManager('passwords'));
         await page.locator('[data-credential-list] button').click();
         await expect(page.locator('[data-credential-detail]')).toContainText('Review required');
-        await page.screenshot({path:`plans/trust-files-controls/password-${width}.png`,fullPage:true});
+        await page.screenshot({path:test.info().outputPath(`password-${width}.png`),fullPage:true});
         await page.getByRole('button',{name:'Review and authorize again',exact:true}).click();
         await expect(page.locator('.credential-question')).toContainText('operator@changed.example:2222');
         await page.locator('.credential-question').getByRole('button',{name:'Confirm',exact:true}).click();

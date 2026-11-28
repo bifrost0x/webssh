@@ -1,6 +1,5 @@
 const {test, expect} = require('playwright/test');
 const {login} = require('./helpers');
-const path = require('node:path');
 
 for (const width of [1440, 390]) {
     test(`support report is deliberate, previewed and downloadable at ${width}`, async ({page}) => {
@@ -34,7 +33,7 @@ for (const width of [1440, 390]) {
         for await (const chunk of stream) chunks.push(chunk);
         expect(Buffer.concat(chunks).toString('utf8')).toBe(shown + '\n');
         expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-        await page.screenshot({path: path.join('plans', 'support-report', `report-${width}.png`), fullPage: false});
+        await page.screenshot({path: test.info().outputPath(`report-${width}.png`), fullPage: false});
         await dialog.getByLabel('Area', {exact: true}).selectOption('ssh');
         await expect(dialog.getByRole('button', {name: 'Download report', exact: true})).toBeDisabled();
         await page.keyboard.press('Escape');
@@ -57,7 +56,7 @@ for (const width of [1440, 390]) {
                 element.getBoundingClientRect().top >= panel.getBoundingClientRect().bottom);
         })).toBe(true);
         await section.scrollIntoViewIfNeeded();
-        await page.screenshot({path: path.join('plans', 'support-report', `overview-bottom-${width}.png`)});
+        await page.screenshot({path: test.info().outputPath(`overview-bottom-${width}.png`)});
         await page.locator('#overviewFirstConnection summary').click();
         await expect(page.locator('#overviewSetupHost')).toBeVisible();
     });

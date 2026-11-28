@@ -20,7 +20,6 @@ test('restored command IDs remain literal attributes and open the correct detail
     await row.locator('.command-inspect-button').click();
     await expect(page.locator('#commandLibraryDetails')).toContainText('Restored command');
 });
-const path = require('node:path');
 const {login, assertNoExternalRequests} = require('./helpers');
 
 test.afterEach(async ({page}) => { await assertNoExternalRequests(page); });
@@ -76,7 +75,7 @@ test('system command details open a personal copy without running a session comm
     await expect(details.locator('.command-execution-hint')).toContainText('Run commands from the command tool in a session.');
     await expect(details.getByRole('button', {name: 'Edit', exact: true})).toHaveCount(0);
     await expect(details.getByRole('button', {name: 'Delete', exact: true})).toHaveCount(0);
-    await page.screenshot({path: path.join(process.cwd(), 'plans/commands-reference-render.png')});
+    await page.screenshot({path: test.info().outputPath('commands-reference-render.png')});
     await details.getByRole('button', {name: 'Add to my commands', exact: true}).click();
     await expect(page.locator('#commandFormName')).toHaveValue(command.name);
     await expect(page.locator('#commandFormCommand')).toHaveValue(command.command);

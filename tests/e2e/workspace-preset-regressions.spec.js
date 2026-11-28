@@ -1,6 +1,5 @@
 const {test, expect} = require('playwright/test');
 const {login, installSshConnectTrap, assertNoExternalRequests} = require('./helpers');
-const fs = require('node:fs');
 
 test.afterEach(async ({page}) => assertNoExternalRequests(page));
 
@@ -40,11 +39,10 @@ for (const width of [1440, 3200]) {
         });
         await expect(page.locator('#terminal-preset-existing')).toBeVisible();
         const before = await headerGeometry(page);
-        fs.mkdirSync('plans/workspace-fixes', {recursive:true});
-        await page.screenshot({path:`plans/workspace-fixes/before-${width}.png`});
+        await page.screenshot({path:test.info().outputPath(`before-${width}.png`)});
         for (const name of ['Two panes', 'Four panes']) {
             await page.locator('#workspaceLayoutPicker > summary').click();
-            if (name === 'Two panes') await page.screenshot({path:`plans/workspace-fixes/layout-menu-${width}.png`});
+            if (name === 'Two panes') await page.screenshot({path:test.info().outputPath(`layout-menu-${width}.png`)});
             await page.locator('#workspacePresetsBtn').click();
             const dialog = page.getByRole('dialog', {name:'Workspace presets', exact:true});
             await dialog.locator('section').filter({has:page.getByRole('heading', {name, exact:true})})
@@ -52,7 +50,7 @@ for (const width of [1440, 3200]) {
             await dialog.getByRole('button', {name:'Close', exact:true}).click();
             await expect(page.locator('#workspaceLayoutPicker > summary')).toBeFocused();
             await expect(page.locator('#terminal-preset-existing')).toBeVisible();
-            await page.screenshot({path:`plans/workspace-fixes/${name.replace(' ', '-')}-${width}.png`});
+            await page.screenshot({path:test.info().outputPath(`${name.replace(' ', '-')}-${width}.png`)});
             expect(await headerGeometry(page)).toEqual(before);
             expect(await page.evaluate(() => SessionManager.paneAssignments[0])).toBe('preset-existing');
             expect(await page.evaluate(() => window.__presetSessionEvents.includes('ssh_disconnect'))).toBe(false);
@@ -80,16 +78,15 @@ test('backup guidance is translated and recovery works in the settings center', 
         await expect(coverage.locator('[data-recovery-check]')).toBeFocused();
     }
     await page.evaluate(() => window.i18n.setLanguage('en'));
-    fs.mkdirSync('plans/workspace-fixes', {recursive:true});
     for (const width of [1440,390]) {
         await page.setViewportSize({width,height:1000});
         await coverage.scrollIntoViewIfNeeded();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-        await page.screenshot({path:`plans/workspace-fixes/backup-${width}.png`,fullPage:true});
+        await page.screenshot({path:test.info().outputPath(`backup-${width}.png`),fullPage:true});
         await coverage.locator('summary').click();
         await expect(coverage.locator('[data-i18n="customer.excluded"]')).toBeVisible();
         expect(await coverage.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
-        await page.screenshot({path:`plans/workspace-fixes/backup-details-${width}.png`,fullPage:true});
+        await page.screenshot({path:test.info().outputPath(`backup-details-${width}.png`),fullPage:true});
         await coverage.locator('summary').click();
     }
 });
