@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/config"
@@ -55,6 +56,7 @@ type Handler struct {
 	pageData errorPageData
 	log      *slog.Logger
 	proxy    *proxyTrust
+	hosts    *hostPolicy
 	cop      *http.CrossOriginProtection
 	session  cookieJar
 	binding  cookieJar
@@ -76,6 +78,8 @@ type Handler struct {
 	ready       *readiness
 	// signInRequired: Options.SignInRequired.
 	signInRequired func(r *http.Request)
+
+	lastHostLog atomic.Int64 // misdirected
 
 	finish    sync.Once
 	finishErr error
@@ -103,6 +107,7 @@ func New(o Options) (*Handler, error) {
 		cfg: cfg, sessions: o.Sessions, mac: o.MAC, renderer: o.Renderer,
 		pageData: o.ErrorPageData, log: log, signInRequired: o.SignInRequired,
 		proxy:   newProxyTrust(cfg.Proxies.Hops, cfg.Proxies.CIDRs, log),
+		hosts:   newHostPolicy(cfg.Origins),
 		cop:     http.NewCrossOriginProtection(),
 		session: cookieJar{name: cfg.Cookies.SessionName, path: path, secure: cfg.Cookies.Secure},
 		binding: cookieJar{name: bindingCookie, path: path, secure: cfg.Cookies.Secure},
@@ -184,7 +189,7 @@ func (h *Handler) registered(pattern string) bool {
 }
 
 // ServeHTTP runs the pipeline in this order: client address, headers,
-// deadlines, admin panel gate, edge-answered routes, session, access level,
+// deadlines, host name, admin panel gate, edge-answered routes, session, access level,
 // origin, body limit and budget, CSRF, handler.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.Finish(); err != nil {
@@ -209,12 +214,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	_, pattern := h.mux.Handler(r)
+	access := h.access[patternKey(pattern)]
+	if host := infoFrom(r).Host; access != AccessProbe && !h.hosts.allows(host) {
+		h.misdirected(w, r, host)
+		return
+	}
 	if pattern == "" {
 		// Not found, wrong method or a redirect to the clean path.
 		h.mux.ServeHTTP(w, r)
 		return
 	}
-	access := h.access[patternKey(pattern)]
 	if adminGated(r.URL.Path) && !h.cfg.Accounts.AdminPanelEnabled {
 		h.fail(w, r, errNotFound, "", "")
 		return

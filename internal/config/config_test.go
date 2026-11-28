@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -535,5 +536,22 @@ func TestTailscaleNetwork(t *testing.T) {
 	c, _ = mustLoad(t, map[string]string{"TAILSCALE_SSH_INTERFACE": " ts1 "})
 	if c.Network.TailscaleInterface != "ts1" || !c.Explicit("TAILSCALE_SSH_INTERFACE") {
 		t.Errorf("interface: %+v", c.Network)
+	}
+}
+
+func TestAllowedHosts(t *testing.T) {
+	c, _ := mustLoad(t, map[string]string{"ALLOWED_HOSTS": " SSH.example.com , webssh.lan. ,, "})
+	if got := c.Origins.AllowedHosts; len(got) != 2 || got[0] != "ssh.example.com" || got[1] != "webssh.lan" {
+		t.Fatalf("ALLOWED_HOSTS: %q", got)
+	}
+	c, warns := mustLoad(t, nil)
+	if c.Origins.AllowedHosts != nil {
+		t.Fatalf("unset ALLOWED_HOSTS: %q", c.Origins.AllowedHosts)
+	}
+	if c.Profile == ProfileHomelab && !slices.ContainsFunc(warns, func(w Warning) bool { return w.Variable == "ALLOWED_HOSTS" && w.Kind == WarnOrigin }) {
+		t.Fatalf("no hint for an unset ALLOWED_HOSTS in the homelab profile: %v", warns)
+	}
+	if e := loadErr(t, map[string]string{"ALLOWED_HOSTS": "ssh.example.com:443"}); e == nil || e.Variable != "ALLOWED_HOSTS" {
+		t.Fatalf("a host with a port: %v", e)
 	}
 }

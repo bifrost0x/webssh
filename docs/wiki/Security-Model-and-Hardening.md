@@ -51,7 +51,7 @@ For Internet exposure:
 1. Use `docker-compose.production.yml` in addition to the base Compose file.
 2. Terminate modern HTTPS at a maintained reverse proxy.
 3. Bind WebSSH to loopback or a private network, not a public interface.
-4. Set exact HTTPS `CORS_ORIGINS`; never use a wildcard.
+4. Set exact HTTPS `CORS_ORIGINS`; never use a wildcard. Set `ALLOWED_HOSTS` to the names you open WebSSH with, so pages that rebind their DNS name to your server are refused.
 5. Set `TRUSTED_PROXIES` to the exact number of trusted proxy layers.
 6. Keep `SESSION_COOKIE_SECURE=true`.
 7. Disable public registration and browser admin bootstrap.
