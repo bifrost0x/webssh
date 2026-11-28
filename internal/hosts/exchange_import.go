@@ -14,13 +14,14 @@ import (
 )
 
 // duplicateProfile is the skip_duplicate rule of upsert_profile: a saved
-// host with the same name (case-folded) or the same host, port, username,
-// jump host and SOCKS5 proxy.
+// host with the same name (trimmed and case-folded, the rule of every
+// save since 3.4) or the same host, port, username, jump host and SOCKS5
+// proxy.
 func duplicateProfile(profiles []record, validated *record) bool {
-	name := foldText(validated.text("name"))
+	name := foldName(validated.text("name"))
 	for i := range profiles {
 		existing := &profiles[i]
-		if foldText(existing.text("name")) == name {
+		if foldName(existing.text("name")) == name {
 			return true
 		}
 		same := true

@@ -41,6 +41,10 @@ const (
 	QuotaExceeded   Code = "quota_exceeded"   // the saved-connection storage limits refuse the change
 )
 
+// DuplicateName refuses a saved host whose name another saved host of the
+// same user already has (new in 3.4; Python stored duplicates).
+const DuplicateName Code = "duplicate_name"
+
 // Codes the overview preferences of the Python release send; the page
 // keeps matching on them.
 const (
@@ -152,6 +156,7 @@ var catalog = map[Code]entry{
 	InUse:                 {statusConflict, "The item is still in use."},
 	ValidationError:       {statusBadRequest, "The data is invalid."},
 	QuotaExceeded:         {statusContentTooLarge, "Connection storage quota exceeded."},
+	DuplicateName:         {statusConflict, "A saved host with this name already exists."},
 	InvalidLayout:         {statusBadRequest, "The overview layout is invalid."},
 	InvalidDismissed:      {statusBadRequest, "The acknowledgement list is invalid."},
 	StorageFailed:         {statusInternalServerError, "The overview settings could not be saved."},

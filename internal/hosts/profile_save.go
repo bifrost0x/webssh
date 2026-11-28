@@ -113,6 +113,11 @@ func (s *Service) saveProfile(ctx context.Context, owner int64, req protocol.Hos
 		if err != nil {
 			return err
 		}
+		if !importing {
+			if err := checkNameFree(profiles, index, saved.text("name")); err != nil {
+				return err
+			}
+		}
 		if index >= 0 {
 			next[index] = saved
 		} else {
