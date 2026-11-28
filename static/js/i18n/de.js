@@ -1350,6 +1350,7 @@ window.i18n.registerLocales({
         'profiles.groupRemovalHint': 'Beim Verschieben wird die leere Gruppe entfernt. Die Verbindung selbst wird nicht gelöscht.',
         'profiles.moveAndRemoveGroup': 'Verbindung verschieben',
         'profiles.saveFailed': 'Die Verbindung konnte nicht gespeichert werden.',
+        'profiles.duplicateName': 'Es gibt bereits einen gespeicherten Host mit diesem Namen. Wähle einen anderen Namen.',
         'commandSets.none': 'Keiner',
         'commandSets.create': 'Befehlssatz erstellen',
         'commandSets.edit': 'Befehlssatz bearbeiten',

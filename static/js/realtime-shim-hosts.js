@@ -27,6 +27,8 @@
                 },
                 push: [['profile_saved', a => a]],
                 errorEvent: true,
+                // The editor shows a taken name at the name field.
+                answeredByPage: failed => failed.code === 'duplicate_name',
             },
             delete_profile: {
                 type: 'hosts.profile.delete',

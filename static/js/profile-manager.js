@@ -1699,8 +1699,45 @@ const ProfileManager = {
         preview.classList.toggle('error', error);
     },
 
+    // Save and "Save & connect" stay locked while a save is on its way, so
+    // repeated clicks cannot store the same host twice.
+    setProfileSavePending(pending) {
+        this.profileSavePending = pending;
+        document.querySelectorAll?.('#profileEditorForm button[type="submit"]').forEach(button => {
+            button.disabled = pending;
+            if (pending) button.setAttribute('aria-busy', 'true');
+            else button.removeAttribute('aria-busy');
+        });
+    },
+
+    showProfileNameError(message) {
+        const input = document.getElementById('profileEditorName');
+        let hint = document.getElementById('profileEditorNameError');
+        if (!message) {
+            if (hint) {
+                hint.hidden = true;
+                input?.removeAttribute('aria-invalid');
+            }
+            return;
+        }
+        if (!input) return;
+        if (!hint) {
+            hint = document.createElement('p');
+            hint.id = 'profileEditorNameError';
+            hint.className = 'form-error';
+            hint.setAttribute('role', 'alert');
+            input.after(hint);
+            input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), hint.id].filter(Boolean).join(' '));
+            input.addEventListener('input', () => this.showProfileNameError(''));
+        }
+        hint.textContent = message;
+        hint.hidden = false;
+        input.setAttribute('aria-invalid', 'true');
+        input.focus();
+    },
+
     async saveFromEditor({connect = false} = {}) {
-        if (!window.socket) return;
+        if (!window.socket || this.profileSavePending) return;
         const mode = document.getElementById('profileEditorPostConnectMode').value;
         const payload = {
             name: document.getElementById('profileEditorName').value.trim(),
@@ -1765,8 +1802,22 @@ const ProfileManager = {
         const releasePending=()=>{if(generation===(this.nativeCredentialSaveGeneration||0))this.nativeCredentialSavePending=false;};
         const current = () => this.editingProfileId === editorId && (this.nativeCredentialSaveGeneration || 0) === generation && this.editorSnapshot() === snapshot && !document.getElementById('profileEditorView')?.classList.contains('hidden') && !document.getElementById('profileManagementModal')?.hidden && document.getElementById('profileManagementModal')?.classList.contains('show');
         this.nativeCredentialSavePending = Boolean(credentialChoice || assigned);
+        this.showProfileNameError('');
+        // A host the server created while the editor moved on (another
+        // render changed the form) still exists: a later save of the same
+        // draft updates it instead of creating it again.
+        const adoptCreated = acknowledgement => {
+            if (!editorId && this.editingProfileId === editorId && acknowledgement?.success && acknowledgement.profile?.id
+                && !document.getElementById('profileEditorView')?.classList.contains('hidden')) {
+                this.editingProfileId = acknowledgement.profile.id;
+            }
+        };
         const completeSave = acknowledgement => {
             releasePending();
+            if (!acknowledgement?.success && acknowledgement?.code === 'duplicate_name') {
+                this.showProfileNameError(this.t('profiles.duplicateName', 'A saved host with this name already exists. Choose another name.'));
+                return;
+            }
             if (!acknowledgement?.success) {
                 window.showNotification?.(
                     acknowledgement?.error || this.t('profiles.saveFailed', 'Failed to save connection'),
@@ -1791,31 +1842,37 @@ const ProfileManager = {
         if (credentialChoice === '__new' && !payload.id) {
             const {name,password} = credentialDraft;
             if (!name || !password) { window.showNotification?.(this.t('credentials.required', 'Enter a password name and password.'), 'error'); return; }
+            this.setProfileSavePending(true);
             try {
                 const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind: 'ssh', resource: payload, name, username: payload.username, password, confirm_target: true}, null, current);
                 if (!current()) return;
                 completeSave({success: true, profile: result.resource});
             } catch (error) { if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error'); }
-            finally { releasePending(); }
+            finally { releasePending(); this.setProfileSavePending(false); }
             return;
         }
+        this.setProfileSavePending(true);
         window.socket.emit('save_profile', payload, async acknowledgement => {
-            if (!current()) { releasePending(); return; }
-            if (!acknowledgement?.success || !needsAssignment) { completeSave(acknowledgement); return; }
             try {
-                if (credentialChoice === '__new') {
-                    await window.NativeCredentials.mutate('create', {...credentialDraft, username: payload.username, resource_id: acknowledgement.profile.id, confirm_target: true, target: {host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id,jump_host_id:payload.jump_host_id,socks_proxy_id:payload.socks_proxy_id}}, null, current);
+                if (!current()) { releasePending(); adoptCreated(acknowledgement); return; }
+                if (!acknowledgement?.success || !needsAssignment) { completeSave(acknowledgement); return; }
+                try {
+                    if (credentialChoice === '__new') {
+                        await window.NativeCredentials.mutate('create', {...credentialDraft, username: payload.username, resource_id: acknowledgement.profile.id, confirm_target: true, target: {host:payload.host,port:payload.port,username:payload.username,auth_type:payload.auth_type,key_id:payload.key_id,jump_host_id:payload.jump_host_id,socks_proxy_id:payload.socks_proxy_id}}, null, current);
+                        if (!current()) return;
+                    } else {
+                        await window.NativeCredentials.mutate('assign', {resource_id: acknowledgement.profile.id, credential_id: credentialChoice || null, confirm_target: true, target: {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id, socks_proxy_id: payload.socks_proxy_id, key_id: payload.key_id}}, null, current);
+                    }
                     if (!current()) return;
-                } else {
-                    await window.NativeCredentials.mutate('assign', {resource_id: acknowledgement.profile.id, credential_id: credentialChoice || null, confirm_target: true, target: {host: payload.host, port: payload.port, username: payload.username, auth_type: payload.auth_type, jump_host_id: payload.jump_host_id, socks_proxy_id: payload.socks_proxy_id, key_id: payload.key_id}}, null, current);
+                    completeSave(acknowledgement);
+                } catch (error) {
+                    releasePending();
+                    if (error.name === 'AbortError') return;
+                    window.showNotification?.(this.t('credentials.assignmentFailed', 'Host saved, but password assignment failed. Your password draft is preserved. Review the saved target and try again.'), 'error');
+                    this.editingProfileId = acknowledgement.profile.id;
                 }
-                if (!current()) return;
-                completeSave(acknowledgement);
-            } catch (error) {
-                releasePending();
-                if (error.name === 'AbortError') return;
-                window.showNotification?.(this.t('credentials.assignmentFailed', 'Host saved, but password assignment failed. Your password draft is preserved. Review the saved target and try again.'), 'error');
-                this.editingProfileId = acknowledgement.profile.id;
+            } finally {
+                this.setProfileSavePending(false);
             }
         });
     },

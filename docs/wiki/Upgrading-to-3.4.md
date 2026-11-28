@@ -172,6 +172,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U58 | Quick SFTP uses the same connection rules as the terminal: it asks about an unknown host key, supports jump hosts and SOCKS5 and uses `SSH_CONNECT_TIMEOUT`. A changed host key is still refused. Quick SFTP over Tailscale SSH remains unsupported. | decided | Nothing. |
 | U59 | A host import file with `NaN`, `Infinity` or more than 512 levels of nesting is refused with "Invalid JSON document.". | fix | Export the file again from WebSSH. |
 | U60 | A failed step-up for a global host key (invalid entry, unknown id) no longer uses up the confirmation. | fix | Nothing. |
+| U100 | The name of a saved host is unique per user, compared without surrounding spaces and without regard to case. Saving a new host, renaming one or importing one under a name another saved host already has is refused at the name field (`duplicate_name`); similar hosts with other authentication or settings need their own name. Hosts that 3.3 stored with the same name are migrated unchanged and stay editable under their name. Save and Save & connect are locked while a save is running, so repeated clicks store a host once. | decided | Rename duplicates if you want to tell them apart; nothing else. |
 
 ### Terminal
 

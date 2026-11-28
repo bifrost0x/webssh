@@ -94,6 +94,8 @@ what to do is in [Upgrading to 3.4](wiki/Upgrading-to-3.4.md#changes-you-can-not
   first start (`U14`).
 - Server management now lists the first systemd service and the first Docker
   container of a host, which 3.3 left out (`U99`).
+- Saved host names are unique per user, ignoring case; hosts 3.3 stored
+  with the same name are kept and stay editable (`U100`).
 
 Only Linux is supported: the image for `linux/amd64` and `linux/arm64` and a
 source build on Linux. Windows and macOS binaries and the systemd service of

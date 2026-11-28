@@ -1346,6 +1346,7 @@ window.i18n.registerLocales({
         'profiles.groupRemovalHint': 'Le déplacement supprimera le groupe vide. La connexion elle-même ne sera pas supprimée.',
         'profiles.moveAndRemoveGroup': 'Déplacer la connexion',
         'profiles.saveFailed': 'Impossible d’enregistrer la connexion.',
+        'profiles.duplicateName': 'Un hôte enregistré porte déjà ce nom. Choisissez un autre nom.',
         'commandSets.none': 'Aucun',
         'commandSets.create': 'Créer un ensemble',
         'commandSets.edit': 'Modifier l’ensemble',
