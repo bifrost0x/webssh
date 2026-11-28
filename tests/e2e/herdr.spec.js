@@ -351,6 +351,10 @@ for (const width of [1440, 390]) {
             try {
                 await setIntegration(page, true);
                 await herdrHosts(page, names);
+                // The page clock runs in real time; runFor below skips the
+                // quiet periods instead of waiting through them, and fires
+                // every timer due in them, so a poll still scheduled shows.
+                await page.clock.install();
                 await page.reload();
                 await watchSnapshots(page);
                 const panel = await openAgents(page);
@@ -362,7 +366,8 @@ for (const width of [1440, 390]) {
                 await page.locator('#odLayoutDone').click();
                 await expect(panel).toBeHidden();
                 const hiddenAt = await snapshotCalls(page);
-                await page.waitForTimeout(12_000);
+                // Longer than the polling interval (10 s, herdr-overview.js).
+                await page.clock.runFor(12_000);
                 expect(await snapshotCalls(page)).toBe(hiddenAt);
                 await page.locator('#overviewCustomize').click();
                 await page.locator('#odHiddenPanels [data-show-panel="agents"]').click();
@@ -378,7 +383,7 @@ for (const width of [1440, 390]) {
                 await expect(page.locator('#odAgentsDisabled')).toContainText('turned off by an administrator');
                 await expect(page.locator('#odAgentsHosts')).toBeHidden();
                 const stoppedAt = await snapshotCalls(page);
-                await page.waitForTimeout(12_000);
+                await page.clock.runFor(12_000);
                 expect(await snapshotCalls(page)).toBe(stoppedAt);
                 expect(await execCount(page)).toBe(commands);
             } finally {
