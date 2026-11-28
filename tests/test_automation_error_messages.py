@@ -8,9 +8,6 @@ from tests.i18n_sources import LOCALES, locale_block
 ROOT = Path(__file__).resolve().parents[1]
 # Raised only by password management, whose own interface explains them.
 CREDENTIAL_INTERFACE_ONLY = {'credential_in_use', 'replacement_confirmation_required'}
-# Codes of the Go server that the automation page does not explain yet; it
-# shows them as "Request failed (code)".
-WITHOUT_MESSAGE = {'credential_unavailable', 'credential_unreadable'}
 
 
 def backend_codes():
@@ -44,7 +41,7 @@ def translations():
 
 
 def test_every_backend_code_is_explained_in_the_automation_interface():
-    assert backend_codes() - mapped_codes() == CREDENTIAL_INTERFACE_ONLY | WITHOUT_MESSAGE
+    assert backend_codes() - mapped_codes() == CREDENTIAL_INTERFACE_ONLY
 
 
 def test_every_mapped_code_has_a_message_in_every_language():

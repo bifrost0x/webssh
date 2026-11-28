@@ -94,7 +94,8 @@
         'invalid_passphrase', 'invalid_runbook', 'invalid_request', 'invalid_targets', 'unsupported_target',
         'key_unavailable', 'preview_changed', 'invalid_intent', 'confirmation_required', 'step_up_required',
         'invalid_schedule', 'storage_limit', 'storage_unavailable', 'not_found', 'acknowledgement_required', 'unavailable',
-        'credentials_disabled', 'credential_target_changed', 'host_key_required', 'cancelled', 'run_active']);
+        'credentials_disabled', 'credential_target_changed', 'credential_unreadable', 'credential_unavailable',
+        'host_key_required', 'cancelled', 'run_active']);
     function notify(message, error = false) {
         const target = $(error ? 'automationError' : 'automationNotice');
         target.textContent = message;

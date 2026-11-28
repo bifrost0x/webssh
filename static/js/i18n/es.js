@@ -2775,6 +2775,8 @@ window.i18n.registerLocales({
         "automation.error.credential_missing": "Un host seleccionado inicia sesión con contraseña pero no tiene ninguna contraseña guardada asignada. Asígnale una en Hosts, Credenciales.",
         "automation.error.credentials_disabled": "Los hosts que inician sesión con contraseña necesitan contraseñas guardadas, que están desactivadas. Pide a tu administrador que active Guardar contraseñas en Administración, Integraciones, o elige hosts que usen claves SSH.",
         "automation.error.credential_target_changed": "La dirección, el puerto o el nombre de usuario de un host cambió después de asignarle la contraseña. Revisa la asignación en Hosts, Credenciales.",
+        "automation.error.credential_unreadable": "No se puede leer la contraseña guardada de un host seleccionado, por ejemplo porque cambió la clave secreta del servidor. Vuelve a asignar la contraseña en Hosts, Credenciales.",
+        "automation.error.credential_unavailable": "Las contraseñas guardadas no se pueden usar en este servidor en este momento. Inténtalo más tarde o pide a tu administrador que revise el almacenamiento de contraseñas.",
         "automation.error.host_key_required": "Verifica primero la clave de host: conéctate una vez a {hosts} desde Hosts y confirma su clave. La automatización nunca acepta claves de host desconocidas.",
         "automation.error.cancelled": "La acción se canceló.",
         "automation.hostsSelected": "los hosts seleccionados",

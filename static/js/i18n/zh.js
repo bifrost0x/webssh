@@ -2774,6 +2774,8 @@ window.i18n.registerLocales({
         "automation.error.credential_missing": "某台所选主机使用密码登录，但未分配已保存的密码。请在“主机 → 密码”中分配。",
         "automation.error.credentials_disabled": "使用密码登录的主机需要已保存的密码，但该功能已禁用。请联系管理员在“管理 → 集成”中启用“保存密码”，或选择使用 SSH 密钥的主机。",
         "automation.error.credential_target_changed": "分配密码后，某台主机的地址、端口或用户名已更改。请在“主机 → 密码”中检查分配。",
+        "automation.error.credential_unreadable": "无法读取某台所选主机的已保存密码，例如服务器密钥已更改。请在“主机 → 密码”中重新分配密码。",
+        "automation.error.credential_unavailable": "此服务器当前无法使用已保存的密码。请稍后重试，或请管理员检查密码存储。",
         "automation.error.host_key_required": "请先验证主机密钥：从“主机”连接一次 {hosts} 并确认其密钥。自动化绝不接受未知的主机密钥。",
         "automation.error.cancelled": "操作已取消。",
         "automation.hostsSelected": "所选主机",

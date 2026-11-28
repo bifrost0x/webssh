@@ -2775,6 +2775,8 @@ window.i18n.registerLocales({
         "automation.error.credential_missing": "Một máy chủ đã chọn đăng nhập bằng mật khẩu nhưng chưa được gán mật khẩu đã lưu. Hãy gán trong Máy chủ, Mật khẩu.",
         "automation.error.credentials_disabled": "Máy chủ đăng nhập bằng mật khẩu cần mật khẩu đã lưu, nhưng tính năng này đang tắt. Hãy yêu cầu quản trị viên bật Lưu mật khẩu trong Quản trị, Tích hợp, hoặc chọn máy chủ dùng khóa SSH.",
         "automation.error.credential_target_changed": "Địa chỉ, cổng hoặc tên người dùng của một máy chủ đã thay đổi sau khi gán mật khẩu. Hãy kiểm tra việc gán trong Máy chủ, Mật khẩu.",
+        "automation.error.credential_unreadable": "Không thể đọc mật khẩu đã lưu của một máy chủ đã chọn, ví dụ sau khi khóa bí mật của máy chủ thay đổi. Hãy gán lại mật khẩu trong Máy chủ, Mật khẩu.",
+        "automation.error.credential_unavailable": "Hiện không thể dùng mật khẩu đã lưu trên máy chủ này. Hãy thử lại sau hoặc yêu cầu quản trị viên kiểm tra nơi lưu mật khẩu.",
         "automation.error.host_key_required": "Hãy xác minh khóa máy chủ trước: kết nối một lần tới {hosts} từ mục Máy chủ và xác nhận khóa. Tự động hóa không bao giờ chấp nhận khóa máy chủ chưa biết.",
         "automation.error.cancelled": "Thao tác đã bị hủy.",
         "automation.hostsSelected": "các máy chủ đã chọn",

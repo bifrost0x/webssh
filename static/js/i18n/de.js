@@ -2779,6 +2779,8 @@ window.i18n.registerLocales({
         "automation.error.credential_missing": "Ein ausgewählter Host meldet sich per Kennwort an, hat aber kein gespeichertes Kennwort zugewiesen. Unter Hosts, Kennwörter eines zuweisen.",
         "automation.error.credentials_disabled": "Hosts mit Kennwortanmeldung brauchen gespeicherte Kennwörter, die deaktiviert sind. Deinen Administrator bitten, unter Administration, Integrationen „Kennwörter speichern“ zu aktivieren, oder Hosts mit SSH-Key wählen.",
         "automation.error.credential_target_changed": "Adresse, Port oder Benutzername eines Hosts wurden nach der Kennwortzuweisung geändert. Die Zuweisung unter Hosts, Kennwörter prüfen.",
+        "automation.error.credential_unreadable": "Das gespeicherte Kennwort eines ausgewählten Hosts kann nicht gelesen werden, etwa weil sich der geheime Schlüssel des Servers geändert hat. Das Kennwort unter Hosts, Kennwörter neu zuweisen.",
+        "automation.error.credential_unavailable": "Gespeicherte Kennwörter können auf diesem Server gerade nicht verwendet werden. Später erneut versuchen oder den Administrator bitten, die Kennwortablage zu prüfen.",
         "automation.error.host_key_required": "Zuerst den Host-Key prüfen: einmal über Hosts mit {hosts} verbinden und den Key bestätigen. Automatisierung akzeptiert nie unbekannte Host-Keys.",
         "automation.error.cancelled": "Die Aktion wurde abgebrochen.",
         "automation.hostsSelected": "den ausgewählten Hosts",

@@ -2775,6 +2775,8 @@ window.i18n.registerLocales({
         "automation.error.credential_missing": "Un hôte sélectionné se connecte par mot de passe, mais aucun mot de passe enregistré ne lui est attribué. Attribuez-en un dans Hôtes, Identifiants.",
         "automation.error.credentials_disabled": "Les hôtes qui se connectent par mot de passe nécessitent des mots de passe enregistrés, qui sont désactivés. Demandez à votre administrateur d’activer Enregistrer les mots de passe dans Administration, Intégrations, ou choisissez des hôtes qui utilisent des clés SSH.",
         "automation.error.credential_target_changed": "L’adresse, le port ou le nom d’utilisateur d’un hôte a changé après l’attribution de son mot de passe. Vérifiez l’attribution dans Hôtes, Identifiants.",
+        "automation.error.credential_unreadable": "Le mot de passe enregistré d’un hôte sélectionné ne peut pas être lu, par exemple après un changement de la clé secrète du serveur. Attribuez de nouveau le mot de passe dans Hôtes, Identifiants.",
+        "automation.error.credential_unavailable": "Les mots de passe enregistrés ne peuvent pas être utilisés sur ce serveur pour le moment. Réessayez plus tard ou demandez à votre administrateur de vérifier le stockage des mots de passe.",
         "automation.error.host_key_required": "Vérifiez d’abord la clé d’hôte : connectez-vous une fois à {hosts} depuis Hôtes et confirmez sa clé. L’automatisation n’accepte jamais de clés d’hôte inconnues.",
         "automation.error.cancelled": "L’action a été annulée.",
         "automation.hostsSelected": "les hôtes sélectionnés",

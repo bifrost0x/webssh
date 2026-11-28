@@ -2780,6 +2780,8 @@ window.i18n.registerLocales({
         "automation.error.credential_missing": "A selected host signs in with a password but has no saved password assigned. Assign one under Hosts, Passwords.",
         "automation.error.credentials_disabled": "Hosts that sign in with a password need saved passwords, which are disabled. Ask your administrator to enable Save passwords under Administration, Integrations, or choose hosts that use SSH keys.",
         "automation.error.credential_target_changed": "A host's address, port or username changed after its password was assigned. Review the assignment under Hosts, Passwords.",
+        "automation.error.credential_unreadable": "The saved password of a selected host cannot be read, for example after the server's secret key changed. Assign the password again under Hosts, Passwords.",
+        "automation.error.credential_unavailable": "Saved passwords cannot be used on this server right now. Try again later, or ask your administrator to check the password storage.",
         "automation.error.host_key_required": "Verify the host key first: connect once to {hosts} from Hosts and confirm its key. Automation never accepts unknown host keys.",
         "automation.error.cancelled": "The action was cancelled.",
         "automation.hostsSelected": "the selected hosts",
