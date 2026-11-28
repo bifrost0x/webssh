@@ -196,6 +196,15 @@ async function launchProfile(page, name) {
     await card.click();
 }
 
+// Screenshots that only serve a later visual review and are never
+// compared. WEBSSH_E2E_REVIEW_SCREENSHOTS=0 leaves them out to save their
+// rendering time; a failing test still gets Playwright's own failure
+// screenshot.
+async function reviewScreenshot(target, options) {
+    if (process.env.WEBSSH_E2E_REVIEW_SCREENSHOTS === '0') return;
+    await target.screenshot(options);
+}
+
 async function assertNoExternalRequests(page) {
     expect(page.__externalRequests || []).toEqual([]);
 }
@@ -236,5 +245,6 @@ module.exports = {
     openProfileManagement,
     observeConnectionModal,
     restoreSshConnect,
+    reviewScreenshot,
     sshAttempts,
 };

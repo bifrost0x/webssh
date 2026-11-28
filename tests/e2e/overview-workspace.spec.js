@@ -1,5 +1,5 @@
 const {test, expect} = require('playwright/test');
-const {login, waitForInventory, installSshConnectTrap, sshAttempts, assertNoExternalRequests} = require('./helpers');
+const {login, waitForInventory, installSshConnectTrap, sshAttempts, assertNoExternalRequests, reviewScreenshot} = require('./helpers');
 
 // The e2e server is shared within a lane; restore the account's overview state even after a failure.
 test.afterEach(async ({page}) => {
@@ -158,7 +158,7 @@ test('dashboard stays contained on phones and opens the full route map', async (
         expect(overflow, `no horizontal scroll at ${width}px`).toBeLessThanOrEqual(1);
         if (width < 640) await expect(page.locator('#odTopology .od-route-list')).toBeVisible();
         else await expect(page.locator('#odTopology svg')).toBeVisible();
-        await page.screenshot({path: info.outputPath(`dashboard-${width}.png`), animations: 'disabled'});
+        await reviewScreenshot(page, {path: info.outputPath(`dashboard-${width}.png`), animations: 'disabled'});
     }
     await page.setViewportSize({width: 1440, height: 900});
     await openOverview(page);

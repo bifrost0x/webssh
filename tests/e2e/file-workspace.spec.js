@@ -1,5 +1,5 @@
 const { test, expect } = require('playwright/test');
-const { login, assertNoExternalRequests } = require('./helpers');
+const { login, assertNoExternalRequests, reviewScreenshot } = require('./helpers');
 
 test.use({ viewport: { width: 1536, height: 960 } });
 
@@ -997,7 +997,7 @@ test('file lists keep working space and reachable actions across viewport sizes'
     for (const size of [{width:360,height:529},{width:390,height:844},{width:768,height:1024},{width:1280,height:720},{width:3440,height:1440}]) {
         await page.setViewportSize(size);
         const list=page.locator('#fmLeftList');
-        await page.screenshot({path:testInfo.outputPath(`files-${size.width}.png`),animations:'disabled'});
+        await reviewScreenshot(page, {path:testInfo.outputPath(`files-${size.width}.png`),animations:'disabled'});
         const box=await list.boundingBox();
         expect(box.height,`file list height at ${size.width}px`).toBeGreaterThanOrEqual(120);
         expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);

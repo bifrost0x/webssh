@@ -37,6 +37,8 @@ module.exports = {
         ['line'],
         ['./tests/e2e/no-skipped-reporter.js'],
         ['./tests/e2e/timing-reporter.js', { outputFile: timingOutput }],
+        // run-go-suite.js merges these reports of its shards into one summary.
+        ...(process.env.WEBSSH_E2E_JSON_REPORT ? [['json', { outputFile: process.env.WEBSSH_E2E_JSON_REPORT }]] : []),
     ],
     use: {
         baseURL: e2eBaseUrl,
