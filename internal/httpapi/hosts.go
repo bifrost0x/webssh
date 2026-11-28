@@ -47,6 +47,28 @@ func (p *hostPolicy) allows(host string) bool {
 	return literal || (name != "" && p.names[name])
 }
 
+// requestHosts returns the hosts a request names: the Host header and,
+// when it differs, the host the edge resolved (X-Forwarded-Host behind a
+// trusted proxy). A host check must hold for each of them. A proxy that
+// passes the client's X-Forwarded-Host on unchanged hands the client the
+// resolved value, so it may narrow what Host allows but never widen it.
+func requestHosts(r *http.Request) []string {
+	if resolved := infoFrom(r).Host; resolved != r.Host {
+		return []string{r.Host, resolved}
+	}
+	return []string{r.Host}
+}
+
+// refusedHost returns the first host of the request that allowed rejects.
+func refusedHost(r *http.Request, allowed func(string) bool) (string, bool) {
+	for _, host := range requestHosts(r) {
+		if !allowed(host) {
+			return host, true
+		}
+	}
+	return "", false
+}
+
 func hostName(h string) string { return strings.TrimSuffix(strings.ToLower(h), ".") }
 
 // misdirected answers 421 to a request for a host name outside
@@ -66,17 +88,21 @@ func (h *Handler) misdirected(w http.ResponseWriter, r *http.Request, host strin
 // while no account exists, the browser may register (and so become
 // administrator) only through a host name nobody can rebind to this
 // server, an IP literal or localhost, or through a name of allowed
-// (ALLOWED_HOSTS). The host is the one the edge resolved, X-Forwarded-Host
-// behind a trusted proxy. The hosts of CORS_ORIGINS do not count: with
-// CORS_ORIGINS=* they would admit every name.
+// (ALLOWED_HOSTS). Behind a trusted proxy both the Host header and
+// X-Forwarded-Host must qualify (requestHosts). The hosts of CORS_ORIGINS
+// do not count: with CORS_ORIGINS=* they would admit every name.
 func FirstAccountHost(allowed []string) func(*http.Request) bool {
 	names := map[string]bool{}
 	for _, n := range allowed {
 		names[hostName(n)] = true
 	}
-	return func(r *http.Request) bool {
-		name, literal := requestHostName(infoFrom(r).Host)
+	qualifies := func(host string) bool {
+		name, literal := requestHostName(host)
 		return literal || (name != "" && names[name])
+	}
+	return func(r *http.Request) bool {
+		_, refused := refusedHost(r, qualifies)
+		return !refused
 	}
 }
 

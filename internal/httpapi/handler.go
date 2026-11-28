@@ -215,9 +215,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	_, pattern := h.mux.Handler(r)
 	access := h.access[patternKey(pattern)]
-	if host := infoFrom(r).Host; access != AccessProbe && !h.hosts.allows(host) {
-		h.misdirected(w, r, host)
-		return
+	if access != AccessProbe {
+		if host, refused := refusedHost(r, h.hosts.allows); refused {
+			h.misdirected(w, r, host)
+			return
+		}
 	}
 	if pattern == "" {
 		// Not found, wrong method or a redirect to the clean path.

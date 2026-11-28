@@ -47,6 +47,12 @@ Pass the browser's Host header unchanged, including a non-default port
 accepted only from the address the browser used for WebSSH; if the proxy
 rewrites Host, set `TRUSTED_PROXIES` and forward `X-Forwarded-Host`.
 
+Set `X-Forwarded-Host` in the proxy as below. Without that line nginx passes
+on whatever `X-Forwarded-Host` the client sent, and with `TRUSTED_PROXIES` set
+WebSSH would read the client's value. `ALLOWED_HOSTS` and the first-account
+rule check both `Host` and `X-Forwarded-Host`, so a proxy that rewrites
+`Host` to its upstream name needs that name in `ALLOWED_HOSTS` too.
+
 ```nginx
 location / {
     proxy_pass http://webssh:5000;
@@ -54,6 +60,7 @@ location / {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -127,6 +134,7 @@ location /webssh/ {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;

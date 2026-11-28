@@ -67,22 +67,57 @@ func TestNoAllowedHostsServesEveryName(t *testing.T) {
 	}
 }
 
-// Behind a trusted proxy the host the browser used (X-Forwarded-Host)
-// counts, not the proxy's own Host header.
+// Behind a trusted proxy both the Host header and X-Forwarded-Host must
+// be allowed. A proxy that forwards Host unchanged or proxies to an IP
+// address passes; one that rewrites Host to its upstream name needs that
+// name in ALLOWED_HOSTS.
 func TestAllowedHostsBehindATrustedProxy(t *testing.T) {
 	e := hostEdge(t, []string{"ssh.example.com"}, 1)
-	if got := hostStatus(e, "GET", "/login", "webssh:5000", map[string]string{"X-Forwarded-Host": "ssh.example.com"}); got != http.StatusOK {
-		t.Fatalf("forwarded allowed host: %d", got)
+	for _, tc := range []struct {
+		host, forwarded string
+		want            int
+	}{
+		{"ssh.example.com", "ssh.example.com", http.StatusOK},
+		{"127.0.0.1:5000", "ssh.example.com", http.StatusOK},
+		{"ssh.example.com", "rebind.attacker.test", http.StatusMisdirectedRequest},
+		{"webssh:5000", "ssh.example.com", http.StatusMisdirectedRequest},
+	} {
+		if got := hostStatus(e, "GET", "/login", tc.host, map[string]string{"X-Forwarded-Host": tc.forwarded}); got != tc.want {
+			t.Errorf("Host %q, X-Forwarded-Host %q: %d, want %d", tc.host, tc.forwarded, got, tc.want)
+		}
 	}
-	if got := hostStatus(e, "GET", "/login", "ssh.example.com", map[string]string{"X-Forwarded-Host": "rebind.attacker.test"}); got != http.StatusMisdirectedRequest {
-		t.Fatalf("forwarded other host: %d", got)
+	listed := hostEdge(t, []string{"ssh.example.com", "webssh"}, 1)
+	if got := hostStatus(listed, "GET", "/login", "webssh:5000", map[string]string{"X-Forwarded-Host": "ssh.example.com"}); got != http.StatusOK {
+		t.Fatalf("listed upstream name: %d", got)
+	}
+}
+
+// A proxy that passes the client's X-Forwarded-Host on unchanged must not
+// let a rebound page claim an allowed host: the client value never widens
+// what Host allows, neither for ALLOWED_HOSTS nor for the first account.
+func TestForwardedHostCannotWidenTheHostCheck(t *testing.T) {
+	e := hostEdge(t, []string{"webssh.lan"}, 1)
+	for _, forwarded := range []string{"127.0.0.1", "localhost", "webssh.lan"} {
+		headers := map[string]string{"X-Forwarded-For": "192.0.2.9", "X-Forwarded-Host": forwarded}
+		for _, target := range []string{"/login", "/register"} {
+			method := "GET"
+			if target == "/register" {
+				method = "POST"
+			}
+			if got := hostStatus(e, method, target, "evil.example", headers); got != http.StatusMisdirectedRequest {
+				t.Errorf("%s %s, X-Forwarded-Host %q: %d, want 421", method, target, forwarded, got)
+			}
+		}
+	}
+	if got := hostStatus(e, "GET", "/login", "evil.example", map[string]string{"X-Forwarded-For": "192.0.2.9"}); got != http.StatusMisdirectedRequest {
+		t.Fatalf("without X-Forwarded-Host: %d", got)
 	}
 }
 
 // The first account may be registered only through a name nobody can
-// rebind: an IP literal, localhost or a name of ALLOWED_HOSTS, read
-// after the proxy rules (X-Forwarded-Host behind a trusted proxy). The
-// hosts of CORS_ORIGINS do not count, and without ALLOWED_HOSTS every DNS
+// rebind: an IP literal, localhost or a name of ALLOWED_HOSTS, both in the
+// Host header and, behind a trusted proxy, in X-Forwarded-Host.
+// The hosts of CORS_ORIGINS do not count, and without ALLOWED_HOSTS every DNS
 // name is refused (finding #68).
 func TestFirstAccountHost(t *testing.T) {
 	for _, c := range []struct {
@@ -101,8 +136,16 @@ func TestFirstAccountHost(t *testing.T) {
 		{"name of ALLOWED_HOSTS", []string{"ssh.example.com"}, 0, "SSH.example.com", nil, true},
 		{"other name with ALLOWED_HOSTS", []string{"ssh.example.com"}, 0, "localhost.attacker.test", nil, false},
 		{"host of CORS_ORIGINS", []string{"ssh.example.com"}, 0, "other.example.org:8443", nil, false},
-		{"forwarded name behind a trusted proxy", []string{"ssh.example.com"}, 1, "webssh:5000",
+		{"forwarded name behind a trusted proxy", []string{"ssh.example.com"}, 1, "ssh.example.com",
 			map[string]string{"X-Forwarded-Host": "ssh.example.com"}, true},
+		{"forwarded name behind a proxy on an IP address", []string{"ssh.example.com"}, 1, "127.0.0.1:5000",
+			map[string]string{"X-Forwarded-Host": "ssh.example.com"}, true},
+		{"forwarded name behind a proxy that rewrites Host", []string{"ssh.example.com"}, 1, "webssh:5000",
+			map[string]string{"X-Forwarded-Host": "ssh.example.com"}, false},
+		{"client literal passed through a trusted proxy", nil, 1, "rebind.attacker.test:5000",
+			map[string]string{"X-Forwarded-Host": "127.0.0.1"}, false},
+		{"client name passed through a trusted proxy", []string{"ssh.example.com"}, 1, "rebind.attacker.test",
+			map[string]string{"X-Forwarded-Host": "ssh.example.com"}, false},
 		{"forwarded name outside ALLOWED_HOSTS", nil, 1, "127.0.0.1:5000",
 			map[string]string{"X-Forwarded-Host": "rebind.attacker.test"}, false},
 		{"forwarded header without a trusted proxy", nil, 0, "rebind.attacker.test",
