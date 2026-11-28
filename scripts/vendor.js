@@ -4,7 +4,7 @@
  * Usage:  npm run vendor   (after npm ci / npm install)
  *
  * Node is only needed to (re)generate these assets, never at runtime. The
- * committed files under static/vendor/ are what the Flask app actually serves.
+ * committed files under static/vendor/ are what the server embeds and serves.
  * To update a library: bump its version in package.json, run `npm install`,
  * then `npm run vendor`, and commit the changed static/vendor/ files.
  */
