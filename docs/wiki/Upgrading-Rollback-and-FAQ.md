@@ -57,9 +57,11 @@ configuration before recreating containers; keep data and recovery volumes intac
 
 ## v3.4.0 compatibility
 
-3.4 replaces the Python server with a Go server. The first start migrates
-the 3.3 data once and leaves it unchanged, everyone signs in once, and the
-image no longer contains a shell or Python. Read
+The [3.4 release notes](https://github.com/bifrost0x/webssh/blob/main/docs/releases/v3.4.0.md)
+cover the published changes. 3.4 replaces the Python server with a Go
+server. The first start migrates the 3.3 data once and leaves it unchanged,
+everyone signs in once, and the image no longer contains a shell or Python.
+Read
 [Upgrading to 3.4](Upgrading-to-3.4) before the update: it lists every
 visible change, the way back to 3.3 and how to remove the 3.3 data
 afterwards. Update the Compose file together with the image. The 3.3 file
