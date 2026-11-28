@@ -16,6 +16,10 @@ type CreateRequest struct {
 	// FirstOnly closes the browser bootstrap: the account is created only
 	// if no account exists yet, atomically with the check.
 	FirstOnly bool
+	// NotFirst refuses the first account, atomically with the check: a
+	// browser registration through a host that may not create the first
+	// account (httpapi.FirstAccountHost) can still add later accounts.
+	NotFirst bool
 	// ByAdmin allows a name reserved by ADMIN_USERS; the first account may
 	// take one as well, because it becomes administrator regardless.
 	ByAdmin bool
@@ -79,7 +83,7 @@ func (s *Service) precheck(ctx context.Context, req CreateRequest) error {
 }
 
 func (s *Service) validate(req CreateRequest, first bool, names []string) error {
-	if req.FirstOnly && !first {
+	if req.FirstOnly && !first || req.NotFirst && first {
 		return errRegistrationClosed
 	}
 	if msg := validateNewName(req.Username); msg != "" {

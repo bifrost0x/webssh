@@ -264,8 +264,9 @@ Rotation](wiki/Backup-Restore-and-Secret-Rotation.md). In short:
   ```
 
 - Archives are tar files with a manifest and include `SECRET_KEY` and the
-  keyring material unless `--without-secret-key` is given (then only the
-  key is left out). They are not encrypted; store them encrypted and off
+  keyring material unless `--without-secret-key` is given (then the key is
+  left out, and while the 3.3 data exists with `DATA_DIR/secret_key` the
+  material as well). They are not encrypted; store them encrypted and off
   the host.
 - 3.3 backups restore through the migration. 3.4 backups do not restore on
   3.3.

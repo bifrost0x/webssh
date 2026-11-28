@@ -19,6 +19,13 @@ type pendingPath struct {
 // are counted and skipped, never entered.
 func (j *PermissionJobs) scan(ctx context.Context, job *permJob, roots []string, src PermSource, check func() error) error {
 	invalid := fault.New(fault.InvalidRequest, "")
+	uid, err := src.LoginUID(ctx)
+	if err != nil {
+		return mutationFailure(err, false)
+	}
+	j.mu.Lock()
+	job.loginUID = uid
+	j.mu.Unlock()
 	names := 0
 	for _, r := range roots {
 		names += len(r)

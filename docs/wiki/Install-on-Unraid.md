@@ -18,7 +18,9 @@ registration for the first account.
   or follow [Production Deployment](Production-Deployment) for HTTPS through a
   reverse proxy with the production profile.
 - The first account created in the browser becomes the administrator. Open the
-  WebUI and create it right after installation. To close that window entirely,
+  WebUI by the server's IP address and create it right after installation; a
+  name such as `tower.local` works for this step only when it is listed in
+  `ALLOWED_HOSTS`. To close that window entirely,
   add the variable `BOOTSTRAP_REGISTRATION_ENABLED` with the value `false`
   before you apply the template, then create the administrator from the Unraid
   terminal:

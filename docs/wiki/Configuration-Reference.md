@@ -24,7 +24,7 @@ Treat `SECRET_KEY` as long-lived installation state. Replacing it without the su
 | Variable | Purpose |
 |---|---|
 | `CORS_ORIGINS` | Comma-separated browser origin allowlist for the realtime connection; WebSSH's own origin is always included and the scheme counts. Entries with a path are ignored with a warning |
-| `ALLOWED_HOSTS` | Comma-separated DNS names WebSSH answers to, without scheme or port (`ssh.example.com,webssh.lan`). A request for any other name gets `421 Misdirected Request` before sign-in, the request body or the realtime upgrade, which stops DNS rebinding: a foreign page whose name was pointed at your server cannot pass as WebSSH's own origin. IP addresses, `localhost` and the hosts of `CORS_ORIGINS` are always served; `/health` and `/ready` answer every name. Behind a trusted proxy (`TRUSTED_PROXIES`) the forwarded host counts. Unset (default) serves every name, as 3.3 did; the homelab profile then logs a hint at start. New in 3.4 |
+| `ALLOWED_HOSTS` | Comma-separated DNS names WebSSH answers to, without scheme or port (`ssh.example.com,webssh.lan`). A request for any other name gets `421 Misdirected Request` before sign-in, the request body or the realtime upgrade, which stops DNS rebinding: a foreign page whose name was pointed at your server cannot pass as WebSSH's own origin. IP addresses, `localhost` and the hosts of `CORS_ORIGINS` are always served; `/health` and `/ready` answer every name. Behind a trusted proxy (`TRUSTED_PROXIES`) the forwarded host counts. Unset (default) serves every name, as 3.3 did, in every profile; the start then logs a hint. The browser registration of the first account (bootstrap, or open registration while no account exists) works only through an IP address, `localhost` or a name of this list; other names get 403 with that reason. New in 3.4 |
 | `ALLOW_CORS_WILDCARD` | Allows `*`; homelab-only and rejected as a production origin policy |
 | `HOST_DISCOVERY_ENABLED` | Offers manual SSH host discovery in a network range under Hosts → Find hosts | `true`; `false` in production |
 | `SOCKETIO_ALLOW_ANY_ORIGIN` | With `CORS_ORIGINS=*`, realtime connections accept only pages served from the address used for WebSSH. `true` accepts any origin again; rejected in production | `false` |
@@ -333,7 +333,9 @@ Audit export scans at most 50,000 records and declares truncation in response me
 backups until they are downloaded and is the fallback location of CLI backups,
 of the `legacy purge` backup and of the recovery archive of `rotate-secret-key`;
 keep it on a persistent volume, as the supplied Compose files do with
-`/app/recovery`. The rollback state of a restore lives in `DATA_DIR`.
+`/app/recovery`. The rollback state of a restore lives in `DATA_DIR`. The directory
+should belong to the service user; when it belongs to another user, the start
+logs a warning and goes on.
 
 ## Variables without effect in 3.4
 

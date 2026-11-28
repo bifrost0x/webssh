@@ -110,7 +110,10 @@ var allowedHostName = regexp.MustCompile(`^[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?(\.[a
 
 // loadAllowedHosts reads ALLOWED_HOSTS, which the Go release adds: the
 // DNS names the server answers to (DNS rebinding). IP literals and
-// localhost are always served and need no entry.
+// localhost are always served and need no entry. It is optional in every
+// profile; unset, the start warns, and the browser registration of the
+// first account works only through an IP literal or localhost
+// (httpapi.FirstAccountHost).
 func loadAllowedHosts(p *parser, c *Config) {
 	for part := range strings.SplitSeq(p.raw("ALLOWED_HOSTS", ""), ",") {
 		name := strings.TrimSuffix(strings.ToLower(pyStrip(part)), ".")
@@ -123,8 +126,9 @@ func loadAllowedHosts(p *parser, c *Config) {
 		}
 		c.Origins.AllowedHosts = append(c.Origins.AllowedHosts, name)
 	}
-	if c.Origins.AllowedHosts == nil && c.Profile == ProfileHomelab {
-		p.warn(WarnOrigin, "ALLOWED_HOSTS", "ALLOWED_HOSTS is not set, so every host name is served; list the names you open WebSSH with to refuse pages that rebind their name to this server")
+	if c.Origins.AllowedHosts == nil {
+		p.warn(WarnOrigin, "ALLOWED_HOSTS", "ALLOWED_HOSTS is not set, so every host name is served and the first account can only be registered "+
+			"through an IP address or localhost; list the names you open WebSSH with to refuse pages that rebind their name to this server")
 	}
 }
 

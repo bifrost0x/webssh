@@ -47,6 +47,10 @@ type PermSource interface {
 	// Children calls fn with the name of every entry of the directory.
 	Children(ctx context.Context, dir string, fn func(name string) error) error
 	Chmod(ctx context.Context, path string, perm uint32, want PermEntry) error
+	// LoginUID is the UID of the account the source signed in as, the
+	// owner of its login directory; UNSAFE_PATH when the server reports
+	// no owner.
+	LoginUID(ctx context.Context) (uint32, error)
 }
 
 // PermSources resolves the sources of the file workspace for permission

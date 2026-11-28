@@ -440,3 +440,23 @@ func TestPromote(t *testing.T) {
 		t.Error("ldap account promoted")
 	}
 }
+
+// NotFirst refuses the first account inside the write transaction: a
+// registration through a host that may not create it cannot win the race
+// with an account removal or the first registration (finding #68).
+func TestCreateNotFirstRefusesTheFirstAccount(t *testing.T) {
+	t.Parallel()
+	s, audit := newService(t)
+	if _, err := s.Create(t.Context(), CreateRequest{Username: "rebind", Password: "password1", NotFirst: true}); !fault.Is(err, fault.Forbidden) {
+		t.Fatalf("first account with NotFirst: %v", err)
+	}
+	if has, _ := s.HasAccounts(t.Context()); has || len(audit.list()) != 0 {
+		t.Fatal("an account was created")
+	}
+	if _, err := s.Create(t.Context(), CreateRequest{Username: "admin", Password: "password1"}); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := s.Create(t.Context(), CreateRequest{Username: "second", Password: "password1", NotFirst: true}); err != nil || b.IsAdmin {
+		t.Fatalf("%+v %v", b, err)
+	}
+}

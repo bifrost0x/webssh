@@ -247,7 +247,7 @@ func mutationFailure(err error, uncertain bool) error {
 	switch c := fault.CodeOf(err); c {
 	case fault.FilePermissionDenied, fault.FileNotFound, fault.FileConflict, fault.UnsupportedOperation,
 		fault.MetadataChanged, fault.OutcomeUnknown, fault.ModeMismatch, fault.InvalidRequest,
-		fault.SourceUnavailable, fault.FileTimeout:
+		fault.SourceUnavailable, fault.FileTimeout, fault.UnsafePath:
 		return fault.New(c, "")
 	}
 	if uncertain {

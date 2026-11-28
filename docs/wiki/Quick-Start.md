@@ -71,7 +71,10 @@ host trust, and the generated application secret across container updates;
 
 A fresh homelab instance with an empty database redirects to `/register`.
 Exactly the first browser-created account becomes administrator. The one-time
-bootstrap path closes atomically once that account exists.
+bootstrap path closes atomically once that account exists. Open WebSSH by its
+IP address or `localhost` for this step: through a DNS name the first account
+is refused unless the name is listed in `ALLOWED_HOSTS`, so that a foreign
+page that points its own name at your server cannot claim the instance.
 
 Create the account immediately on a trusted network. Never expose an unclaimed
 fresh instance to untrusted clients.

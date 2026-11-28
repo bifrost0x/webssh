@@ -45,7 +45,10 @@ Collect these values from the directory administrator:
    directory entry it was recorded for (same DN), and moves to the full
    value at that entry's next sign-in. Any other entry is refused with
    `LDAP_LOGIN_REJECTED` (`ambiguous_subject`) until an administrator
-   relinks it.
+   relinks it. The migration report lists every link whose stored
+   key could be such a short form (`True`, `False` or a whole number) under
+   the warning `ldap_subject_truncated`; with a numeric attribute such as
+   `uidNumber` these entries are expected and need nothing.
 8. The directory's real disabled or locked account rule.
 
 DNS and system time must work inside the WebSSH container. Do not use an IP

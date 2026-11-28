@@ -30,6 +30,8 @@ var syscallAllowed = map[string]bool{
 	"internal/migrate/legacy/host_linux.go": true,
 	// O_NOFOLLOW and O_NONBLOCK for the audit log; os has no name for them.
 	"internal/audit/nofollow.go": true,
+	// The owner of BACKUP_TEMP_DIR (syscall.Stat_t); os reports no owner.
+	"cmd/webssh/backup_tempdir.go": true,
 }
 
 // exceptions are the reviewed exception lists the import rules consult.

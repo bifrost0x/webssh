@@ -28,11 +28,15 @@ type ExportRequest struct {
 	// Scrub lists the scrubbers of the portable export.
 	Scrub []Scrubber
 	// SecretKey is SECRET_KEY; WithoutSecretKey leaves it out of the
-	// archive (D-08, --without-secret-key). The material is always
-	// included: without SECRET_KEY it opens nothing, and with the same
-	// SECRET_KEY it lets another host restore the archive.
+	// archive (D-08, --without-secret-key). The material is included
+	// unless WithoutMaterial is set: without SECRET_KEY it opens nothing,
+	// and with the same SECRET_KEY it lets another host restore the
+	// archive. The caller sets WithoutMaterial where the key can be found
+	// elsewhere (a 3.3 export of the way back); the archive then verifies
+	// with Material and restores only where the material is present.
 	SecretKey        []byte
 	WithoutSecretKey bool
+	WithoutMaterial  bool
 	Material         []byte
 	KeyID            string
 	Release          string
@@ -61,10 +65,14 @@ func Export(ctx context.Context, req ExportRequest) (Verified, error) {
 	if !req.WithoutSecretKey {
 		c.SecretKey = req.SecretKey
 	}
+	opts := VerifyOptions{Secret: req.SecretKey, Probes: req.Probes, Limits: req.Limits}
+	if req.WithoutMaterial {
+		c.Material, opts.Material = nil, req.Material
+	}
 	if err := WriteFile(req.Path, c); err != nil {
 		return Verified{}, err
 	}
-	v, err := VerifyWith(ctx, req.Path, VerifyOptions{Secret: req.SecretKey, Probes: req.Probes, Limits: req.Limits})
+	v, err := VerifyWith(ctx, req.Path, opts)
 	if err != nil {
 		return Verified{}, errors.Join(err, os.Remove(req.Path))
 	}

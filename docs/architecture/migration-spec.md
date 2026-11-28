@@ -158,9 +158,14 @@ The chosen design ([ADR 0008](../adr/0008-keyring-for-secrets-at-rest.md)):
   unreadable, matching Python's rule that exports do not carry remote
   credentials.
 - Go backups (D-03, D-08), including the backup `legacy purge` writes,
-  include the material whenever they include `SECRET_KEY`; with
-  `--without-secret-key` they include neither, and the restore needs both on
-  the target.
+  include the material whenever they include `SECRET_KEY`. An archive
+  without `SECRET_KEY` keeps the material, so that a lost volume restores
+  with the same key, with one exception: while the legacy data exists and
+  the key is `DATA_DIR/secret_key`, every Python export of the way back
+  holds that file, so `--without-secret-key` then leaves out the material
+  as well and the restore needs both on the target. A `SECRET_KEY` from
+  the environment is never in a Python export; its archives keep the
+  material (`leaveOutMaterial`, `cmd/webssh/backup_cli.go`).
 
 **Loss of the material never loses data silently.** Go never creates new
 material while a Go database exists. At every start Go checks the key

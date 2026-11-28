@@ -78,3 +78,52 @@ func TestAllowedHostsBehindATrustedProxy(t *testing.T) {
 		t.Fatalf("forwarded other host: %d", got)
 	}
 }
+
+// The first account may be registered only through a name nobody can
+// rebind: an IP literal, localhost or a name of ALLOWED_HOSTS, read
+// after the proxy rules (X-Forwarded-Host behind a trusted proxy). The
+// hosts of CORS_ORIGINS do not count, and without ALLOWED_HOSTS every DNS
+// name is refused (finding #68).
+func TestFirstAccountHost(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		allowed []string
+		hops    int
+		host    string
+		headers map[string]string
+		want    bool
+	}{
+		{"IPv4 literal", nil, 0, "192.168.1.20:5000", nil, true},
+		{"IPv6 literal", nil, 0, "[fd00::1]:5000", nil, true},
+		{"localhost", nil, 0, "localhost:5000", nil, true},
+		{"localhost with a trailing dot", nil, 0, "LOCALHOST.:5000", nil, true},
+		{"DNS name without ALLOWED_HOSTS", nil, 0, "rebind.attacker.test:5000", nil, false},
+		{"name of ALLOWED_HOSTS", []string{"ssh.example.com"}, 0, "SSH.example.com", nil, true},
+		{"other name with ALLOWED_HOSTS", []string{"ssh.example.com"}, 0, "localhost.attacker.test", nil, false},
+		{"host of CORS_ORIGINS", []string{"ssh.example.com"}, 0, "other.example.org:8443", nil, false},
+		{"forwarded name behind a trusted proxy", []string{"ssh.example.com"}, 1, "webssh:5000",
+			map[string]string{"X-Forwarded-Host": "ssh.example.com"}, true},
+		{"forwarded name outside ALLOWED_HOSTS", nil, 1, "127.0.0.1:5000",
+			map[string]string{"X-Forwarded-Host": "rebind.attacker.test"}, false},
+		{"forwarded header without a trusted proxy", nil, 0, "rebind.attacker.test",
+			map[string]string{"X-Forwarded-Host": "127.0.0.1"}, false},
+	} {
+		e := newEdge(t, withConfig(func(cfg *config.Config) {
+			cfg.Origins.List = []string{"https://other.example.org:8443"}
+			cfg.Origins.AllowedHosts = nil // the edge answers every name; the check alone decides
+			cfg.Proxies.Hops = c.hops
+		}))
+		trusted := FirstAccountHost(c.allowed)
+		var got bool
+		e.h.Mux().HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) { got = trusted(r) })
+		r := httptest.NewRequest("GET", "http://placeholder/login", nil)
+		r.Host = c.host
+		for k, v := range c.headers {
+			r.Header.Set(k, v)
+		}
+		e.h.ServeHTTP(httptest.NewRecorder(), r)
+		if got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}

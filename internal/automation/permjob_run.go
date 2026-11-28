@@ -223,6 +223,8 @@ func fileMessage(c fault.Code) string {
 		return "The result could not be confirmed. Refresh before taking further action."
 	case fault.ModeMismatch:
 		return "The server reported different permissions. Refresh and review the current state."
+	case fault.UnsafePath:
+		return "A folder on this path is writable by or belongs to another user, so it could be swapped during the change. Permissions are not changed."
 	}
 	return "The remote file operation failed."
 }
@@ -250,7 +252,22 @@ func parents(p string) []string {
 
 func isLink(mode uint32) bool { return mode&0o170000 == 0o120000 }
 
-// guard freezes, or compares, the state of every parent of p.
+// safeAncestor is the safe-path rule of sudo and OpenSSH for a folder
+// above a planned object: nobody but its owner can rename entries in it
+// (not group- or world-writable, unless the sticky bit is set), and the
+// owner is root or the account the source signed in as. Anyone else could
+// swap a folder of the path for a link between the check and the change,
+// which a permission change over SFTP cannot detect in time (finding #45).
+func safeAncestor(e PermEntry, loginUID uint32) bool {
+	const sticky, groupOtherWrite = 0o1000, 0o022
+	if e.Mode&groupOtherWrite != 0 && e.Mode&sticky == 0 {
+		return false
+	}
+	return e.UID != nil && (*e.UID == 0 || *e.UID == loginUID)
+}
+
+// guard freezes, or compares, the state of every parent of p, and refuses
+// a parent that safeAncestor rejects (UNSAFE_PATH).
 func (j *PermissionJobs) guard(ctx context.Context, job *permJob, src PermSource, p string, check func() error) error {
 	for _, parent := range parents(p) {
 		if err := check(); err != nil {
@@ -269,6 +286,10 @@ func (j *PermissionJobs) guard(ctx context.Context, job *permJob, src PermSource
 		if known && have != s {
 			j.mu.Unlock()
 			return fault.New(fault.MetadataChanged, "")
+		}
+		if !safeAncestor(e, job.loginUID) {
+			j.mu.Unlock()
+			return fault.New(fault.UnsafePath, "")
 		}
 		if !known {
 			if len(job.guards) >= PermMaxMembers || job.nameBytes+len(parent) > PermMaxNameBytes {

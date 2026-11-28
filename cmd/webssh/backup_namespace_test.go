@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bifrost0x/webssh/internal/config"
@@ -38,5 +42,43 @@ func TestBackupNamespaceMakesTheRootPrivate(t *testing.T) {
 	}
 	if _, err := backupNamespace(config.Config{DataDir: cfg.DataDir, BackupTempDir: link}); err == nil {
 		t.Fatal("a link as BACKUP_TEMP_DIR was accepted")
+	}
+}
+
+// A BACKUP_TEMP_DIR that belongs to another user stays usable for that
+// user even after the chmod: the start warns and names the owner, and
+// goes on (sec-low #76). The namespace below it is checked as before.
+func TestForeignBackupTempDirOnlyWarns(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "recovery")
+	cfg := config.Config{DataDir: filepath.Join(base, "data"), BackupTempDir: root}
+	var logs bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+
+	if _, err := backupNamespace(cfg); err != nil {
+		t.Fatal(err)
+	}
+	warnForeignBackupTempDir(cfg, log)
+	if logs.Len() != 0 {
+		t.Fatalf("own BACKUP_TEMP_DIR warned: %s", logs.String())
+	}
+
+	own := effectiveUID
+	t.Cleanup(func() { effectiveUID = own })
+	effectiveUID = func() int { return own() + 1 }
+	if _, err := backupNamespace(cfg); err != nil {
+		t.Fatalf("a foreign owner stopped the start: %v", err)
+	}
+	warnForeignBackupTempDir(cfg, log)
+	out := logs.String()
+	if !strings.Contains(out, "level=WARN") || !strings.Contains(out, "BACKUP_TEMP_DIR") ||
+		!strings.Contains(out, fmt.Sprintf("owner_uid=%d", os.Getuid())) {
+		t.Fatalf("warning for a foreign BACKUP_TEMP_DIR: %q", out)
+	}
+
+	logs.Reset()
+	warnForeignBackupTempDir(config.Config{DataDir: cfg.DataDir, BackupTempDir: filepath.Join(base, "missing")}, log)
+	if logs.Len() != 0 {
+		t.Fatalf("a missing BACKUP_TEMP_DIR warned: %s", logs.String())
 	}
 }

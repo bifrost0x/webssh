@@ -27,10 +27,13 @@ type permTree struct {
 	enabled bool              // the admin switch
 	ident   int               // changes when the source is "reopened"
 	owner   principal.Principal
+	uids    map[string]uint32 // owner of a node; 1000 when absent
+	login   *uint32           // LoginUID; nil when the server reports none
 }
 
 func newPermTree(p principal.Principal) *permTree {
-	return &permTree{enabled: true, owner: p, nodes: map[string]uint32{
+	login := uint32(1000)
+	return &permTree{enabled: true, owner: p, login: &login, uids: map[string]uint32{"/": 0}, nodes: map[string]uint32{
 		"/":               0o040755,
 		"/work":           0o040755,
 		"/work/a.txt":     0o100600,
@@ -62,7 +65,19 @@ func (t *permTree) Lstat(ctx context.Context, p string) (PermEntry, error) {
 		return PermEntry{}, fault.New(fault.FileNotFound, "")
 	}
 	uid, gid := uint32(1000), uint32(1000)
+	if u, ok := t.uids[p]; ok {
+		uid = u
+	}
 	return PermEntry{Mode: m, Size: 1, ModTime: time.Unix(1700000000, 0), UID: &uid, GID: &gid}, nil
+}
+
+func (t *permTree) LoginUID(context.Context) (uint32, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.login == nil {
+		return 0, fault.New(fault.UnsafePath, "")
+	}
+	return *t.login, nil
 }
 
 func (t *permTree) Children(_ context.Context, dir string, fn func(string) error) error {

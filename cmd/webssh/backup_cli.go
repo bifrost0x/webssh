@@ -110,12 +110,14 @@ func backupCreate(ctx context.Context, args []string, s streams) int {
 	}
 	defer os.RemoveAll(work)
 	omit := *without || (envSecret(cfg) && !*include)
-	_, material, err := keyring.MaterialLocation(cfg.DataDir, legacyPresent(cfg))
+	legacy := legacyPresent(cfg)
+	_, material, err := keyring.MaterialLocation(cfg.DataDir, legacy)
 	if err != nil {
 		return fail(s, err)
 	}
 	v, err := backup.Export(ctx, backup.ExportRequest{Source: g.db, Path: path, Work: work, Scrub: exportScrubbers(),
-		SecretKey: cfg.SecretKey.Bytes(), WithoutSecretKey: omit, Material: material, KeyID: g.ring.KeyID(),
+		SecretKey: cfg.SecretKey.Bytes(), WithoutSecretKey: omit,
+		WithoutMaterial: leaveOutMaterial(cfg.SecretSource, omit, legacy), Material: material, KeyID: g.ring.KeyID(),
 		Release: buildinfo.Read().Version, Now: time.Now().UTC(), Probes: []backup.Probe{vault.ProbeSealed},
 		Limits: backupLimits(cfg)})
 	if err != nil {
@@ -127,6 +129,8 @@ func backupCreate(ctx context.Context, args []string, s streams) int {
 	switch {
 	case !omit:
 		msg += "It contains SECRET_KEY; keep it off this host or create it with --without-secret-key.\n"
+	case leaveOutMaterial(cfg.SecretSource, omit, legacy):
+		msg += "SECRET_KEY and the keyring material are not in the archive while the 3.3 data exists; it restores only on a host that has both.\n"
 	case !*without:
 		msg += "SECRET_KEY comes from the environment and is not in the archive; restore it with the same SECRET_KEY, or add it with --include-secret-key.\n"
 	}
@@ -146,6 +150,17 @@ func exportScrubbers() []backup.Scrubber {
 // for that reason.
 func envSecret(cfg config.Config) bool {
 	return cfg.SecretSource == config.SecretFromEnvironment
+}
+
+// leaveOutMaterial reports whether an archive that leaves out SECRET_KEY
+// leaves out the keyring material too. That is the case only while the
+// 3.3 data exists and the key is DATA_DIR/secret_key: every Python export
+// of the way back holds that file, and with the material of this archive
+// it would open every sealed secret (migration specification 2.2).
+// Otherwise the material stays in, so a lost volume can be restored with
+// the same SECRET_KEY.
+func leaveOutMaterial(source config.SecretSource, omitSecret, legacy bool) bool {
+	return omitSecret && legacy && source == config.SecretFromFile
 }
 
 func legacyPresent(cfg config.Config) bool {

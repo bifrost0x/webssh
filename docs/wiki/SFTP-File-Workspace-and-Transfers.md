@@ -164,7 +164,15 @@ replaced by a link just before the change cannot redirect it. Folders, and
 files the account may not open, are changed by path with no-follow on the
 final component right after a matching check; one server round trip remains
 in which a concurrent ancestor rename is not detected. SFTPv3 has no inode
-identity, so a replacement with identical attributes cannot be told apart. Use
+identity, so a replacement with identical attributes cannot be told apart.
+
+A background job therefore runs only below folders nobody else can rename:
+every folder above a planned file or folder, inside the tree as well, must
+not be writable by group or others unless it has the sticky bit (as `/tmp`),
+and must belong to root or to the account WebSSH signed in as (the owner of
+its login directory). Otherwise the scan stops with `UNSAFE_PATH` before
+anything changes. A server that reports no owner gets the same answer. The
+single-object change is not limited this way. Use
 trusted servers and appropriately restricted remote accounts. Do not enable
 this feature for privileged accounts working in directories that untrusted
 users can replace or modify without suitable server-side isolation. Metadata
@@ -276,7 +284,10 @@ why the replacement was refused.
 
 A new file receives the SFTP server's default permissions, as with any SFTP
 client; servers that force a create mode (for example `internal-sftp -m`) are
-supported. A replacement keeps the previous file's mode. Its staged copy is
+supported. This holds for server-to-server copies too: the mode of the source
+file is not carried over, as in 3.3, so a private source (`0600`) can arrive
+with the target's default (often `0644`). Copy private files only into
+private folders, or give the target account a restrictive umask. A replacement keeps the previous file's mode. Its staged copy is
 never more widely readable than the file it replaces; a server that cannot
 guarantee this, a symbolic link, special permission bits or a different
 owner or group prevent the replacement.

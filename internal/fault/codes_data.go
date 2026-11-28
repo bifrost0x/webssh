@@ -23,6 +23,7 @@ const (
 	OperationFailed           Code = "OPERATION_FAILED"
 	OutcomeUnknown            Code = "OUTCOME_UNKNOWN"
 	ModeMismatch              Code = "MODE_MISMATCH"
+	UnsafePath                Code = "UNSAFE_PATH" // new: a folder on the path can be renamed by another user
 	FileExpired               Code = "EXPIRED"
 	EditConflict              Code = "EDIT_CONFLICT" // the stored revision is stale
 	EditEncodingUnsupported   Code = "EDIT_ENCODING_UNSUPPORTED"
@@ -98,6 +99,7 @@ var dataCatalog = map[Code]entry{
 	OperationFailed:          {statusBadGateway, "The file operation failed."},
 	OutcomeUnknown:           {statusBadGateway, "The outcome of the operation is unknown. Reload to check."},
 	ModeMismatch:             {statusConflict, "The permissions were not applied as requested."},
+	UnsafePath:               {statusConflict, "A folder on this path can be changed by another user. Permissions are not changed."},
 	FileExpired:              {statusConflict, "The preview has expired. Start again."},
 	EditConflict:             {statusConflict, "The file changed since it was opened."},
 	EditEncodingUnsupported:  {statusBadRequest, "The text cannot be saved in the file's encoding."},

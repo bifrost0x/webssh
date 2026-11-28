@@ -70,6 +70,9 @@ func (s *Source) LDAPIdentities(ctx context.Context) ([]LDAPIdentityRow, error) 
 type ldapIdentitiesStep struct {
 	rows    []ldap.Identity
 	orphans []Flag
+	// truncated are migrated bindings whose subject the Python release
+	// may have cut at a NUL byte (ldap.SubjectMayBeTruncated).
+	truncated []ldap.Identity
 }
 
 func (*ldapIdentitiesStep) Entity() string { return "E03" }
@@ -99,6 +102,9 @@ func (s *ldapIdentitiesStep) Read(ctx context.Context, src *Source) error {
 			return &StepError{UserID: r.UserID, Record: strconv.FormatInt(r.ID, 10), Err: err}
 		}
 		s.rows = append(s.rows, id)
+		if ldap.SubjectMayBeTruncated(id.Subject) {
+			s.truncated = append(s.truncated, id)
+		}
 	}
 	return nil
 }
@@ -144,8 +150,22 @@ func sameLDAPIdentity(a, b ldap.Identity) bool {
 		a.CreatedAt.Equal(b.CreatedAt) && a.LastVerifiedAt.Equal(b.LastVerifiedAt)
 }
 
+// Report names, beside the orphans, every binding with a possibly
+// truncated subject. It keeps signing in for its own DN; another
+// directory entry with the same short subject is refused (audit
+// ambiguous_subject) and the account needs a relink (finding #40).
 func (s *ldapIdentitiesStep) Report() StepReport {
-	return StepReport{Entity: "E03", Version: 1, Read: len(s.rows) + len(s.orphans), Written: len(s.rows), Flagged: s.orphans}
+	r := StepReport{Entity: "E03", Version: 1, Read: len(s.rows) + len(s.orphans), Written: len(s.rows),
+		Flagged: slices.Clone(s.orphans)}
+	for _, id := range s.truncated {
+		r.Flagged = append(r.Flagged, Flag{UserID: id.UserID, ID: strconv.FormatInt(id.ID, 10),
+			Reason: "LDAP binding may stem from a truncated binary unique ID"})
+		r.Warnings = append(r.Warnings, Warning{Code: "ldap_subject_truncated", UserID: id.UserID,
+			Message: fmt.Sprintf("The LDAP binding %d (provider %q, %s) has a subject 3.3 may have cut at a NUL byte of a binary unique ID such as objectGUID. "+
+				"It still signs in for this DN; if another directory entry is refused with ambiguous_subject, relink the account.",
+				id.ID, id.Provider, id.DistinguishedName)})
+	}
+	return r
 }
 
 // ldapFencesDir is the fence directory of app/ldap_session.py.

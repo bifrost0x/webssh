@@ -189,6 +189,24 @@ func (p permBackend) Lstat(ctx context.Context, path string) (automation.PermEnt
 	return out, nil
 }
 
+// LoginUID is the owner of the login directory: the account the source
+// signed in as. Without an owner the safe-path rule of the permission
+// jobs cannot hold, so the job is refused (UNSAFE_PATH).
+func (p permBackend) LoginUID(ctx context.Context) (uint32, error) {
+	home, err := p.b.Home(ctx)
+	if err != nil {
+		return 0, err
+	}
+	e, err := p.b.Stat(ctx, home, false)
+	if err != nil {
+		return 0, err
+	}
+	if e.Owner == nil {
+		return 0, fault.New(fault.UnsafePath, "")
+	}
+	return e.Owner.UID, nil
+}
+
 func (p permBackend) Children(ctx context.Context, dir string, fn func(string) error) error {
 	l, err := p.b.OpenListing(ctx, dir)
 	if err != nil {

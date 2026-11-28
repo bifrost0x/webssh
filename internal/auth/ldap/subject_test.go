@@ -63,3 +63,24 @@ func FuzzCanonicalSubject(f *testing.F) {
 		}
 	})
 }
+
+func TestSubjectMayBeTruncated(t *testing.T) {
+	for _, s := range []string{"0", "7", "True", "False", "-3", "1234567"} {
+		if !SubjectMayBeTruncated(s) {
+			t.Errorf("%q not reported", s)
+		}
+	}
+	for _, s := range []string{"", "b64:AAAA", "alice", "07", "1.5", "true", "0x1f", "12a"} {
+		if SubjectMayBeTruncated(s) {
+			t.Errorf("%q reported", s)
+		}
+	}
+	// Every legacy subject Subjects returns for a value with a NUL is
+	// one SubjectMayBeTruncated reports.
+	for _, raw := range [][]byte{[]byte("7\x00abc"), []byte("TRUE\x00x"), []byte(" 0x1f\x00"), []byte("-1_0\x00z")} {
+		_, legacy, err := Subjects(raw)
+		if err != nil || legacy == "" || !SubjectMayBeTruncated(legacy) {
+			t.Errorf("%q: legacy %q %v", raw, legacy, err)
+		}
+	}
+}
