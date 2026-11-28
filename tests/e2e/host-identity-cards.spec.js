@@ -88,9 +88,10 @@ test('host cards show the role, machine, system and named apps of each host', as
     await expect(plain.locator('[data-key^="head:"]')).toHaveAttribute('aria-haspopup', 'dialog');
     await expect(plain.locator('.od-host-profile')).toHaveCount(0);
     // The profile opens outside the card: no card of the row changes its place or height.
+    // Heights are compared to 1/100 px; layout may differ in the last float digits.
     const rows = () => page.evaluate(() => ['identity-0', 'identity-1'].map(id => {
         const element = document.querySelector(`#overviewHostList .od-host[data-host-id="${id}"]`);
-        return {top: element.offsetTop, height: element.getBoundingClientRect().height};
+        return {top: element.offsetTop, height: Math.round(element.getBoundingClientRect().height * 100) / 100};
     }));
     const before = await rows();
     await openProfile(page, proxmox);
