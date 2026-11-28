@@ -51,6 +51,7 @@ trap cleanup EXIT
 addresses="100.100.100.10 100.64.0.1 100.100.100.2 8.8.8.8 127.0.0.1 fd7a:115c:a1e0::1 fd7a:115c:a1e0:b1a::a00:1
 100.100.1.1 fd7a:115c:a1e0::9 100.80.0.7 100.90.0.1 100.91.0.1 100.100.1.2 192.0.2.10 198.51.100.1 ::ffff:100.100.100.10"
 # record_routes writes the fresh answers of this mode into the recording.
+# Unchanged answers keep the recording, header included.
 record_routes() {
 	version=$(docker run --rm --network none "$python_image" python3 -I -c \
 		'import platform; print(platform.python_implementation(), platform.python_version())')
@@ -58,7 +59,7 @@ record_routes() {
 	if [ -f "$recording" ]; then cp "$recording" "$out/python_routes.json"; else echo '{}' >"$out/python_routes.json"; fi
 	jq -S --arg mode "$mode" --arg python "$version ($python_image)" --arg source "$WEBSSH_PYTHON_ORACLE_SOURCE" \
 		--slurpfile routes "$out/py-routes.json" \
-		'.oracle = {python: $python, source: $source, recorder: "scripts/record-python-oracles.sh"} | .routes[$mode] = $routes[0]' \
+		'if .routes[$mode] == $routes[0] then . else .oracle = {python: $python, source: $source, recorder: "scripts/record-python-oracles.sh"} | .routes[$mode] = $routes[0] end' \
 		"$out/python_routes.json" >"$recording"
 }
 run_in() {

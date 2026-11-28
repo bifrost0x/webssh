@@ -38,12 +38,17 @@ func fakeRelease(t *testing.T) (python, root string) {
 
 func record(t *testing.T, path, python, root string, a answer) {
 	t.Helper()
+	recordWith(t, path, python, root, "CPython 0.0", a)
+}
+
+func recordWith(t *testing.T, path, python, root, version string, a answer) {
+	t.Helper()
 	t.Run("record", func(t *testing.T) {
 		t.Setenv(ModeEnv, "record")
 		t.Setenv(PythonEnv, python)
 		t.Setenv(RootEnv, root)
 		t.Setenv(SourceEnv, "0000000 (test)")
-		t.Setenv(VersionEnv, "CPython 0.0")
+		t.Setenv(VersionEnv, version)
 		rec := Open(t, path)
 		got := Ask(t, rec, "case", "request", func(Release) answer { return a })
 		if (got.Empty == nil) != (a.Empty == nil) || got.Byname != nil {
@@ -74,6 +79,27 @@ func TestRecordThenReplay(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "\"values\":[\"a\",\"b\"]") {
 		t.Errorf("recording:\n%s", raw)
+	}
+}
+
+// Recording unchanged answers again keeps the file, header included;
+// changed answers get the new header.
+func TestRecordKeepsTheHeaderOfUnchangedAnswers(t *testing.T) {
+	python, root := fakeRelease(t)
+	path := filepath.Join(t.TempDir(), "rec.json")
+	record(t, path, python, root, answer{Values: []string{"a"}})
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recordWith(t, path, python, root, "CPython 0.1", answer{Values: []string{"a"}})
+	if after, _ := os.ReadFile(path); string(after) != string(before) {
+		t.Fatalf("unchanged answers rewrote the recording:\n%s", after)
+	}
+	recordWith(t, path, python, root, "CPython 0.1", answer{Values: []string{"b"}})
+	t.Setenv(ModeEnv, "")
+	if h := Open(t, path).Header(); h.Python != "CPython 0.1" {
+		t.Fatalf("changed answers kept the old header: %+v", h)
 	}
 }
 
