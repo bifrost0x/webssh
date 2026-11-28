@@ -13,7 +13,9 @@ type Flash struct {
 }
 
 // Bounds of the flash store: messages wait at most flashTTL, a browser has
-// at most maxFlashes, the store at most maxFlashBrowsers.
+// at most maxFlashes, the store at most maxFlashBrowsers. A full store
+// drops its oldest entry for a new browser, so requests without a cookie
+// cannot keep the messages of other browsers out.
 const (
 	flashTTL         = 10 * time.Minute
 	maxFlashes       = 8
@@ -47,7 +49,7 @@ func (f *flashes) add(now time.Time, binding string, msgs ...Flash) {
 		if len(f.m) >= maxFlashBrowsers {
 			f.expire(now)
 			if len(f.m) >= maxFlashBrowsers {
-				return
+				f.dropOldest()
 			}
 		}
 		e = &flashEntry{}
@@ -58,6 +60,17 @@ func (f *flashes) add(now time.Time, binding string, msgs ...Flash) {
 	if n := len(e.messages); n > maxFlashes {
 		e.messages = e.messages[n-maxFlashes:]
 	}
+}
+
+func (f *flashes) dropOldest() {
+	var oldest string
+	var at time.Time
+	for k, e := range f.m {
+		if oldest == "" || e.at.Before(at) {
+			oldest, at = k, e.at
+		}
+	}
+	delete(f.m, oldest)
 }
 
 func (f *flashes) expire(now time.Time) {
