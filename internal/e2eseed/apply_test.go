@@ -33,8 +33,11 @@ func TestApplyCheckedInSeed(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = a.Peer.Close() })
 	admin, user, mixed := a.Users["admin"], a.Users["user"], a.Users["mixed_mfa"]
-	if len(a.Users) != 7 || !f.admins[admin] || f.admins[user] {
+	if len(a.Users) != 9 || !f.admins[admin] || f.admins[user] {
 		t.Fatalf("users = %v, admins = %v", a.Users, f.admins)
+	}
+	if !f.migrated[a.Users["upgraded"]] || !f.migrated[a.Users["upgraded_keyboard"]] || len(f.migrated) != 2 {
+		t.Fatalf("migrated = %v", f.migrated)
 	}
 	if !f.mfa[mixed] || len(f.mfa) != 1 {
 		t.Fatalf("mfa = %v", f.mfa)
@@ -66,8 +69,8 @@ func TestApplyCheckedInSeed(t *testing.T) {
 		!slices.Contains(f.calls, "github:e2e_admin:424242:e2e-github") || countPrefix(f.calls, "github:") != 1 {
 		t.Errorf("external identities: %q", f.calls)
 	}
-	if n := countPrefix(f.calls, "onboarding "); n != 7 {
-		t.Errorf("onboarding for %d accounts, want 7", n)
+	if n := countPrefix(f.calls, "onboarding "); n != 9 {
+		t.Errorf("onboarding for %d accounts, want 9", n)
 	}
 
 	keyID := f.keyByName["E2E usable key"]
