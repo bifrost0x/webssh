@@ -66,11 +66,10 @@ function Test-TextEqual {
 
 try {
     Push-Location $projectRoot
-    $runtimeLock = New-LockFile -InputFile "requirements.in" -LockName "requirements.txt"
     $testLock = New-LockFile -InputFile "requirements-test.in" -LockName "requirements-test.txt"
     $graphLock = New-LockFile -InputFile "requirements-graph.in" -LockName "requirements-graph.txt"
 
-    foreach ($lock in @($runtimeLock, $testLock, $graphLock)) {
+    foreach ($lock in @($testLock, $graphLock)) {
         $committedLock = Join-Path $projectRoot (Split-Path $lock -Leaf)
         if ($Check) {
             if (-not (Test-TextEqual -Expected $committedLock -Actual $lock)) {

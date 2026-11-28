@@ -58,10 +58,6 @@ known_hosts
 *.orig
 *.tmp
 
-# Flask
-instance/
-.webassets-cache
-
 # Go: frontend assets copied from static/ for embedding at build time
 internal/httpapi/webassets/
 
@@ -123,9 +119,6 @@ review-*.md
 *-qa.md
 qa-*.md
 *-qa-*.md
-
-# Disposable Paramiko/OpenSSH integration-test secrets
-tests/integration/paramiko5/runtime/
 
 .impeccable/
 
