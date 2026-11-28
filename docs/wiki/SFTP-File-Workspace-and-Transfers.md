@@ -158,13 +158,17 @@ The existing single-object API still uses signed metadata tokens with a
 **60-second** lifetime. Background jobs retain their own bounded, immutable
 preview rather than extending or bypassing those tokens.
 
-No-follow applies to the final path component, not to every ancestor or to an
-immutable file identity. Use trusted servers and appropriately restricted remote
-accounts. Do not enable this feature for privileged accounts working in directories
-that untrusted users can replace or modify without suitable server-side isolation.
-Metadata checks detect observed changes; they are not an atomic compare-and-set.
-Concurrent ancestor renames or same-metadata replacements cannot be completely
-excluded by SFTPv3, including while a recursive job runs.
+A file is changed through an open handle whose attributes (type, mode, size,
+modification time, owner) must still match what the preview saw, so a folder
+replaced by a link just before the change cannot redirect it. Folders, and
+files the account may not open, are changed by path with no-follow on the
+final component right after a matching check; one server round trip remains
+in which a concurrent ancestor rename is not detected. SFTPv3 has no inode
+identity, so a replacement with identical attributes cannot be told apart. Use
+trusted servers and appropriately restricted remote accounts. Do not enable
+this feature for privileged accounts working in directories that untrusted
+users can replace or modify without suitable server-side isolation. Metadata
+checks detect observed changes; they are not an atomic compare-and-set.
 Unix rwx values do not describe every ACL rule. Changing mode can affect POSIX ACL
 masks; hardlinks share the same inode and therefore the same permissions.
 
@@ -369,6 +373,15 @@ Both connections remain owned by the same WebSSH user, both count against
 capacity, and cancellation is tied to the server-owned transfer record.
 Existing targets are not overwritten without the conflict decision described
 above.
+
+Folder copies, folder downloads and recursive deletes on SFTP never follow
+links. Each folder is checked again right before it is entered, and before a
+file is read, written or deleted its folder must still resolve to the same
+canonical path below the selected root. A folder replaced by a link while the
+operation runs stops it with "The source changed during the operation" and
+leaves the link target untouched. SFTPv3 addresses objects only by path, so
+one server round trip between a check and the request it guards remains.
+Paths longer than 4096 bytes inside such a tree stop the operation.
 
 For two folders on the same source, the workspace offers **Move** instead of a
 copy. It uses the source's rename operation, refuses root, self, descendant,
