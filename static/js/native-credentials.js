@@ -73,6 +73,7 @@
                     'Your sign-in session expired. Sign in again before saving.',
                 ],
                 credentials_disabled: ['credentials.disabled', 'Password storage is disabled by the administrator.'],
+                duplicate_name: ['common.nameTaken', 'This name is already in use. Choose another name.'],
                 step_up_required: [
                     'credentials.identityFailed',
                     'Identity verification failed. Check your WebSSH account password or verification code and try again.',
@@ -591,6 +592,7 @@
             }
             save.disabled = true;
             Object.values(fields).forEach(input => (input.disabled = true));
+            let taken = false;
             const payload = { name: fields.name.value.trim(), username: fields.username.value.trim() };
             if (fields.password.value) payload.password = fields.password.value;
             try {
@@ -599,11 +601,13 @@
                 fields.password.value = '';
                 if (active()) onSaved(item.id || result.credentials?.find(record => !knownIds.has(record.id))?.id);
             } catch (error) {
-                if (error.name !== 'AbortError') status.textContent = error.message;
+                if (error.code === 'duplicate_name') taken = true;
+                else if (error.name !== 'AbortError') status.textContent = error.message;
             } finally {
                 save.disabled = false;
                 Object.values(fields).forEach(input => (input.disabled = false));
             }
+            if (taken) window.ConnectionValidation?.fieldError(fields.name, t('common.nameTaken', 'This name is already in use. Choose another name.'));
         };
         container.append(form);
         form.dataset.initial = JSON.stringify(
@@ -1435,6 +1439,12 @@
             },
         ]);
     }
+    // Whether a saved password of the last state has this name (trimmed,
+    // ignoring case), to tell which name a duplicate_name refusal means.
+    function passwordNameTaken(name) {
+        const key = value => String(value || '').trim().toLowerCase().replaceAll('ß', 'ss');
+        return (state?.credentials || []).some(item => key(item.name) === key(name));
+    }
     // Optional server features the last state announced (assign_on_create:
     // a new resource is created with a saved password in one step).
     function supports(feature) {
@@ -1442,6 +1452,7 @@
     }
     window.NativeCredentials = {
         supports,
+        passwordNameTaken,
         confirmAssignmentChange,
         assignmentReady,
         reviewAssignment,

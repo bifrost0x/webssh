@@ -262,20 +262,33 @@ window.SocksProxyManager = {
         this.pending = true;
         this.renderEditorState();
         this.renderList();
-        // A new SOCKS5 proxy and its password are stored in one step; binding a
-        // saved password asks for the account confirmation first, so
-        // cancelling it stores nothing.
+        // Binding a saved password asks for the account confirmation
+        // before anything is stored; cancelling it stores nothing.
         const bindsSaved = Boolean(credential?.credential_id);
-        if (!this.editingId && (credential?.password || (bindsSaved && window.NativeCredentials?.supports?.('assign_on_create')))) {
+        const nameTaken = () => {
+            const input = credential?.password && window.NativeCredentials?.passwordNameTaken?.(credential.name)
+                ? 'spCredentialName' : 'spNameInput';
+            window.ConnectionValidation?.fieldError(document.getElementById(input), this.t('common.nameTaken', 'This name is already in use. Choose another name.'));
+        };
+        // A new SOCKS5 proxy and its password are stored in one request: both
+        // or neither.
+        const oneStep = window.NativeCredentials?.supports?.('assign_on_create');
+        if (!this.editingId && credential && (credential.password || oneStep)) {
+            let taken = false;
             try {
-                const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind:'socks', resource:payload, ...credential, ...(credential.password ? {username} : {}), confirm_target:true}, null, current);
-                if (!current()) return;this.upsertSocksProxy(result.resource);this.resetEditor();
-            } catch (error) { if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error'); }
-            finally { this.pending=false;this.renderEditorState();this.renderList(); }
+                const result = await window.NativeCredentials.mutate('create_for_resource', {resource_kind: 'socks', resource: payload, ...credential, ...(credential.password ? {username} : {}), confirm_target: true}, null, current);
+                if (!current()) return;
+                this.upsertSocksProxy(result.resource);
+                this.resetEditor();
+            } catch (error) {
+                if (error.code === 'duplicate_name') taken = true;
+                else if (error.name !== 'AbortError') window.showNotification?.(error.message, 'error');
+            } finally { this.pending = false; this.renderEditorState(); this.renderList(); }
+            if (taken) nameTaken();
             return;
         }
-        // Replacing an assigned password and binding a saved one are
-        // confirmed before the record changes.
+        // Otherwise replacing an assigned password and binding a saved one
+        // are confirmed before the record changes.
         const replacing = Boolean(identity) && Boolean(credential) && credential.credential_id !== null;
         try {
             const approved = replacing ? await window.NativeCredentials?.confirmAssignmentChange?.('socks:' + identity, credential.credential_id || null, credential.name || null) : true;
@@ -290,12 +303,15 @@ window.SocksProxyManager = {
         }
         window.socket.timeout(15000).emit('save_socks_proxy', payload, async (error, result) => {
             this.pending = false;
+            let taken = false;
             // A closed or edited form must still leave its disabled pending state.
             try {
             if (error) {
                 this.unknownOutcome = true;
                 window.showNotification?.(this.t('common.saveUnknownTitle', 'Save outcome unknown'), 'error');
                 this.load();
+            } else if (result?.code === 'duplicate_name') {
+                taken = true;
             } else if (result?.success) {
                 if (!current()) return;
                 this.upsertSocksProxy(result.socks_proxy);
@@ -310,6 +326,7 @@ window.SocksProxyManager = {
                 this.renderEditorState();
                 this.renderList();
             }
+            if (taken) nameTaken();
         });
     },
 

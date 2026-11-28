@@ -115,7 +115,11 @@ func (s *Service) saveProfile(ctx context.Context, owner int64, req protocol.Hos
 			return err
 		}
 		if !importing {
-			if err := checkNameFree(profiles, index, saved.text("name")); err != nil {
+			var own []int
+			if index >= 0 {
+				own = []int{index}
+			}
+			if err := checkNameFree(profiles, own, saved.text("name"), errDuplicateName); err != nil {
 				return err
 			}
 		}

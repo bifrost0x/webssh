@@ -1351,6 +1351,7 @@ window.i18n.registerLocales({
         'profiles.moveAndRemoveGroup': 'Verbindung verschieben',
         'profiles.saveFailed': 'Die Verbindung konnte nicht gespeichert werden.',
         'profiles.duplicateName': 'Es gibt bereits einen gespeicherten Host mit diesem Namen. Wähle einen anderen Namen.',
+        'common.nameTaken': 'Dieser Name ist bereits vergeben. Wähle einen anderen Namen.',
         'commandSets.none': 'Keiner',
         'commandSets.create': 'Befehlssatz erstellen',
         'commandSets.edit': 'Befehlssatz bearbeiten',

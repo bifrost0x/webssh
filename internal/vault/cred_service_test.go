@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 	"maps"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -92,7 +93,7 @@ func TestCreateValidatesLikePython(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range MaxCredentials - 1 {
-		if _, err := r.do(t, p, MethodCreate, "", map[string]any{"name": "n" + string(rune('A'+i%26)), "password": "x"}); err != nil {
+		if _, err := r.do(t, p, MethodCreate, "", map[string]any{"name": "n" + strconv.Itoa(i), "password": "x"}); err != nil {
 			t.Fatal(err)
 		}
 	}

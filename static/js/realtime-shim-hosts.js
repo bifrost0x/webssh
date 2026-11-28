@@ -39,7 +39,7 @@
             update_profile_organization: {type: 'hosts.profile.organize'},
             move_profile: {type: 'hosts.profile.move'},
             list_jump_hosts: {type: 'hosts.jump.list', push: [['jump_hosts_list', a => ({jump_hosts: a.jump_hosts || []})]], errorEvent: true},
-            save_jump_host: {type: 'hosts.jump.save', push: [['jump_host_saved', a => a]], errorEvent: true},
+            save_jump_host: {type: 'hosts.jump.save', push: [['jump_host_saved', a => a]], errorEvent: true, answeredByPage: failed => failed.code === 'duplicate_name'},
             delete_jump_host: {
                 type: 'hosts.jump.delete',
                 ack: (result, data) => ok({jump_host_id: data.jump_host_id, ...result}),
@@ -47,7 +47,7 @@
                 errorEvent: true,
             },
             list_socks_proxies: {type: 'hosts.socks.list', push: [['socks_proxies_list', a => ({socks_proxies: a.socks_proxies || []})]], errorEvent: true},
-            save_socks_proxy: {type: 'hosts.socks.save', push: [['socks_proxy_saved', a => a]], errorEvent: true},
+            save_socks_proxy: {type: 'hosts.socks.save', push: [['socks_proxy_saved', a => a]], errorEvent: true, answeredByPage: failed => failed.code === 'duplicate_name'},
             delete_socks_proxy: {
                 type: 'hosts.socks.delete',
                 ack: (result, data) => ok({socks_proxy_id: data.socks_proxy_id, ...result}),

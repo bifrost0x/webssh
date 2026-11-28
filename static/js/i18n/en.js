@@ -1351,6 +1351,7 @@ window.i18n.registerLocales({
         'profiles.moveAndRemoveGroup': 'Move connection',
         'profiles.saveFailed': 'Could not save the connection.',
         'profiles.duplicateName': 'A saved host with this name already exists. Choose another name.',
+        'common.nameTaken': 'This name is already in use. Choose another name.',
         'commandSets.none': 'None',
         'commandSets.create': 'Create command set',
         'commandSets.edit': 'Edit command set',

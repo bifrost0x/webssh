@@ -35,6 +35,7 @@
     {"file": "jump-host-edit.spec.js", "exclude": []},
     {"file": "host-draft-navigation.spec.js", "exclude": []},
     {"file": "host-unique-name.spec.js", "exclude": []},
+    {"file": "record-unique-names.spec.js", "exclude": []},
     {"file": "quick-connect-redesign.spec.js", "exclude": []},
     {"file": "host-terminal-journey.spec.js", "exclude": []},
     {"file": "host-platform-colors.spec.js", "exclude": []},

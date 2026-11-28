@@ -1346,6 +1346,7 @@ window.i18n.registerLocales({
         'profiles.moveAndRemoveGroup': '移动连接',
         'profiles.saveFailed': '无法保存连接。',
         'profiles.duplicateName': '已存在同名的已保存主机。请选择其他名称。',
+        'common.nameTaken': '此名称已被使用。请选择其他名称。',
         'commandSets.none': '无',
         'commandSets.create': '创建命令集',
         'commandSets.edit': '编辑命令集',

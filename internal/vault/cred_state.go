@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/naming"
 	"github.com/bifrost0x/webssh/internal/pyjson"
 	"github.com/bifrost0x/webssh/internal/store"
 )
@@ -171,8 +172,18 @@ func field(v jsontext.Value, name string) (jsontext.Value, bool) {
 	return m, true
 }
 
-// createNamed stores a new password from a request (create_named).
+var errCredentialName = fault.New(fault.DuplicateName, "A saved password with this name already exists")
+
+// createNamed stores a new password from a request (create_named). Its
+// name must not be another saved password's (internal/naming).
 func (s *Service) createNamed(userID int64, d *credDoc, data jsontext.Value) (*credRow, error) {
+	return s.newNamed(userID, d, data, true)
+}
+
+// newNamed is createNamed; unique is off only for the legacy vault import,
+// which brings back passwords named after their resources as 3.3 stored
+// them and must not fail on a repeated name.
+func (s *Service) newNamed(userID int64, d *credDoc, data jsontext.Value, unique bool) (*credRow, error) {
 	nameV, _ := field(data, "name")
 	name, err := textValue(nameV, MaxNameBytes, false)
 	if err != nil {
@@ -188,6 +199,9 @@ func (s *Service) createNamed(userID int64, d *credDoc, data jsontext.Value) (*c
 	password, err := textValue(pwV, MaxSecretBytes, false)
 	if err != nil {
 		return nil, err
+	}
+	if unique && naming.Taken(credentialNames(d), nil, name) {
+		return nil, errCredentialName
 	}
 	rec, err := s.newCredential(userID, name, username, []byte(password))
 	if err != nil {
@@ -217,9 +231,15 @@ func (s *Service) updateNamed(userID int64, d *credDoc, rid string, data jsontex
 		return err
 	}
 	if v, ok := field(data, "name"); ok {
-		if rec.Name, err = textValue(v, MaxNameBytes, false); err != nil {
+		name, err := textValue(v, MaxNameBytes, false)
+		if err != nil {
 			return err
 		}
+		own := slices.IndexFunc(d.creds, func(c credRow) bool { return c.ID == rec.ID })
+		if naming.Taken(credentialNames(d), []int{own}, name) {
+			return errCredentialName
+		}
+		rec.Name = name
 	}
 	if v, ok := field(data, "username"); ok {
 		if rec.Username, err = textValue(v, MaxUsernameBytes, true); err != nil {
@@ -260,4 +280,12 @@ func deleteNamed(d *credDoc, rid string, enabled bool, all []Resource, smbKnown 
 	}
 	d.creds = slices.DeleteFunc(d.creds, func(c credRow) bool { return c.ID == rid })
 	return nil
+}
+
+func credentialNames(d *credDoc) []string {
+	names := make([]string, len(d.creds))
+	for i := range d.creds {
+		names[i] = d.creds[i].Name
+	}
+	return names
 }

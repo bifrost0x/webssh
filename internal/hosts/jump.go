@@ -123,6 +123,9 @@ func (s *Service) saveJumpHost(ctx context.Context, owner int64, req protocol.Ho
 		if err != nil {
 			return err
 		}
+		if err := checkNameFree(all["jump_hosts"], ownPositions(all["jump_hosts"], update, req.JumpHostID), r.text("name"), errDuplicateJumpName); err != nil {
+			return err
+		}
 		if !validJumpHost(&r) {
 			return fault.New(fault.ValidationError, "Failed to save jump host")
 		}

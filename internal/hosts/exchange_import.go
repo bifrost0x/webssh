@@ -5,8 +5,6 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"math/big"
-	"strings"
-	"unicode"
 
 	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/pyjson"
@@ -38,20 +36,6 @@ func duplicateProfile(profiles []record, validated *record) bool {
 		}
 	}
 	return false
-}
-
-// foldText approximates str.casefold(): simple case folding plus ß.
-func foldText(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch r {
-		case 'ß', 'ẞ':
-			b.WriteString("ss")
-		default:
-			b.WriteRune(unicode.ToLower(unicode.ToUpper(r)))
-		}
-	}
-	return b.String()
 }
 
 // pyEqual is == of two decoded JSON values as dict.get returns them: an

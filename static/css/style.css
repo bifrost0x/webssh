@@ -5195,11 +5195,11 @@ body.keyboard-open.notepad-focused .notepad-panel {
     min-height: 0;
 }
 
-.profile-editor-form .form-control[aria-invalid="true"] {
+.form-control.has-form-error {
     border-color: var(--error-color);
 }
 
-.profile-editor-form .form-error {
+.form-error {
     margin: 6px 0 0;
     color: var(--error-color);
     font-size: 0.85rem;

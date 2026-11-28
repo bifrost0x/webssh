@@ -648,6 +648,7 @@ const ProfileManager = {
                 const input = document.createElement('input');
                 input.type = 'text';
                 input.className = 'form-control key-rename-input';
+                input.id = 'keyRenameInput';
                 input.dataset.keyId = key.id;
                 input.value = this.editingKeyName ?? key.name;
                 input.maxLength = 128;
@@ -1711,29 +1712,7 @@ const ProfileManager = {
     },
 
     showProfileNameError(message) {
-        const input = document.getElementById('profileEditorName');
-        let hint = document.getElementById('profileEditorNameError');
-        if (!message) {
-            if (hint) {
-                hint.hidden = true;
-                input?.removeAttribute('aria-invalid');
-            }
-            return;
-        }
-        if (!input) return;
-        if (!hint) {
-            hint = document.createElement('p');
-            hint.id = 'profileEditorNameError';
-            hint.className = 'form-error';
-            hint.setAttribute('role', 'alert');
-            input.after(hint);
-            input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), hint.id].filter(Boolean).join(' '));
-            input.addEventListener('input', () => this.showProfileNameError(''));
-        }
-        hint.textContent = message;
-        hint.hidden = false;
-        input.setAttribute('aria-invalid', 'true');
-        input.focus();
+        window.ConnectionValidation?.fieldError(document.getElementById('profileEditorName'), message);
     },
 
     async saveFromEditor({connect = false} = {}) {
@@ -1841,8 +1820,10 @@ const ProfileManager = {
         };
         const failCreate = error => {
             if (error.name === 'AbortError') return;
-            if (error.code === 'duplicate_name') completeSave({success: false, code: error.code});
-            else window.showNotification?.(error.message, 'error');
+            if (error.code !== 'duplicate_name') window.showNotification?.(error.message, 'error');
+            else if (credentialChoice === '__new' && window.NativeCredentials?.passwordNameTaken?.(credentialDraft.name)) {
+                window.ConnectionValidation?.fieldError(document.getElementById('profileEditorCredentialName'), this.t('common.nameTaken', 'This name is already in use. Choose another name.'));
+            } else completeSave({success: false, code: error.code});
         };
         // Binding an existing saved password needs the account confirmation
         // (step-up). It comes before anything is saved, so cancelling it
@@ -2122,6 +2103,11 @@ const ProfileManager = {
         this.uploadKey(name, keyContent, acknowledgement => {
             this.inlineKeyUploadPending = false;
             if (submitButton) submitButton.disabled = false;
+            if (acknowledgement?.code === 'duplicate_name') {
+                if (status) status.textContent = '';
+                window.ConnectionValidation?.fieldError(nameInput, this.t('common.nameTaken', 'This name is already in use. Choose another name.'));
+                return;
+            }
             if (!acknowledgement?.success || !acknowledgement.key) {
                 if (status) {
                     status.textContent = acknowledgement?.error || 'Failed to upload key';
@@ -2363,6 +2349,11 @@ const ProfileManager = {
             name: name,
         }, acknowledgement => {
             this.keyRenamePending = false;
+            if (acknowledgement?.code === 'duplicate_name') {
+                this.renderKeysList();
+                window.ConnectionValidation?.fieldError(document.getElementById('keyRenameInput'), this.t('common.nameTaken', 'This name is already in use. Choose another name.'));
+                return;
+            }
             if (!acknowledgement?.success || !acknowledgement.key) {
                 window.showNotification?.(
                     acknowledgement?.error || this.t(

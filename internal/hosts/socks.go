@@ -94,6 +94,9 @@ func (s *Service) saveSOCKSProxy(ctx context.Context, owner int64, req protocol.
 		if err != nil {
 			return err
 		}
+		if err := checkNameFree(all["socks_proxies"], ownPositions(all["socks_proxies"], update, req.SOCKSProxyID), r.text("name"), errDuplicateSOCKSName); err != nil {
+			return err
+		}
 		if !validSOCKSProxy(&r) {
 			return fault.New(fault.ValidationError, "Failed to save SOCKS proxy")
 		}

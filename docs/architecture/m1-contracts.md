@@ -133,7 +133,7 @@ func DetailsOf(err error) map[string]any
 | `conflict` | 409 | The change conflicts with the current state. |
 | `connection_cancelled` | 400 | The connection was cancelled. |
 | `csrf_expired` | 400 | The page has expired. Reload it and try again. |
-| `duplicate_name` | 409 | A saved host with this name already exists. |
+| `duplicate_name` | 409 | This name is already in use. |
 | `forbidden` | 403 | You are not allowed to do this. |
 | `host_key_changed` | 502 | The host key has changed. |
 | `host_key_not_accepted` | 502 | The host key was not accepted. |
@@ -196,10 +196,11 @@ The codes the Python release sends and the frontend matches on
 route outside factor repair, with the Python text; the frontend does not
 match on it, its spelling is kept for scripts. The `hosts.*` types keep the codes
 of the Python handlers: `in_use` (with `details.usages`),
-`validation_error` and `quota_exceeded`. New in 3.4: `hosts.profile.save`
-refuses a name another saved host of the same user already has with
-`duplicate_name` (names compared trimmed and case-folded; a host that
-keeps its own name is never refused). `PUT /api/overview/preferences`
+`validation_error` and `quota_exceeded`. New in 3.4: `hosts.profile.save`,
+`hosts.jump.save`, `hosts.socks.save`, `keys.upload` and `keys.rename`
+refuse a name another record of the same kind and user already has with
+`duplicate_name` (names compared trimmed and case-folded, `internal/naming`;
+a record that keeps its own name is never refused). `PUT /api/overview/preferences`
 keeps the codes of the Python route: `invalid_layout`,
 `invalid_dismissed` and `storage`.
 
@@ -555,7 +556,7 @@ The payload types are those of `payload_hosts.go` and `payload_keys.go`.
 (192 KiB: the key of at most 64 KiB, its passphrase and the step-up
 grant); every other type keeps the default of 4 KiB. `hosts.*` failures
 keep the Python codes (`in_use`, `validation_error`, `quota_exceeded`),
-plus `duplicate_name` of `hosts.profile.save`.
+plus `duplicate_name` of the saves.
 
 The shim's catalog entries may carry `answeredByPage(failure)`: a failure
 the page answers itself (the step-up and passphrase questions of the key

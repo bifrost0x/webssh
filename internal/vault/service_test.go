@@ -176,7 +176,10 @@ func TestStepUpRequired(t *testing.T) {
 	if err := upload(grant); err != nil {
 		t.Fatal(err)
 	}
-	wantCode(t, upload(grant), fault.StepUpRequired) // spent
+	// spent; another name, since a taken one is refused before the step-up
+	if _, err := r.svc.Upload(ctx, Upload{Name: "k2", Content: key, Grant: grant}); codeOf(err) != fault.StepUpRequired {
+		t.Errorf("spent grant: %v", err)
+	}
 
 	list, _ := r.svc.List(ctx)
 	if len(list) != 1 {
@@ -201,7 +204,8 @@ func TestStepUpRequired(t *testing.T) {
 
 	expired := &expiredStepUp{}
 	r.svc.stepUp = expired
-	wantCode(t, upload("issued-long-ago"), fault.StepUpRequired)
+	_, err := r.svc.Upload(ctx, Upload{Name: "k3", Content: key, Grant: "issued-long-ago"})
+	wantCode(t, err, fault.StepUpRequired)
 	if expired.calls != 1 {
 		t.Fatal("expired grant not checked")
 	}

@@ -2709,6 +2709,11 @@
             ProfileManager.uploadKey(name, keyContent, acknowledgement => {
                 keyUploadPending = false;
                 if (submit) submit.disabled = false;
+                if (acknowledgement?.code === 'duplicate_name') {
+                    window.ConnectionValidation?.fieldError(document.getElementById('keyNameInput'),
+                        window.i18n?.t('common.nameTaken') || 'This name is already in use. Choose another name.');
+                    return;
+                }
                 ProfileManager.reportKeyChangeFailure(acknowledgement);
             });
         });

@@ -178,3 +178,82 @@ func TestImportSkipsTakenNames(t *testing.T) {
 		}
 	}
 }
+
+func TestJumpHostAndSOCKSProxyNamesAreUnique(t *testing.T) {
+	s := seeded(t, Legacy{
+		JumpHosts: []jsontext.Value{
+			v(`{"id":"j-a","name":"Twin","host":"a.example","port":22,"username":"u","auth_type":"password","key_id":null}`),
+			v(`{"id":"j-b","name":"twin ","host":"b.example","port":22,"username":"u","auth_type":"password","key_id":null}`),
+		},
+		SOCKSProxies: []jsontext.Value{
+			v(`{"id":"s-a","name":"Pair","host":"a.example","port":1080,"username":"","auth_type":"none","remote_dns":true,"created_at":"2026-01-01T00:00:00"}`),
+			v(`{"id":"s-b","name":"PAIR","host":"b.example","port":1080,"username":"","auth_type":"none","remote_dns":true,"created_at":"2026-01-01T00:00:00"}`),
+		},
+	})
+	ctx := t.Context()
+	jump := func(id, name string) protocol.HostsJumpSave {
+		req := protocol.HostsJumpSave{Name: jsonString(name), Host: v(`"j.example"`), Username: v(`"u"`), AuthType: v(`"password"`)}
+		if id != "" {
+			req.JumpHostID = jsonString(id)
+		}
+		return req
+	}
+	socks := func(id, name string) protocol.HostsSOCKSSave {
+		req := protocol.HostsSOCKSSave{Name: jsonString(name), Host: v(`"s.example"`)}
+		if id != "" {
+			req.SOCKSProxyID = jsonString(id)
+		}
+		return req
+	}
+	if _, err := s.SaveJumpHost(ctx, oracleUser, jump("", " TWIN")); code(err) != fault.DuplicateName {
+		t.Errorf("new jump host with a taken name: %v", err)
+	}
+	if _, err := s.SaveSOCKSProxy(ctx, oracleUser, socks("", "pair")); code(err) != fault.DuplicateName {
+		t.Errorf("new SOCKS proxy with a taken name: %v", err)
+	}
+	// Migrated duplicates stay editable under their name.
+	if _, err := s.SaveJumpHost(ctx, oracleUser, jump("j-b", "twin")); err != nil {
+		t.Errorf("editing a migrated jump host duplicate: %v", err)
+	}
+	if _, err := s.SaveSOCKSProxy(ctx, oracleUser, socks("s-b", "PAIR")); err != nil {
+		t.Errorf("editing a migrated SOCKS duplicate: %v", err)
+	}
+	if _, err := s.SaveJumpHost(ctx, oracleUser, jump("", "Bastion")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SaveJumpHost(ctx, oracleUser, jump("j-a", "BASTION")); code(err) != fault.DuplicateName {
+		t.Errorf("jump host renamed onto a taken name: %v", err)
+	}
+	if _, err := s.SaveSOCKSProxy(ctx, oracleUser, socks("s-a", "Twin")); err != nil {
+		t.Errorf("names are unique per kind, not across kinds: %v", err)
+	}
+	if _, err := s.SaveJumpHost(ctx, 4, jump("", "Bastion")); err != nil {
+		t.Errorf("another user's jump host name blocks: %v", err)
+	}
+}
+
+func TestConcurrentJumpHostCreatesStoreOne(t *testing.T) {
+	s := seeded(t, Legacy{})
+	s.NewID = nil // the oracle's counter is not for concurrent callers; a jump host draws its id before the transaction
+	const callers = 12
+	var wg sync.WaitGroup
+	errs := make([]error, callers)
+	for i := range callers {
+		wg.Go(func() {
+			_, errs[i] = s.SaveJumpHost(t.Context(), oracleUser, protocol.HostsJumpSave{Name: v(`"Racing bastion"`),
+				Host: v(`"r.example"`), Username: v(`"u"`), AuthType: v(`"password"`)})
+		})
+	}
+	wg.Wait()
+	created := 0
+	for _, err := range errs {
+		if err == nil {
+			created++
+		} else if code(err) != fault.DuplicateName {
+			t.Errorf("unexpected failure: %v", err)
+		}
+	}
+	if created != 1 {
+		t.Errorf("%d creates succeeded, want 1", created)
+	}
+}

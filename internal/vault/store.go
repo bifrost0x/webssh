@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/keyring"
+	"github.com/bifrost0x/webssh/internal/naming"
 	"github.com/bifrost0x/webssh/internal/store"
 )
 
@@ -122,6 +124,31 @@ func execOne(ctx context.Context, tx *store.Tx, query string, args ...any) error
 	}
 	if n != 1 {
 		return errNotFound
+	}
+	return nil
+}
+
+var errKeyName = fault.New(fault.DuplicateName, "A key with this name already exists")
+
+// checkKeyName refuses a key name another key of the user already has
+// (internal/naming). own is the key being renamed, "" for a new one; a key
+// that keeps its own name is never refused, so duplicates migrated from
+// 3.3 stay usable.
+func checkKeyName(ctx context.Context, tx *store.Tx, userID int64, own, name string) error {
+	rows, err := listRows(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	names := make([]string, len(rows))
+	var mine []int
+	for i, r := range rows {
+		names[i] = r.Name
+		if r.ID == own {
+			mine = append(mine, i)
+		}
+	}
+	if naming.Taken(names, mine, name) {
+		return errKeyName
 	}
 	return nil
 }

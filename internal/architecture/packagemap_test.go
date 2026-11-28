@@ -60,6 +60,7 @@ var packageMap = map[string]role{
 	"internal/ldapproto":                      {kind: foundation},
 	"internal/platform":                       {kind: foundation},
 	"internal/pyjson":                         {kind: foundation},
+	"internal/naming":                         {kind: foundation},
 	"internal/session":                        {kind: capability},
 	"internal/audit":                          {kind: capability},
 	"internal/quota":                          {kind: capability},
