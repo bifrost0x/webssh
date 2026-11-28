@@ -218,7 +218,7 @@ func (j *PermissionJobs) change(ctx context.Context, c PermCaller, sourceID, p s
 	if before.Mode == fmt.Sprintf("%03o", want) {
 		return reply(before), before.Mode, nil
 	}
-	if err := src.Chmod(ctx, p, want); err != nil {
+	if err := src.Chmod(ctx, p, want, e); err != nil {
 		if fault.CodeOf(err) == fault.ModeMismatch {
 			if e, err2 := src.Lstat(ctx, p); err2 == nil {
 				return nil, before.Mode, modeMismatch(e.Mode)

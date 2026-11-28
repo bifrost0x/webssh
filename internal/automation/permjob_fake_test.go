@@ -83,7 +83,7 @@ func (t *permTree) Children(_ context.Context, dir string, fn func(string) error
 	return nil
 }
 
-func (t *permTree) Chmod(_ context.Context, p string, perm uint32) error {
+func (t *permTree) Chmod(_ context.Context, p string, perm uint32, _ PermEntry) error {
 	t.mu.Lock()
 	if p == t.failAt {
 		t.mu.Unlock()

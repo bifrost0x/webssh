@@ -211,8 +211,23 @@ func (p permBackend) Children(ctx context.Context, dir string, fn func(string) e
 	}
 }
 
-func (p permBackend) Chmod(ctx context.Context, path string, perm uint32) error {
-	return p.b.Chmod(ctx, path, fs.FileMode(perm)&fs.ModePerm)
+// expectChmoder is a backend that ties a permission change to the object
+// the caller inspected (SFTP: on a handle for regular files).
+type expectChmoder interface {
+	ChmodExpect(ctx context.Context, path string, perm fs.FileMode, want files.Entry) error
+}
+
+func (p permBackend) Chmod(ctx context.Context, path string, perm uint32, want automation.PermEntry) error {
+	mode := fs.FileMode(perm) & fs.ModePerm
+	b, ok := p.b.(expectChmoder)
+	if !ok {
+		return p.b.Chmod(ctx, path, mode)
+	}
+	e := files.Entry{Mode: want.Mode, Size: want.Size, ModTime: want.ModTime}
+	if want.UID != nil && want.GID != nil {
+		e.Owner = &files.Owner{UID: *want.UID, GID: *want.GID}
+	}
+	return b.ChmodExpect(ctx, path, mode, e)
 }
 
 // permAudit writes FILE_SOURCE_OPERATION with the target fields of the

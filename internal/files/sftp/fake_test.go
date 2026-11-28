@@ -217,7 +217,7 @@ func TestChmodNeverFollowsLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantCode(t, b.Chmod(context.Background(), "/link", 0o600), fault.UnsupportedOperation)
-	if got := f.requests(); got != "lstat,lsetstat@openssh.com,lstat,lstat" {
+	if got := f.requests(); got != "lstat,open,lsetstat@openssh.com,lstat,lstat" {
 		t.Fatalf("requests %s", got)
 	}
 	mu.Lock()
@@ -228,8 +228,11 @@ func TestChmodNeverFollowsLinks(t *testing.T) {
 
 func TestChmodModeMismatch(t *testing.T) {
 	b, _ := newFake(t, Options{ChmodEnabled: true}, func(typ byte, _ uint32, d *decoder) (byte, []byte) {
-		if typ == fxpLstat {
+		switch typ {
+		case fxpLstat:
 			return fxpAttrs, attrsBody(0o100644)
+		case fxpOpen:
+			return fxpStatus, statusBody(fxOpUnsupported)
 		}
 		return fxpStatus, statusBody(fxOK)
 	})
