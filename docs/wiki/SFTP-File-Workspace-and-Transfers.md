@@ -276,7 +276,10 @@ why the replacement was refused.
 
 A new file receives the SFTP server's default permissions, as with any SFTP
 client; servers that force a create mode (for example `internal-sftp -m`) are
-supported. A replacement keeps the previous file's mode. Its staged copy is
+supported. This holds for server-to-server copies too: the mode of the source
+file is not carried over, as in 3.3, so a private source (`0600`) can arrive
+with the target's default (often `0644`). Copy private files only into
+private folders, or give the target account a restrictive umask. A replacement keeps the previous file's mode. Its staged copy is
 never more widely readable than the file it replaces; a server that cannot
 guarantee this, a symbolic link, special permission bits or a different
 owner or group prevent the replacement.

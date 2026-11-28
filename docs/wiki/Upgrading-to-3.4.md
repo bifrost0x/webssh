@@ -37,6 +37,9 @@ issue or a question can point to one line.
   before, in saved hosts and in the allowlists of SOCKS5, SMB and Tailscale
   SSH.
 - The LDAP filter syntax, `LDAP_CA_FILE` and the `ldap-tools` helper volume.
+- Uploads and server-to-server copies create new files with the target SFTP
+  server's default permissions, not with the mode of the source, as 3.3 did
+  (`U904`).
 
 ## Before you upgrade
 
@@ -206,6 +209,7 @@ The `Kind` column says whether a change fixes a 3.3 problem (`fix`), is new
 | U84 | Folder downloads no longer reserve the `QUOTA_TEMP_BYTES_*` quota; each archive stays limited to the smaller of `MAX_ZIP_DOWNLOAD_SIZE` and `QUOTA_TEMP_BYTES_PER_USER`. | fix | Nothing. |
 | U85 | SMB follows the same network policy as SSH: loopback and tailnet addresses are allowed unless `BLOCK_INTERNAL_SSH=true`. `SMB_ALLOWED_TARGETS` stays an exact allowlist. Share enumeration is removed. Windows status codes that 3.3 reported as `OPERATION_FAILED` now get specific codes, and on Windows servers a rename or upload whose reply was lost is reported as done when it took effect. | decided | Check `SMB_ALLOWED_TARGETS` if you relied on the stricter 3.3 address check. |
 | U86 | Folder copies, folder downloads and recursive deletes on SFTP stop with "The source changed during the operation" (SOURCE_CHANGED) when a folder of the tree is replaced by a link while they run; the link target is left untouched. Paths longer than 4096 bytes inside such a tree stop the operation. An SFTP upload or copy whose target folder is replaced by a link while it is written stops the same way. | fix | Nothing. |
+| U904 | Kept as in 3.3 by decision: a server-to-server copy does not carry the source file's mode. A new file gets the target server's default permissions, so a `0600` source can arrive as `0644`; a replaced file keeps the previous file's mode. | decided | Copy private files only into private folders, or set a restrictive umask or create mode on the target server (for example `internal-sftp -u 077`). |
 
 ### Saved passwords and automation
 
