@@ -100,10 +100,10 @@ func Purge(ctx context.Context, o PurgeOptions) (*Purged, error) {
 	switch {
 	case ev.state == S10:
 		out.Backup, out.Removed = ev.purge.Backup, len(ev.purge.Files)
-		return out, completePurge(ctx, l, o.Options, ev.keyID)
+		return out, completePurge(ctx, l, o.Options, ev)
 	case ev.state == S4:
 		out.Backup = ev.purge.Backup
-		return out, completePurge(ctx, l, o.Options, ev.keyID)
+		return out, completePurge(ctx, l, o.Options, ev)
 	case ev.stop != nil:
 		return nil, ev.stop
 	case ev.record == nil:
@@ -142,7 +142,7 @@ func Purge(ctx context.Context, o PurgeOptions) (*Purged, error) {
 		return nil, stop(ev.state, CodePurgeFailed, "the purge entry could not be written; nothing was removed", err)
 	}
 	o.at(PointPurgeStarted)
-	return out, completePurge(ctx, l, o.Options, ev.keyID)
+	return out, completePurge(ctx, l, o.Options, ev)
 }
 
 // refusePending refuses while the record names entities this build left
@@ -268,17 +268,39 @@ func startPurge(ctx context.Context, l layout, e purgeEntry) error {
 // completePurge is section 5.9 steps 2 and 3 and the move of the keyring
 // material. It continues a purge from its stored entry, so a start in S10
 // and a repeated purge finish an interrupted one; every step is
-// idempotent.
-func completePurge(ctx context.Context, l layout, o Options, keyID string) error {
+// idempotent. Only files of the migration record's purge list are
+// removed (recordedPurgeFiles).
+func completePurge(ctx context.Context, l layout, o Options, ev evaluation) error {
 	db, err := store.Open(ctx, l.database, store.Options{})
 	if err != nil {
 		return stop(S10, CodePurgeFailed, "the Go database could not be opened to complete the purge", err)
 	}
-	err = finishPurge(ctx, l, o, db, keyID)
+	var recorded []string
+	if ev.record != nil {
+		recorded = purgeList(ev.record.Listing)
+	}
+	err = finishPurge(ctx, l, o, db, ev.keyID, recorded)
 	return errors.Join(err, db.CloseForActivation(ctx))
 }
 
-func finishPurge(ctx context.Context, l layout, o Options, db *store.DB, keyID string) error {
+// checkPurgeFiles refuses a purge entry that names a file outside the
+// purge list of the migration record. The entry lives in the Go
+// database; it must never remove secret_key, logs/, go/ or a file the
+// migration did not record, whatever wrote it.
+func checkPurgeFiles(files, recorded []string) error {
+	allowed := make(map[string]bool, len(recorded))
+	for _, f := range recorded {
+		allowed[f] = true
+	}
+	for _, f := range files {
+		if !allowed[f] {
+			return fmt.Errorf("legacy: the purge entry names %q, which is not a recorded legacy file", f)
+		}
+	}
+	return nil
+}
+
+func finishPurge(ctx context.Context, l layout, o Options, db *store.DB, keyID string, recorded []string) error {
 	var e *purgeEntry
 	err := db.Read(ctx, func(tx *store.Tx) error {
 		var err error
@@ -289,6 +311,10 @@ func finishPurge(ctx context.Context, l layout, o Options, db *store.DB, keyID s
 		return stop(S10, CodePurgeFailed, "the purge entry could not be read", err)
 	}
 	if e.InProgress {
+		if err := checkPurgeFiles(e.Files, recorded); err != nil {
+			return stop(S7, CodeGoDatabase, "the purge entry of the Go database lists files the migration record does "+
+				"not; nothing was removed. Restore the Go database from a backup", err)
+		}
 		if err := removeLegacyFiles(l.dataDir, e.Files, o); err != nil {
 			return stop(S10, CodePurgeFailed, "a legacy file could not be removed; the purge continues at the next "+
 				"start or with `webssh legacy purge`", err)
