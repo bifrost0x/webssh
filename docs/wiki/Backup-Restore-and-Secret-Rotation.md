@@ -25,7 +25,7 @@ secret is included and a SHA-256 for every member. Members are stored below
 |---|---|
 | `data/go/webssh.db` | the database, taken as a consistent snapshot |
 | `data/secret_key` | `SECRET_KEY` when it comes from `DATA_DIR/secret_key`, unless `--without-secret-key` is given. A `SECRET_KEY` set in the environment is left out, as 3.3 did, unless `backup create --include-secret-key` is given; restore such an archive with the same `SECRET_KEY`. The online backup and the `legacy purge` backup follow the same rule. |
-| `data/go/keyring-material` | the key material that, together with `SECRET_KEY`, protects stored secrets |
+| `data/go/keyring-material` | the key material that, together with `SECRET_KEY`, protects stored secrets. Left out only by `--without-secret-key` while the 3.3 data exists and `SECRET_KEY` comes from `DATA_DIR/secret_key`: every 3.3 backup made after a way back holds that file. |
 | `data/<path>` | only in the backup `legacy purge` writes: left-over files of the 3.3 data |
 
 What an archive restores depends on its reason:
@@ -103,7 +103,8 @@ no longer needed. `rotate-secret-key` is refused until then.
   the archive, the restore is refused before anything changes. Restore with
   the `SECRET_KEY` the archive was made with.
 - An archive made with `--without-secret-key` needs the same `SECRET_KEY`
-  on the target.
+  on the target. While the 3.3 data exists, such an archive also lacks the
+  keyring material and restores only on a host that has both.
 - `migrate --replace` keeps the replaced data in `go/replaced-<UTC>/`
   without `SECRET_KEY` or key material; it opens with the installation's
   keys. A restore that installs other key material or another `SECRET_KEY`

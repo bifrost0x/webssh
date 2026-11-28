@@ -208,7 +208,8 @@ func wireBackup(sys *system) error {
 		Logger: sys.log, Limits: inst.Limits, Timeout: cfg.Backup.OperationTimeout, Background: ctx,
 		Export: func(ctx context.Context, path, work string) (backup.Verified, error) {
 			return backup.Export(ctx, backup.ExportRequest{Source: sys.db, Path: path, Work: work,
-				Scrub: exportScrubbers(), SecretKey: cfg.SecretKey.Bytes(), WithoutSecretKey: envSecret(cfg), Material: inst.Material, KeyID: sys.ring.KeyID(), Release: buildinfo.Read().Version,
+				Scrub: exportScrubbers(), SecretKey: cfg.SecretKey.Bytes(), WithoutSecretKey: envSecret(cfg),
+				WithoutMaterial: leaveOutMaterial(cfg.SecretSource, envSecret(cfg), legacyPresent(cfg)), Material: inst.Material, KeyID: sys.ring.KeyID(), Release: buildinfo.Read().Version,
 				Now: time.Now().UTC(), Probes: inst.Probes, Limits: inst.Limits})
 		},
 		Restore: &backup.RestoreRunner{Inst: inst, Ops: ops, Maintenance: &sys.maintenance, Drain: sys.drainForRestore,

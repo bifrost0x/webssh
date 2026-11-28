@@ -1150,9 +1150,11 @@ and `backup_download` (MAC). New store owners: `authgithub`, `authldap`,
   after the `backup.download` step-up. Operations live in memory only,
   bound to the account and the browser session, as in Python; the
   download needs no stored token (`keyring.BackupDownload` stays unused).
-  `--without-secret-key` leaves out `data/secret_key` only; the keyring
+  `--without-secret-key` leaves out `data/secret_key`; the keyring
   material stays in the archive, so the same `SECRET_KEY` opens it on
-  another host (D-08, OP1-2). Uploads are streamed past the edge
+  another host (D-08, OP1-2). Exception: while the legacy data exists and
+  the key is `DATA_DIR/secret_key`, the material is left out too
+  (`backup.ExportRequest.WithoutMaterial`, migration specification 2.2). Uploads are streamed past the edge
   (`httpapi.Handler.StreamBody`).
 - **Restore** reads Go archives strictly (D-30: no absolute paths, no
   `..`, no links or devices, every member in the manifest) within
