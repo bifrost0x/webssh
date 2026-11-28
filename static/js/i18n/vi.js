@@ -107,6 +107,30 @@ window.i18n.registerLocales({
 
         "tour.loadError": "Không thể tải phần giới thiệu. Vui lòng thử lại.",
 
+        "upgradeNotice.title": "Từ bản 3.4, WebSSH chạy trên nền tảng mới viết bằng Go",
+
+        "upgradeNotice.body": "Toàn bộ dữ liệu của bạn đã được tự động chuyển sang trong lần cập nhật. Bạn chỉ cần đăng nhập lại một lần.",
+
+        "upgradeNotice.benefits": "Bạn nhận được:",
+
+        "upgradeNotice.faster": "Khởi động, đăng nhập, terminal và truyền tệp nhanh hơn.",
+
+        "upgradeNotice.memory": "Dùng ít bộ nhớ hơn đáng kể.",
+
+        "upgradeNotice.image": "Image nhỏ hơn, không chứa gói hệ điều hành nên cũng không còn các lỗ hổng đã biết của những gói đó.",
+
+        "upgradeNotice.report": "Có gì không hoạt động như trước? Hãy báo lại bằng một issue trên GitHub, tôi sẽ xử lý ngay.",
+
+        "upgradeNotice.changes": "Những gì đã thay đổi",
+
+        "upgradeNotice.issues": "Báo lỗi",
+
+        "upgradeNotice.confirm": "Đã hiểu",
+
+        "upgradeNotice.supportTitle": "WebSSH vẫn tự do và độc lập",
+
+        "upgradeNotice.support": "Tôi phát triển WebSSH một mình, không có công ty đứng sau và không có quảng cáo. Máy chủ, việc kiểm thử và thời gian phát triển đều do tôi tự chi trả. Mọi sự ủng hộ đều trực tiếp giúp WebSSH tiếp tục phát triển.",
+
         "tour.feature.smb": "Nguồn tệp SMB",
 
         "tour.feature.chmod": "Thay đổi quyền tệp",

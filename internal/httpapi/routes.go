@@ -107,6 +107,8 @@ var m1Routes = []route{
 	{"POST /api/account/preferences", AccessUser},
 	{"GET /api/account/tour", AccessUser},
 	{"POST /api/account/tour", AccessUser},
+	{"GET /api/account/notices", AccessUser},
+	{"POST /api/account/notices/acknowledge", AccessUser},
 	{"GET /api/account/workspace-presets", AccessUser},
 	{"PUT /api/account/workspace-presets", AccessUser},
 	{"GET /api/account/recovery-check", AccessUser},

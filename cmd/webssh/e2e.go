@@ -35,6 +35,7 @@ import (
 	"github.com/bifrost0x/webssh/internal/httpapi"
 	"github.com/bifrost0x/webssh/internal/netpolicy"
 	"github.com/bifrost0x/webssh/internal/realtime/protocol"
+	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/ssh/client"
 	"github.com/bifrost0x/webssh/internal/store"
 	"github.com/bifrost0x/webssh/internal/terminal"
@@ -207,6 +208,11 @@ func (e e2eStores) CreateLocal(ctx context.Context, username, password string, a
 
 func (e e2eStores) MarkMFAEnabled(ctx context.Context, userID int64) error {
 	return e.sys.db.Write(ctx, func(tx *store.Tx) error { return e.sys.accounts.SetMFARequiredTx(ctx, tx, userID, true) })
+}
+
+// MarkMigrated grants the upgrade notice, as E25 of the migration does.
+func (e e2eStores) MarkMigrated(ctx context.Context, userID int64) error {
+	return e.sys.db.Write(ctx, func(tx *store.Tx) error { return settings.GrantNotice(ctx, tx, userID, settings.NoticeUpgrade) })
 }
 
 // SetFeature stores the administrator choice as the seed states it. Like

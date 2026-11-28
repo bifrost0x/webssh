@@ -107,6 +107,30 @@ window.i18n.registerLocales({
 
         "tour.loadError": "Impossible de charger la visite. Veuillez réessayer.",
 
+        "upgradeNotice.title": "Avec la 3.4, WebSSH repose sur une nouvelle base écrite en Go",
+
+        "upgradeNotice.body": "Toutes vos données ont été reprises automatiquement lors de la mise à jour. Vous avez seulement dû vous reconnecter une fois.",
+
+        "upgradeNotice.benefits": "Ce que vous y gagnez :",
+
+        "upgradeNotice.faster": "Plus rapide au démarrage, à la connexion, dans le terminal et pour les transferts de fichiers.",
+
+        "upgradeNotice.memory": "Une consommation de mémoire nettement réduite.",
+
+        "upgradeNotice.image": "Une image plus petite, sans paquets du système d’exploitation et donc sans leurs vulnérabilités connues.",
+
+        "upgradeNotice.report": "Quelque chose ne fonctionne plus comme avant ? Signalez-le dans une issue sur GitHub, je m’en occupe immédiatement.",
+
+        "upgradeNotice.changes": "Ce qui a changé",
+
+        "upgradeNotice.issues": "Signaler un problème",
+
+        "upgradeNotice.confirm": "Compris",
+
+        "upgradeNotice.supportTitle": "WebSSH reste libre et indépendant",
+
+        "upgradeNotice.support": "Je développe WebSSH seul, sans entreprise derrière et sans publicité. Je paie moi-même les serveurs, les tests et le temps de développement. Chaque soutien sert directement à faire avancer WebSSH.",
+
         "tour.feature.smb": "Sources de fichiers SMB",
 
         "tour.feature.chmod": "Modifier les permissions des fichiers",

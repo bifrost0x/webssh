@@ -49,13 +49,16 @@ type AdminSettings struct {
 	LoginUsernameGlobalLimit *int  `json:"login_username_global_limit"`
 }
 
-// Account is a local account. Ref is how other entries name it.
+// Account is a local account. Ref is how other entries name it. Migrated
+// marks an account as taken over from the previous release by the
+// first-start migration.
 type Account struct {
 	Ref        string `json:"ref"`
 	Username   string `json:"username"`
 	Password   string `json:"password"`
 	Admin      bool   `json:"admin"`
 	MFAEnabled bool   `json:"mfa_enabled"`
+	Migrated   bool   `json:"migrated"`
 }
 
 // AccountSettings are stored for every seeded account.

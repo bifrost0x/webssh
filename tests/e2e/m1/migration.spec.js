@@ -59,7 +59,9 @@ test('the previous password and TOTP sign in, and hosts, key and host key are th
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
 
-    await ui.signIn(page, fixture.username, fixture.password, {totpSecret: fixture.totpSecret, usedSteps: fixture.usedSteps});
+    const firstSignIn = await ui.signIn(page, fixture.username, fixture.password, {totpSecret: fixture.totpSecret, usedSteps: fixture.usedSteps});
+    // The Go server shows the taken-over account its upgrade notice once.
+    expect(firstSignIn.upgradeNotice).toBe(kind === 'go');
 
     await ui.openHosts(page);
     await expect(ui.hostRow(page, fixture.hosts.key)).toBeVisible();
@@ -69,7 +71,7 @@ test('the previous password and TOTP sign in, and hosts, key and host key are th
     await expect(page.locator('#profileEditorAuthType')).toHaveValue('key');
     await expect(page.locator('#profileEditorKeySelect option:checked')).toContainText(fixture.keyName);
     await page.reload();
-    await ui.dismissTour(page);
+    expect((await ui.dismissTour(page)).upgradeNotice).toBe(false);
 
     await ui.watchHostKeyPrompts(page);
     const session = await ui.connectSavedHost(page, fixture.hosts.key);

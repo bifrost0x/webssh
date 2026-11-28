@@ -354,7 +354,7 @@ func TestRotationCoversEveryTable(t *testing.T) {
 		"authoidc_identities", "hostkey_files", "hostops_host_context", "hostops_notes", "hosts_jump_hosts",
 		"hosts_profiles", "hosts_socks_proxies", "hosts_workspace_presets", "jobs_state", "migrate_keyring",
 		"migrate_purge", "migrate_record", "operations_feature_gates", "session_epoch", "session_revocations",
-		"settings_app", "settings_user", "smb_shares", "store_migrations", "terminal_persistent_sessions",
+		"settings_app", "settings_notices", "settings_user", "smb_shares", "store_migrations", "terminal_persistent_sessions",
 		"vault_credential_assignments", "vault_credential_imports",
 		"vault_legacy_automation", // sealed with the user's passphrase, not the keyring
 		"webauthn_credentials",

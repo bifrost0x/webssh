@@ -73,7 +73,10 @@ how to remove the 3.3 data later.
 4. Remove Compose overrides that start `sh`, `gunicorn` or `python`
    (`U15`, `U16`).
 5. Start 3.4 and watch the log for `migration completed`. Everyone signs in
-   once (`U04`).
+   once (`U04`). After that, each account taken over from 3.3 sees a short
+   notice once that explains the new server and links to
+   [Upgrading to 3.4](wiki/Upgrading-to-3.4.md) and to the issue tracker
+   (`U102`).
 
 Behaviour changes to check before upgrading, in short; the full list with
 what to do is in [Upgrading to 3.4](wiki/Upgrading-to-3.4.md#changes-you-can-notice):

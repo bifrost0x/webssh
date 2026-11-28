@@ -13,7 +13,7 @@
     {"file": "auth-original-layout.spec.js", "exclude": []},
     {"file": "auth-session-warning.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "account-controls.spec.js", "exclude": []},
-    {"file": "account-menu.spec.js", "exclude": []},
+    {"file": "account-menu.spec.js", "serial": "e2e_admin", "exclude": []},
     {"file": "branding.spec.js", "exclude": []},
     {"file": "admin-step-up-cancel.spec.js", "exclude": []},
     {"file": "admin-feature-recovery.spec.js", "exclude": []},
@@ -193,6 +193,7 @@
     {"file": "landscape-shell.spec.js", "exclude": []},
     {"file": "usability-orientation.spec.js", "exclude": []},
     {"file": "notifications-dialog-focus.spec.js", "exclude": []},
-    {"file": "work-first-setup.spec.js", "exclude": []}
+    {"file": "work-first-setup.spec.js", "exclude": []},
+    {"file": "upgrade-notice.spec.js", "exclude": []}
   ]
 }

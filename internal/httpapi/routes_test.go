@@ -52,8 +52,10 @@ func loadPythonRoutes(t *testing.T) []pythonRoute {
 
 // goOnlyRoutes are catalog routes without a Python counterpart.
 // The handoff of large editor and image answers (internal/files) keeps
-// them out of the realtime queue.
-var goOnlyRoutes = []string{"GET /ws", "GET /api/realtime/status", "GET /api/files/handoff/{}"}
+// them out of the realtime queue; the notices are the one-time notices of
+// accounts taken over from the Python release (internal/settings).
+var goOnlyRoutes = []string{"GET /ws", "GET /api/realtime/status", "GET /api/files/handoff/{}",
+	"GET /api/account/notices", "POST /api/account/notices/acknowledge"}
 
 // TestRouteCatalogCoversPython: every route of the Python release is a
 // route of the catalog or dropped by a decision, never both, and the

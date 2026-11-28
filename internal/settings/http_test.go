@@ -110,7 +110,8 @@ func TestRoutesRequireAnAccount(t *testing.T) {
 	recovery := principaltest.User(3)
 	recovery.Recovery = true
 	for _, rt := range [][2]string{{"POST", "/api/account/preferences"}, {"GET", "/api/account/tour"},
-		{"POST", "/api/account/tour"}, {"PUT", "/api/overview/preferences"}} {
+		{"POST", "/api/account/tour"}, {"PUT", "/api/overview/preferences"},
+		{"GET", "/api/account/notices"}, {"POST", "/api/account/notices/acknowledge"}} {
 		if r := call(t, mux, nil, rt[0], rt[1], `{"theme":"noir"}`, "application/json"); r.status != 401 {
 			t.Errorf("%v without principal: %d", rt, r.status)
 		}

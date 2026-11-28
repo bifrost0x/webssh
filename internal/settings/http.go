@@ -44,6 +44,8 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/account/preferences", h.serve(h.preferences))
 	mux.HandleFunc("GET /api/account/tour", h.serve(h.tourState))
 	mux.HandleFunc("POST /api/account/tour", h.serve(h.tourSave))
+	mux.HandleFunc("GET /api/account/notices", h.serve(h.notices))
+	mux.HandleFunc("POST /api/account/notices/acknowledge", h.serve(h.acknowledgeNotice))
 	mux.HandleFunc("PUT /api/overview/preferences", h.serve(h.overviewPreferences))
 }
 

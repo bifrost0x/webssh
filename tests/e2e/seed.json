@@ -43,7 +43,9 @@
     {"ref": "mixed_mfa", "username": "e2e_mixed_mfa", "password": "browser-password", "admin": false, "mfa_enabled": true},
     {"ref": "sessions", "username": "e2e_sessions", "password": "browser-password", "admin": false},
     {"ref": "logout", "username": "e2e_logout", "password": "browser-password", "admin": false},
-    {"ref": "theme", "username": "e2e_theme", "password": "browser-password", "admin": false}
+    {"ref": "theme", "username": "e2e_theme", "password": "browser-password", "admin": false},
+    {"ref": "upgraded", "username": "e2e_upgraded", "password": "browser-password", "admin": false, "migrated": true},
+    {"ref": "upgraded_keyboard", "username": "e2e_upgraded_keyboard", "password": "browser-password", "admin": false, "migrated": true}
   ],
   "account_settings": {
     "intro_tour": "completed",

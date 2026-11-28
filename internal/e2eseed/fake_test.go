@@ -19,6 +19,7 @@ type fakeStores struct {
 	users     map[int64]string
 	admins    map[int64]bool
 	mfa       map[int64]bool
+	migrated  map[int64]bool
 	keys      map[string]ed25519.PrivateKey
 	jumps     map[string]JumpHostRecord
 	proxies   map[string]SOCKSProxyRecord
@@ -29,7 +30,7 @@ type fakeStores struct {
 
 func newFakeStores() *fakeStores {
 	return &fakeStores{
-		users: map[int64]string{}, admins: map[int64]bool{}, mfa: map[int64]bool{},
+		users: map[int64]string{}, admins: map[int64]bool{}, mfa: map[int64]bool{}, migrated: map[int64]bool{},
 		keys: map[string]ed25519.PrivateKey{}, jumps: map[string]JumpHostRecord{},
 		proxies: map[string]SOCKSProxyRecord{}, profiles: map[int64][]ProfileRecord{},
 		commands: map[int64][2][]jsontext.Value{},
@@ -75,6 +76,11 @@ func (f *fakeStores) CreateLocal(_ context.Context, username, _ string, admin bo
 func (f *fakeStores) MarkMFAEnabled(_ context.Context, userID int64) error {
 	f.mfa[userID] = true
 	return f.record(fmt.Sprintf("mfa %d", userID))
+}
+
+func (f *fakeStores) MarkMigrated(_ context.Context, userID int64) error {
+	f.migrated[userID] = true
+	return f.record(fmt.Sprintf("migrated %d", userID))
 }
 
 func (f *fakeStores) SetRegistrationEnabled(_ context.Context, enabled bool) error {

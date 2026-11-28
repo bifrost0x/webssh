@@ -24,6 +24,9 @@ type Accounts interface {
 	CreateLocal(ctx context.Context, username, password string, admin bool) (userID int64, err error)
 	// MarkMFAEnabled marks the account as enrolled in a second factor.
 	MarkMFAEnabled(ctx context.Context, userID int64) error
+	// MarkMigrated records for the account what the first-start migration
+	// records for every account it takes over from the previous release.
+	MarkMigrated(ctx context.Context, userID int64) error
 }
 
 // AppSettings holds the admin policies of the seed.
@@ -233,6 +236,11 @@ func applyAccounts(ctx context.Context, s *Seed, st Stores, users map[string]int
 		if acc.MFAEnabled {
 			if err := st.Accounts.MarkMFAEnabled(ctx, users[acc.Ref]); err != nil {
 				return fmt.Errorf("mfa flag %s: %w", acc.Ref, err)
+			}
+		}
+		if acc.Migrated {
+			if err := st.Accounts.MarkMigrated(ctx, users[acc.Ref]); err != nil {
+				return fmt.Errorf("migrated flag %s: %w", acc.Ref, err)
 			}
 		}
 	}

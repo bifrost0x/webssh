@@ -96,7 +96,7 @@ implementation and the reference for the exact semantics.
 | `unset_environment` | Variables removed so that the related policies stay changeable at runtime (automation, registration). |
 | `data_files` | Files written into the data directory before startup (plain file names only). |
 | `admin_settings` | Admin policies applied before accounts are created: automation and registration enabled, raised username login limits. |
-| `accounts` | Local accounts. `ref` is the name other entries use to point at the account. `mfa_enabled` marks the account as enrolled. |
+| `accounts` | Local accounts. `ref` is the name other entries use to point at the account. `mfa_enabled` marks the account as enrolled. `migrated` marks the account as taken over from 3.3 by the first-start migration: the Go server records the pending upgrade notice for it; the Python release has no such migration and ignores the flag. |
 | `account_settings` | Per-account settings stored for every account (intro tour already seen). |
 | `external_identities` | GitHub and OIDC identities linked to an account. |
 | `security_features` | Enabled TOTP and passkey features, attributed to an account. |
@@ -188,7 +188,7 @@ and its own configuration, `-c tests/e2e/m2/playwright.config.js`.
 | `ldap` | LDAP from a secret volume against `ldap1`: wrong directory password refused, sign-in with auto-provisioning, the administrator unlinks the identity with a new local password (step-up), local sign-in, a new link, local password refused and directory sign-in again |
 | `tmux` | a saved host on `ssh-modern` with tmux and a startup command opens a tmux session; the server restarts; the page lists the persistent session, the user reattaches with the password, the shell state is that of before and the startup command ran once; closing the tab ends it |
 | `saved-password` | saved passwords over HTTPS: a TLS proxy with a certificate made per run by `openssl` (`https-proxy.js`, trusted through `TRUSTED_PROXIES=1`) in front of the backend; "Save passwords" switched on, a saved host on `ssh-modern` with a new saved password connects without a typed password, as does Quick Connect with that saved password; a target changed after the page authorized it is refused with the interface's message; over plain HTTP the form says that saved passwords need HTTPS and a `ssh_connect` carrying the saved password and its token is refused without a session |
-| `migration` | the Python release writes a `DATA_DIR` through its interface (`python-data-dir.js`: TOTP, key, two hosts, accepted host key); the server under test starts on a copy; old password and TOTP sign in, hosts and key are there, the host key is trusted. On Go also the migration report and an unchanged legacy listing |
+| `migration` | the Python release writes a `DATA_DIR` through its interface (`python-data-dir.js`: TOTP, key, two hosts, accepted host key); the server under test starts on a copy; old password and TOTP sign in, hosts and key are there, the host key is trusted. On Go also the one-time upgrade notice at the first sign-in, the migration report and an unchanged legacy listing |
 
 `node tests/e2e/m1/python-data-dir.js <empty dir>` writes the same fixture
 for other checks and prints the synthetic account details as JSON.
