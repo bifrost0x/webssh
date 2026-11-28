@@ -118,6 +118,17 @@ test('Playwright honors each shard output directory without changing its default
     assert.deepEqual(JSON.parse(result), { outputDir: 'isolated-output', workers: 1 });
 });
 
+test('the main suite leaves the acceptance specs with their own backends and the lab out', () => {
+    const { execFileSync } = require('node:child_process');
+    const root = path.resolve(__dirname, '../..');
+    const listed = execFileSync(process.execPath, [path.join(root, 'node_modules', 'playwright', 'cli.js'), 'test', '--list'], {
+        cwd: root, env: { ...process.env, WEBSSH_E2E_OUTPUT_DIR: 'isolated-output' }, encoding: 'utf8',
+    });
+    const files = new Set(listed.split('\n').map(line => /([\w/.-]+\.spec\.js):\d+/.exec(line)?.[1]).filter(Boolean));
+    assert.ok(files.size > 50, `listed ${files.size} spec files`);
+    for (const file of files) assert.doesNotMatch(file, /^(m1|m2)\//, file);
+});
+
 test('interrupt kills every owned process tree and waits for their closure', async () => {
     const { runGroup } = require(modulePath);
     const signals = new EventEmitter();
