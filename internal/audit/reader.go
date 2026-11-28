@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 )
 
@@ -30,11 +31,22 @@ type lineFunc func(line []byte) bool
 // to the first, like _iter_log_lines_newest_first. It reports whether fn
 // stopped the scan.
 func newestFirst(path string, fn lineFunc) (stopped bool, err error) {
-	f, err := os.Open(path) // #nosec G304 -- path is a file of the audit log directory
+	// Without following a link, and checked on the opened file, so no
+	// link can be swapped in after the check; O_NONBLOCK keeps a FIFO
+	// from blocking the open.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0) // #nosec G304 -- path is a file of the audit log directory
 	if err != nil {
+		if errors.Is(err, syscall.ELOOP) {
+			return false, errNotRegular
+		}
 		return false, err
 	}
 	defer f.Close()
+	if st, err := f.Stat(); err != nil {
+		return false, err
+	} else if !st.Mode().IsRegular() {
+		return false, errNotRegular
+	}
 	pos, err := f.Seek(0, io.SeekEnd)
 	if err != nil {
 		return false, err
@@ -127,11 +139,9 @@ func candidateFiles(path string) ([]string, error) {
 	return out, nil
 }
 
-// regular reports whether path is a regular file (not a link).
-func regular(path string) bool {
-	st, err := os.Lstat(path)
-	return err == nil && st.Mode().IsRegular()
-}
+// errNotRegular is a log path that is a link, a FIFO or anything else
+// than a regular file; the reader skips it.
+var errNotRegular = errors.New("audit: not a regular file")
 
 // scanFiles calls fn for the lines of files, newest first, at most limit
 // lines in all. It reports whether a line beyond the limit exists. A file
@@ -139,9 +149,6 @@ func regular(path string) bool {
 func scanFiles(files []string, limit int, fn lineFunc) (truncated bool, err error) {
 	scanned := 0
 	for _, path := range files {
-		if !regular(path) {
-			continue
-		}
 		stopped, err := newestFirst(path, func(line []byte) bool {
 			if scanned >= limit {
 				truncated = true
@@ -150,7 +157,7 @@ func scanFiles(files []string, limit int, fn lineFunc) (truncated bool, err erro
 			scanned++
 			return fn(line)
 		})
-		if errors.Is(err, fs.ErrNotExist) {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errNotRegular) {
 			continue
 		}
 		if err != nil {

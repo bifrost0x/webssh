@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/fault"
@@ -88,7 +89,9 @@ func Open(logsDir string, o Options) (*Logger, error) {
 }
 
 func (l *Logger) open() error {
-	f, err := os.OpenFile(l.path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	// A link or another file type in place of the log is refused, not
+	// followed; O_NONBLOCK keeps a FIFO from blocking the open.
+	f, err := os.OpenFile(l.path, os.O_WRONLY|os.O_APPEND|os.O_CREATE|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0o600)
 	if err != nil {
 		return fmt.Errorf("audit: open log: %w", err)
 	}
@@ -96,6 +99,10 @@ func (l *Logger) open() error {
 	if err != nil {
 		_ = f.Close()
 		return fmt.Errorf("audit: stat log: %w", err)
+	}
+	if !st.Mode().IsRegular() {
+		_ = f.Close()
+		return fmt.Errorf("audit: %s is not a regular file", l.path)
 	}
 	l.file, l.size = f, st.Size()
 	return nil
