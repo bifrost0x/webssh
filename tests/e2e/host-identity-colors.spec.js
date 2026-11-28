@@ -6,8 +6,8 @@ const THEMES = ['glass', 'werkbank', 'retro', 'solar', 'paper', 'noir', 'arctic-
 
 test('every role keeps its accent and pill text readable on every theme surface', async ({page}) => {
     const root = path.resolve(__dirname, '../..');
-    const template = fs.readFileSync(path.join(root, 'templates/index.html'), 'utf8');
-    const sheets = [...template.matchAll(/filename='(css\/[^']+\.css)'/g)].map(match => match[1]);
+    const template = fs.readFileSync(path.join(root, 'internal/httpapi/pages/index.gohtml'), 'utf8');
+    const sheets = [...template.matchAll(/\$\.Asset "(css\/[^"]+\.css)"/g)].map(match => match[1]);
     expect(sheets).toContain('css/host-identity.css');
     await page.setContent('<body class="webssh-ui webssh-shell"></body>');
     for (const sheet of sheets) await page.addStyleTag({path: path.join(root, 'static', sheet)});
@@ -87,8 +87,8 @@ test('every role keeps its accent and pill text readable on every theme surface'
 
 test('role tiles, identity lines, app chips, virtualization labels and platform icons stay readable in the real components', async ({page}) => {
     const root = path.resolve(__dirname, '../..');
-    const template = fs.readFileSync(path.join(root, 'templates/index.html'), 'utf8');
-    const sheets = [...template.matchAll(/filename='(css\/[^']+\.css)'/g)].map(match => match[1]);
+    const template = fs.readFileSync(path.join(root, 'internal/httpapi/pages/index.gohtml'), 'utf8');
+    const sheets = [...template.matchAll(/\$\.Asset "(css\/[^"]+\.css)"/g)].map(match => match[1]);
     await page.setContent('<body class="webssh-ui webssh-shell"></body>');
     for (const sheet of sheets) await page.addStyleTag({path: path.join(root, 'static', sheet)});
     await page.addScriptTag({path: path.join(root, 'static/js/host-platform.js')});

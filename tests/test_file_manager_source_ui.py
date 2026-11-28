@@ -3,7 +3,7 @@ from pathlib import Path
 
 FILE_PREVIEW_JS = Path('static/js/file-preview.js')
 FILE_MANAGER_JS = Path('static/js/sftp-file-manager.js')
-INDEX_TEMPLATE = Path('templates/index.html')
+INDEX_TEMPLATE = Path('internal/httpapi/pages/index.gohtml')
 
 
 def test_file_preview_uses_canonical_source_id_contract():

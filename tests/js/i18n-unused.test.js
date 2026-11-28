@@ -1,5 +1,5 @@
 // Every English translation key must be referenced by the product: as a
-// literal (JavaScript, templates, Python, JSON resources) or through one of
+// literal (JavaScript, page templates, Go sources, JSON resources) or through one of
 // the dynamic prefixes below, whose keys are assembled at runtime.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -45,15 +45,15 @@ function productFiles() {
         for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
             const full = path.join(directory, entry.name);
             if (entry.isDirectory()) {
-                if (!['vendor', 'i18n', '__pycache__', 'node_modules'].includes(entry.name)) walk(full, accept);
+                if (!['vendor', 'i18n', '__pycache__', 'node_modules', 'testdata', 'webassets'].includes(entry.name)) walk(full, accept);
             } else if (accept(entry.name)) files.push(full);
         }
     };
     walk(path.join(root, 'static/js'), name => name.endsWith('.js') && name !== 'i18n-auth.js');
-    walk(path.join(root, 'templates'), name => name.endsWith('.html'));
-    // The page templates of the Go server.
     walk(path.join(root, 'internal/httpapi/pages'), name => name.endsWith('.gohtml'));
-    walk(path.join(root, 'app'), name => /\.(py|json)$/.test(name));
+    // Keys the server sends, such as error codes and flash messages; test
+    // files and recorded test data do not count as use.
+    walk(path.join(root, 'internal'), name => (name.endsWith('.go') && !name.endsWith('_test.go')) || name.endsWith('.json'));
     return files;
 }
 

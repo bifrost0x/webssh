@@ -24,7 +24,6 @@ const files = [
   ['@xterm/addon-fit/LICENSE', 'xterm/LICENSE-addon-fit'],
   ['@xterm/addon-search/LICENSE', 'xterm/LICENSE-addon-search'],
   ['@highlightjs/cdn-assets/LICENSE', 'highlight/LICENSE'],
-  ['socket.io-client/LICENSE', 'socketio/LICENSE'],
   ['material-icons/LICENSE', 'material-icons/LICENSE'],
   ['@xterm/xterm/css/xterm.css', 'xterm/xterm.css'],
   ['@xterm/xterm/lib/xterm.js', 'xterm/xterm.js'],
@@ -32,7 +31,6 @@ const files = [
   ['@xterm/addon-search/lib/addon-search.js', 'xterm/xterm-addon-search.js'],
   ['@highlightjs/cdn-assets/highlight.min.js', 'highlight/highlight.min.js'],
   ['@highlightjs/cdn-assets/styles/github-dark.min.css', 'highlight/github-dark.min.css'],
-  ['socket.io-client/dist/socket.io.min.js', 'socketio/socket.io.min.js'],
   // Material Icons: every page uses the Outlined face (see materialIconsCss).
   // The filled woff2 is kept only for the public Pages site (prepare_pages.py).
   ['material-icons/iconfont/material-icons.css', 'material-icons/material-icons.css'],
@@ -76,20 +74,6 @@ function expectedContents(srcPath, dest) {
   const source = fs.readFileSync(srcPath);
   if (dest === 'material-icons/material-icons.css') {
     return materialIconsCss(source);
-  }
-  if (dest === 'socketio/socket.io.min.js') {
-    // A polling XHR with status 0 has already lost its network channel. Sending
-    // another close POST during error cleanup can start a request from a departing
-    // document. Close locally while preserving the original error and reconnect
-    // path. Normal shutdown and HTTP error responses retain upstream behavior.
-    const prefix = 'i.V=function(t,n){if("opening"===this.readyState||"open"===this.readyState||"closing"===this.readyState){if(this.clearTimeoutFn(this.Z),';
-    const before = prefix + 'this.transport.removeAllListeners("close"),this.transport.close(),this.transport.removeAllListeners()';
-    const after = prefix + 'this.transport.removeAllListeners("close"),("transport error"===t&&"polling"===this.transport.name&&n&&0===n.description?this.transport.onClose():this.transport.close()),this.transport.removeAllListeners()';
-    const bundle = source.toString('utf8');
-    if (bundle.split(before).length !== 2) {
-      throw new Error('Socket.IO error cleanup changed; review the failed-polling close patch.');
-    }
-    return Buffer.from(bundle.replace(before, after), 'utf8');
   }
   if (dest === 'xterm/xterm.js') {
     const parserLimit = 't.PAYLOAD_LIMIT=1e7';

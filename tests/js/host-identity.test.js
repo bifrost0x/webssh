@@ -175,7 +175,7 @@ test('the stylesheet colours every role and has a paper and forced-colors varian
     for (const role of id.ROLES) assert.match(css, new RegExp(`\\[data-role="${role}"\\]\\s*\\{[^}]*--role:[^}]*--role-ink:`), role);
     assert.match(css, /body\[data-theme="paper"\]/);
     assert.match(css, /@media \(forced-colors: active\)/);
-    const template = fs.readFileSync(path.join(__dirname, '../../templates/index.html'), 'utf8');
+    const template = fs.readFileSync(path.join(__dirname, '../../internal/httpapi/pages/index.gohtml'), 'utf8');
     assert.ok(template.indexOf("js/host-identity.js") > template.indexOf("js/host-platform.js"));
     assert.ok(template.indexOf("css/host-identity.css") > template.indexOf("css/host-platform.css"));
 });

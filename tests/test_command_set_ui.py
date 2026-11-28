@@ -8,7 +8,7 @@ def read(path):
 
 
 def test_connection_form_uses_command_set_selector_and_preview():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
 
     for element_id in (
         'connectionCommandModeNone',
@@ -33,7 +33,7 @@ def test_connection_form_uses_command_set_selector_and_preview():
 
 
 def test_commands_workspace_unifies_library_and_command_sets():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     styles = read('static/css/webssh-2.css')
 
     assert 'id="commandSetManagementModal"' not in template
@@ -83,7 +83,7 @@ def test_commands_workspace_unifies_library_and_command_sets():
 
 
 def test_command_surfaces_use_the_shared_management_panel_hierarchy():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
 
     library_start = template.index('id="commandLibraryPanel"')
     library_end = template.index('id="commandSetsPanel"', library_start)
@@ -113,7 +113,7 @@ def test_commands_workspace_controller_owns_all_entry_points():
     library = read('static/js/command-library.js')
     sets = read('static/js/command-set-manager.js')
     app = read('static/js/app.js')
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
 
     assert "activeSection: 'library'" in workspace
     assert "open(section = this.activeSection, options = {})" in workspace
@@ -123,26 +123,26 @@ def test_commands_workspace_controller_owns_all_entry_points():
     assert "CommandWorkspace.open('sets', {primary: !this.returnToConnection})" in sets
     assert 'openEditor(commandId, returnToModalId = null)' in library
     assert 'CommandWorkspace.init()' in app
-    assert "filename='js/command-workspace.js'" in template
+    assert '$.Asset "js/command-workspace.js"' in template
 
 
 def test_command_set_scripts_load_in_dependency_order_before_app():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
 
-    utils = template.index("filename='js/command-set-utils.js'")
-    workspace = template.index("filename='js/command-workspace.js'")
-    library = template.index("filename='js/command-library.js'")
-    manager = template.index("filename='js/command-set-manager.js'")
-    connection = template.index("filename='js/connection-command-manager.js'")
-    app = template.index("filename='js/app.js'")
+    utils = template.index('$.Asset "js/command-set-utils.js"')
+    workspace = template.index('$.Asset "js/command-workspace.js"')
+    library = template.index('$.Asset "js/command-library.js"')
+    manager = template.index('$.Asset "js/command-set-manager.js"')
+    connection = template.index('$.Asset "js/connection-command-manager.js"')
+    app = template.index('$.Asset "js/app.js"')
     assert utils < workspace < library < manager < connection < app
 
 
 def test_connection_command_manager_uses_content_addressed_url():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
 
     assert (
-        "static_asset_url(filename='js/connection-command-manager.js')"
+        '$.Asset "js/connection-command-manager.js"'
         in template
     )
 
@@ -246,7 +246,7 @@ def test_command_set_editor_controls_sudo_defaults_and_payload():
 
 
 def test_hosts_are_prominent_and_connection_assets_share_navigation():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     app_source = read('static/js/app.js')
 
     global_navigation = re.search(
@@ -303,7 +303,7 @@ def test_hosts_are_prominent_and_connection_assets_share_navigation():
 
 
 def test_account_menu_focuses_on_workspace_and_account_destinations():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     account_menu = re.search(
         r'<div class="account-dropdown-header"[^>]*>(?P<body>.*?)'
         r'<button id="logoutBtn"',
@@ -343,8 +343,8 @@ def test_account_menu_focuses_on_workspace_and_account_destinations():
 
 
 def test_settings_keep_existing_preferences_after_account_menu_cleanup():
-    workspace = read('templates/index.html')
-    settings = read('templates/security.html')
+    workspace = read('internal/httpapi/pages/index.gohtml')
+    settings = read('internal/httpapi/pages/security.gohtml')
 
     for element_id in (
         'settingsThemeSelect',
@@ -355,19 +355,17 @@ def test_settings_keep_existing_preferences_after_account_menu_cleanup():
     ):
         assert f'id="{element_id}"' in settings
     assert 'id="settingsModal"' not in workspace
-    assert 'href="{{ url_for(\'security_center\') }}#preferences"' in workspace
+    assert 'href="{{$.URL "/settings"}}#preferences"' in workspace
 
 
 def test_close_confirmation_preference_is_rendered_for_session_manager():
-    app_source = read('app/__init__.py')
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
 
-    assert "confirm_session_close=settings.get('confirm_session_close', False)" in app_source
-    assert 'data-confirm-session-close="{{ \'true\' if confirm_session_close else \'false\' }}"' in template
+    assert 'data-confirm-session-close="{{if $.ConfirmSessionClose}}true{{else}}false{{end}}"' in template
 
 
 def test_profile_management_is_independent_from_connect_submit():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
     profile_source = read('static/js/profile-manager.js')
 
     for element_id in (
@@ -400,7 +398,7 @@ def test_profile_management_is_independent_from_connect_submit():
 
 
 def test_connection_mode_help_uses_accessible_tooltips():
-    template = read('templates/index.html')
+    template = read('internal/httpapi/pages/index.gohtml')
 
     tooltip_ids = set(re.findall(r'id="([^"]+Tooltip)"[^>]*role="tooltip"', template))
     references = re.findall(r'aria-describedby="([^"]+Tooltip)"', template)

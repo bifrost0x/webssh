@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const root = path.join(__dirname, '../..');
-const systemCommands = JSON.parse(fs.readFileSync(path.join(root, 'app/resources/commands/system_commands.json'), 'utf8'));
+const systemCommands = JSON.parse(fs.readFileSync(path.join(root, 'internal/commands/system_commands.json'), 'utf8'));
 
 function load({language = 'de', table = null} = {}) {
     const requests = [];

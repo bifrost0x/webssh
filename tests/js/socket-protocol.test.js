@@ -161,22 +161,6 @@ function loadAppSocketHarness() {
     };
 }
 
-test('browser and server use the same hardcoded socket wire revision', () => {
-    const pythonSource = fs.readFileSync(
-        path.join(ROOT, 'app', 'socket_protocol.py'),
-        'utf8',
-    );
-    const revision = pythonSource.match(/^SOCKET_WIRE_REVISION = (\d+)$/m);
-    const event = pythonSource.match(
-        /^SOCKET_PROTOCOL_MISMATCH_EVENT = '([^']+)'$/m,
-    );
-
-    assert.ok(revision);
-    assert.equal(SocketProtocol.WIRE_REVISION, Number(revision[1]));
-    assert.ok(event);
-    assert.equal(SocketProtocol.MISMATCH_EVENT, event[1]);
-});
-
 test('server compatibility requires an exact successful revision', () => {
     assert.equal(SocketProtocol.isCompatibleServer({ status: 'success' }), false);
     assert.equal(SocketProtocol.isCompatibleServer({
@@ -337,7 +321,7 @@ test('authenticated page sends the revision and loads protocol before app', () =
         'utf8',
     );
     const template = fs.readFileSync(
-        path.join(ROOT, 'templates', 'index.html'),
+        path.join(ROOT, 'internal', 'httpapi', 'pages', 'index.gohtml'),
         'utf8',
     );
 
@@ -349,8 +333,9 @@ test('authenticated page sends the revision and loads protocol before app', () =
         "error?.data?.code === 'socket_protocol_mismatch'",
     ));
     assert.ok(
-        template.indexOf("filename='js/socket-protocol.js'")
-        < template.indexOf("filename='js/app.js'"),
+        template.indexOf('$.Asset "js/socket-protocol.js"') >= 0
+        && template.indexOf('$.Asset "js/socket-protocol.js"')
+        < template.indexOf('$.Asset "js/app.js"'),
     );
 });
 
