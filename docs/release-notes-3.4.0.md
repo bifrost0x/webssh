@@ -168,5 +168,23 @@ data volume first, and keep the 3.3 backup until 3.4 has run for a while.
 
 ## Verified delivery
 
-To be filled in from the tag CI run: tag commit, image digests for AMD64 and
-ARM64, vulnerability gate, runtime checks and SBOM.
+Checked on the release candidate 3.4.0-rc5 before tagging:
+
+- Go: `go fix`, `gofmt` and `go mod tidy` without changes; `go vet` for
+  AMD64 and ARM64 with every build tag, `staticcheck`, `gosec` and
+  `govulncheck` without findings; `go test -race` passes in all 57 packages.
+- Browser suite: 1034 end-to-end tests in four shards passed, none failed or
+  flaky. The M1 (7 tests) and M2 (20 tests) suites passed against a 3.3.1
+  instance and the lab services.
+- Migration: `webssh migrate --dry-run` on the four golden data directories
+  reports no pending step and leaves every legacy file unchanged.
+- Other checks: 1485 JavaScript unit tests, 696 Python tooling tests,
+  `actionlint` over all workflows, and gitleaks over the tree and the
+  history since 3.3.1.
+- Image (AMD64): `tests/image/check.sh` passed 43 of 43 checks, among them
+  the runtime user, no shell in the release image, a read-only root file
+  system, the 3.3 Compose files and backup and restore under the hardened
+  profile. Trivy found no vulnerabilities, secrets or misconfigurations.
+
+The digests of the published images and their SBOM attestations come from
+the tag build (`docker-publish.yml`).
