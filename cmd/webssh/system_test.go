@@ -154,7 +154,7 @@ func TestMaintenanceAnswersOnlyTheProbes(t *testing.T) {
 
 func TestSystemRefusesUnsafeProduction(t *testing.T) {
 	_, err := openSystem(t.Context(), bootInput{lookup: lookupMap(map[string]string{
-		"DATA_DIR": filepath.Join(t.TempDir(), "data"), "SECRET_KEY": "x-0123456789abcdef0123456789", "DEPLOYMENT_PROFILE": "production",
+		"DATA_DIR": filepath.Join(t.TempDir(), "data"), "SECRET_KEY": "x-test-only-0123456789abcdef0123456789", "DEPLOYMENT_PROFILE": "production",
 	}), log: slog.New(slog.DiscardHandler), stopping: func() bool { return false }})
 	if err == nil || !strings.Contains(err.Error(), "unsafe production profile") {
 		t.Fatalf("unsafe production profile: %v", err)

@@ -1,0 +1,25 @@
+{
+  "oracle": {
+    "python": "CPython 3.15.1",
+    "source": "7d8831353ec44d7e5ed7b3e7644fa09c608bfc01 (app/ tree 5d2f7fa38f4d2e3d02ea6a84b1f76b47b8b2c57d)",
+    "recorder": "scripts/record-python-oracles.sh"
+  },
+  "cases": {
+    "2fcd38a": {
+      "request_sha256": "6502972b3c8b612cdaa7d66388bc5b7cadcfac9c0aa255ef284164a188575874",
+      "answer": {"sha256":"dde416e1477fa8f9ad4d2d97a94f5fa6b3cf84092c7a17135be8e5c81b15e46d","secrets":4}
+    },
+    "extended": {
+      "request_sha256": "9d456d25bb945733617d028064909c13d3a06402ac762f0b785aa7f59ece6f40",
+      "answer": {"sha256":"50553674038b6e82346c6570cf4ae176c141ae3900e19ee764e6e3b7cd37ae5b","secrets":14}
+    },
+    "golden": {
+      "request_sha256": "eb7e080c77809d80fbb01bda065c9551a79cb4a52c515f699c157e23804586f7",
+      "answer": {"sha256":"4ea4731024f03e15519e802759d566f2d1b59f8fa4616170f328666455d519d0","secrets":12}
+    },
+    "v1.0.0": {
+      "request_sha256": "373e7753067524bd2880145d9254a4b79a1cfe9d085a9c3b59e96b57f84bcd7f",
+      "answer": {"sha256":"46a335c60eb06e0ce79fc11e70a719f0087e1faa22fbb2acd8beeb5f4945d987","secrets":4}
+    }
+  }
+}

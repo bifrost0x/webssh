@@ -2,6 +2,8 @@ package audit
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json/v2"
 	"os"
 	"os/exec"
@@ -9,20 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
-)
 
-// pythonBin finds the repository's virtual environment.
-func pythonBin(t *testing.T) string {
-	t.Helper()
-	for _, p := range []string{os.Getenv("WEBSSH_PYTHON"), "../../.venv/bin/python"} {
-		if _, err := os.Stat(p); err == nil {
-			abs, _ := filepath.Abs(p)
-			return abs
-		}
-	}
-	t.Skip("no Python virtual environment")
-	return ""
-}
+	"github.com/bifrost0x/webssh/internal/oracletest"
+)
 
 // pythonAudit runs app/audit_export.py and read_audit_logs on dataDir.
 const pythonAudit = `
@@ -114,8 +105,30 @@ func auditDir(t *testing.T) (string, *Logger) {
 	return data, l
 }
 
+// logDigests is the SHA-256 of every file of the log directory the Python
+// release reads, so that the recorded answers belong to these inputs.
+func logDigests(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, e := range entries {
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(raw)
+		out[e.Name()] = hex.EncodeToString(sum[:])
+	}
+	return out
+}
+
+// The export and the view of the log match app/audit_export.py and
+// read_audit_logs; the Python answers are recorded in
+// testdata/python_audit_export.json.
 func TestExportAndViewMatchPython(t *testing.T) {
-	python := pythonBin(t)
 	data, l := auditDir(t)
 	exports := []exportCase{
 		{Max: MaxExportScan},
@@ -150,29 +163,36 @@ func TestExportAndViewMatchPython(t *testing.T) {
 		"20261102T090000", "2026-11-02 09", "2026-11-02X09:00", "2026-11-02", "2026-11-02T09:00:00,5",
 		"2026-11-02T09:00+0130", "2026-11-02T24:00:00", "2026-02-30", "2026-11-02T25:00", "x", "2026-11-02T",
 		"2026-11-02T09:00:00-05", "2026-11-02T09:00:00+00:00:30", "2026-11-02T0900", "2026-11-02T09:00:60"}
-	spec, err := json.Marshal(map[string]any{"export": exports, "view": views, "times": times})
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.CommandContext(t.Context(), python, "-c", pythonAudit)
-	cmd.Dir = "../.."
-	cmd.Env = append(os.Environ(), "DATA_DIR="+data, "SECRET_KEY=differential-test-only-0123456789abcdef", "PYTHONDONTWRITEBYTECODE=1")
-	cmd.Stdin = bytes.NewReader(spec)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	raw, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("python: %v\n%s", err, stderr.String())
-	}
-	var want struct {
+	type answer struct {
 		Export []string  `json:"export"`
 		View   []string  `json:"view"`
 		Times  []*string `json:"times"`
 	}
-	_, raw, _ = bytes.Cut(raw, []byte("\n--result--\n"))
-	if err := json.Unmarshal(raw, &want); err != nil {
-		t.Fatal(err)
-	}
+	spec := map[string]any{"export": exports, "view": views, "times": times}
+	request := map[string]any{"spec": spec, "logs": logDigests(t, filepath.Join(data, "logs"))}
+	rec := oracletest.Open(t, "testdata/python_audit_export.json")
+	want := oracletest.Ask(t, rec, "export_and_view", request, func(r oracletest.Release) answer {
+		in, err := json.Marshal(spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.CommandContext(t.Context(), r.Python, "-c", pythonAudit) // #nosec G204 -- test oracle
+		cmd.Dir = r.Root
+		cmd.Env = append(os.Environ(), "DATA_DIR="+data, "SECRET_KEY=differential-test-only-0123456789abcdef", "PYTHONDONTWRITEBYTECODE=1")
+		cmd.Stdin = bytes.NewReader(in)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		raw, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("python: %v\n%s", err, stderr.String())
+		}
+		var a answer
+		_, raw, _ = bytes.Cut(raw, []byte("\n--result--\n"))
+		if err := json.Unmarshal(raw, &a); err != nil {
+			t.Fatal(err)
+		}
+		return a
+	})
 	for i, c := range exports {
 		got := goExport(t, l, c)
 		if got != want.Export[i] {

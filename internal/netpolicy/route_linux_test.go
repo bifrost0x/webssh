@@ -6,6 +6,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
+	"maps"
 	"net"
 	"net/netip"
 	"os"
@@ -210,24 +211,57 @@ func TestDialInterfacePinsTheSocket(t *testing.T) {
 	t.Log("no other interface is up; only the lo case ran")
 }
 
+// pythonRoutes is testdata/python_routes.json: the Python release's route
+// answers per namespace mode, as netns-test.sh recorded them.
+type pythonRoutes struct {
+	Oracle struct {
+		Python string `json:"python"`
+		Source string `json:"source"`
+	} `json:"oracle"`
+	Routes map[string]map[string]*string `json:"routes"`
+}
+
 // TestPythonRoutesInNamespace compares the kernel's answers through the
 // Python release's lookup (testdata/python_routes.py, run by
-// netns-test.sh in the same namespace) with LookupRoute. Python returns
-// no interface for an IPv4-mapped address, whose route the kernel only
-// knows in its IPv4 form; Go's callers unmap first, so that one entry is
-// compared with the IPv4 route.
+// netns-test.sh in the same namespace) with LookupRoute. The answers are
+// recorded in testdata/python_routes.json per namespace mode; with
+// WEBSSH_PYTHON_ORACLE=live the script also passes the live answers, which
+// must equal the recorded ones. Python returns no interface for an
+// IPv4-mapped address, whose route the kernel only knows in its IPv4
+// form; Go's callers unmap first, so that one entry is compared with the
+// IPv4 route.
 func TestPythonRoutesInNamespace(t *testing.T) {
-	path := os.Getenv("WEBSSH_PY_ROUTES")
+	path := os.Getenv("WEBSSH_PY_ROUTES_RECORDING")
 	if path == "" {
 		t.Skip("run with testdata/netns-test.sh")
 	}
+	mode := os.Getenv("WEBSSH_NETNS")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var python map[string]*string
-	if err := json.Unmarshal(raw, &python); err != nil || len(python) < 10 {
-		t.Fatalf("python routes: %v (%d)", err, len(python))
+	var rec pythonRoutes
+	if err := json.Unmarshal(raw, &rec); err != nil || rec.Oracle.Python == "" || rec.Oracle.Source == "" {
+		t.Fatalf("python routes recording: %v (header %+v)", err, rec.Oracle)
+	}
+	python, ok := rec.Routes[mode]
+	if !ok || len(python) < 10 {
+		t.Fatalf("no recorded Python routes for %q; record them with scripts/record-python-oracles.sh (NETNS=crafted or lab)", mode)
+	}
+	if live := os.Getenv("WEBSSH_PY_ROUTES"); live != "" {
+		raw, err := os.ReadFile(live)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var answers map[string]*string
+		if err := json.Unmarshal(raw, &answers); err != nil {
+			t.Fatal(err)
+		}
+		if !maps.EqualFunc(answers, python, func(a, b *string) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }) {
+			liveJSON, _ := json.Marshal(answers, json.Deterministic(true))
+			recJSON, _ := json.Marshal(python, json.Deterministic(true))
+			t.Fatalf("the live Python release answers differently from the recording:\n live     %s\n recorded %s", liveJSON, recJSON)
+		}
 	}
 	for text, want := range python {
 		addr := netip.MustParseAddr(text)

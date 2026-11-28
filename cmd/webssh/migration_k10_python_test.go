@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"log/slog"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/hosts"
 	"github.com/bifrost0x/webssh/internal/keyring"
+	"github.com/bifrost0x/webssh/internal/oracletest"
 	"github.com/bifrost0x/webssh/internal/settings"
 	"github.com/bifrost0x/webssh/internal/store"
 )
@@ -52,20 +55,15 @@ type pythonAccount struct {
 	ProfilesError string                    `json:"profiles_error"`
 }
 
-func pythonBinary(t *testing.T) string {
+// fileSHA256 is the hex SHA-256 of a file.
+func fileSHA256(t *testing.T, path string) string {
 	t.Helper()
-	for _, p := range []string{os.Getenv("WEBSSH_PYTHON"), "../../.venv/bin/python"} {
-		if p == "" {
-			continue
-		}
-		if abs, err := filepath.Abs(p); err == nil {
-			if _, err := os.Stat(abs); err == nil {
-				return abs
-			}
-		}
+	raw, err := os.ReadFile(path) // #nosec G304 -- test data
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Skip("no Python virtual environment")
-	return ""
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }
 
 // canonical re-encodes a JSON value with sorted member names, so that
@@ -91,33 +89,40 @@ func canonical(t *testing.T, v jsontext.Value) string {
 // migration each account sees the same effective settings (D-01:
 // confirm_session_close of old accounts) and the same saved hosts,
 // identity facts and manual roles of #377/#378 included, as the Python
-// release shows on the same data.
+// release shows on the same data (recorded in
+// testdata/python_k10_view.json).
 func TestBuildMigrationShowsWhatPythonShows(t *testing.T) {
-	python := pythonBinary(t)
+	rec := oracletest.Open(t, "testdata/python_k10_view.json")
 	cases := append([]k10Fixture{{"golden with host identity", "../datadir.tar"}}, k10Fixtures...)
 	for i, fx := range cases {
 		t.Run(fx.name, func(t *testing.T) {
 			goDir := extractGolden(t, fx.archive)
-			pyDir := extractGolden(t, fx.archive)
 			if i == 0 {
 				addHostIdentity(t, goDir)
-				addHostIdentity(t, pyDir)
 			}
-			cmd := exec.CommandContext(t.Context(), python, "-c", pythonView)
-			cmd.Dir = "../.."
-			cmd.Env = append(os.Environ(), "DATA_DIR="+pyDir, "SECRET_KEY="+goldenSecret(t), "PYTHONPATH=.", "PYTHONDONTWRITEBYTECODE=1")
-			raw, err := cmd.CombinedOutput()
-			if err != nil {
-				t.Fatalf("python: %v\n%s", err, raw)
-			}
-			_, result, ok := strings.Cut(string(raw), "\n--result--\n")
-			if !ok {
-				t.Fatalf("python output: %s", raw)
-			}
-			var want map[string]pythonAccount
-			if err := json.Unmarshal([]byte(result), &want); err != nil {
-				t.Fatal(err)
-			}
+			request := map[string]any{"archive": fx.archive, "archive_sha256": fileSHA256(t, filepath.Join(goldenLegacyDir, fx.archive)), "host_identity": i == 0}
+			want := oracletest.Ask(t, rec, fx.name, request, func(r oracletest.Release) map[string]pythonAccount {
+				pyDir := extractGolden(t, fx.archive)
+				if i == 0 {
+					addHostIdentity(t, pyDir)
+				}
+				cmd := exec.CommandContext(t.Context(), r.Python, "-c", pythonView) // #nosec G204 -- test oracle
+				cmd.Dir = r.Root
+				cmd.Env = append(os.Environ(), "DATA_DIR="+pyDir, "SECRET_KEY="+goldenSecret(t), "PYTHONPATH=.", "PYTHONDONTWRITEBYTECODE=1")
+				raw, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("python: %v\n%s", err, raw)
+				}
+				_, result, ok := strings.Cut(string(raw), "\n--result--\n")
+				if !ok {
+					t.Fatalf("python output: %s", raw)
+				}
+				var answer map[string]pythonAccount
+				if err := json.Unmarshal([]byte(result), &answer); err != nil {
+					t.Fatal(err)
+				}
+				return answer
+			})
 
 			_, lookup := k10Env(t, goDir)
 			log := slog.New(slog.DiscardHandler)
@@ -247,17 +252,53 @@ func addHostIdentity(t *testing.T, dataDir string) {
 	}
 }
 
+// wayBackAnswer is what the Python release reads from a DATA_DIR: the
+// digest of what pythonSecrets prints (settings, saved hosts and every
+// secret it opens) and the number of secrets.
+type wayBackAnswer struct {
+	SHA256  string `json:"sha256"`
+	Secrets int    `json:"secrets"`
+}
+
+// assertWayBack checks the way back to the Python release: it reads dir
+// with secret as it reads pristine, an untouched extraction of archive.
+// Every mode first checks that no legacy file of dir changed since before
+// and that the only new paths are Go's. Live and record mode then run
+// the Python release on both copies, which shows that it reads past Go's
+// paths; replay mode relies on that recorded result.
+func assertWayBack(t *testing.T, rec *oracletest.Recording, key, archive, dir, pristine, secret string, before map[string]legacyFile) {
+	t.Helper()
+	assertLegacyUnchanged(t, dir, before)
+	sum := sha256.Sum256([]byte(secret))
+	request := map[string]string{"archive": archive, "archive_sha256": fileSHA256(t, filepath.Join(goldenLegacyDir, archive)),
+		"secret_sha256": hex.EncodeToString(sum[:])}
+	answer := oracletest.Ask(t, rec, key, request, func(r oracletest.Release) wayBackAnswer {
+		got, want := runPython(t, r, pythonSecrets, dir, secret), runPython(t, r, pythonSecrets, pristine, secret)
+		if got != want {
+			t.Fatalf("the Python release reads other data:\n got %s\nwant %s", got, want)
+		}
+		_, compared, _ := strings.Cut(want, "--secrets--")
+		sum := sha256.Sum256([]byte(want))
+		return wayBackAnswer{SHA256: hex.EncodeToString(sum[:]), Secrets: strings.Count(compared, ": \"")}
+	})
+	if answer.Secrets == 0 {
+		t.Fatal("no secrets compared")
+	}
+	t.Logf("%d secrets compared", answer.Secrets)
+}
+
 // RS4-08, the way back of spec 8.3 with the Python release itself: after
 // the Go migration of each golden DATA_DIR and a second Go start, the
 // Python release on the same DATA_DIR shows the same settings and saved
 // hosts and opens the same SSH keys and TOTP secrets as on an untouched
-// copy.
+// copy (recorded in testdata/python_k10_way_back.json).
 func TestBuildWayBackToPython(t *testing.T) {
-	python := pythonBinary(t)
+	rec := oracletest.Open(t, "testdata/python_k10_way_back.json")
 	for _, fx := range k10Fixtures {
 		t.Run(fx.name, func(t *testing.T) {
 			dir := extractGolden(t, fx.archive)
 			pristine := extractGolden(t, fx.archive)
+			before := legacyState(t, dir)
 			_, lookup := k10Env(t, dir)
 			log := slog.New(slog.DiscardHandler)
 			cfg, err := bootstrapConfig(lookup, log)
@@ -273,16 +314,7 @@ func TestBuildWayBackToPython(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			secret := goldenSecret(t)
-			got, want := runPython(t, python, pythonSecrets, dir, secret), runPython(t, python, pythonSecrets, pristine, secret)
-			if got != want {
-				t.Fatalf("the Python release reads other data after the migration:\n got %s\nwant %s", got, want)
-			}
-			_, compared, ok := strings.Cut(got, "--secrets--")
-			if !ok || strings.Count(compared, ": \"") == 0 {
-				t.Fatal("no secrets compared")
-			}
-			t.Logf("%d secrets compared", strings.Count(compared, ": \""))
+			assertWayBack(t, rec, fx.name, fx.archive, dir, pristine, goldenSecret(t), before)
 		})
 	}
 }

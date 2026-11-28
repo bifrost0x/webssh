@@ -1,11 +1,11 @@
 name: Go
 
-# Gates for the Go backend, built on the long-lived integration branch `go`
-# (ADR 0002). Pull requests into `go` and the cut-over pull request into
-# main are checked, and every push to `go` after a merge.
+# Gates for the Go backend (ADR 0002). Pull requests and release runs
+# reach them through the required job all-tests of tests.yml, which calls
+# this workflow as its job go-gates: a red Go job turns all-tests red.
+# Every push to the integration branch `go` runs them on its own as well.
 on:
-  pull_request:
-    branches: [main, go]
+  workflow_call:
   push:
     branches: [go]
   workflow_dispatch:
@@ -13,10 +13,9 @@ on:
 permissions:
   contents: read
 
-# Pull request runs supersede each other; every commit on `go` is checked.
-concurrency:
-  group: go-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+# No concurrency group: called from tests.yml, the run belongs to the
+# caller's group, which supersedes pull request runs and keeps the exact
+# commit of release runs; every commit pushed to `go` is checked.
 
 # The patterns cover the whole module. "./..." is not used because a local
 # npm install places third-party Go files under node_modules; the
@@ -291,8 +290,9 @@ jobs:
 
   # The differential oracles: every recorded Python answer is recorded
   # again from the unchanged Python modules and must match, and the Go
-  # tests run against the fresh recordings and the live interpreter
-  # (scripts/check-python-oracles.sh).
+  # differential tests run against the live interpreter
+  # (scripts/check-python-oracles.sh, WEBSSH_PYTHON_ORACLE=live). Every
+  # other job replays the recordings without Python.
   python-oracles:
     runs-on: ubuntu-24.04
     timeout-minutes: 30

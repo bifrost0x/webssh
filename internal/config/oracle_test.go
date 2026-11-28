@@ -9,13 +9,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/bifrost0x/webssh/internal/oracletest"
 )
 
 // The differential tests compare this package with the Python release.
 // The oracle is testdata/pyprobe.py, run by the repository's virtual
 // environment (or WEBSSH_PYTHON). Its answers for a fixed set of inputs
-// are checked in under testdata, so the comparison also runs where Python
-// is missing; -update rewrites them from the oracle.
+// are checked in under testdata and compared without Python; -update
+// rewrites them from the oracle, and the runs over more random inputs ask
+// the live oracle (WEBSSH_PYTHON_ORACLE=live, internal/oracletest).
 var update = flag.Bool("update", false, "rewrite the Python vectors in testdata from the oracle")
 
 const repoRoot = "../.."
@@ -32,17 +35,27 @@ type oracle struct {
 	out *bufio.Scanner
 }
 
-// startOracle starts the Python oracle, or returns nil when Python is not
-// available.
+// startOracle starts the Python oracle under -update and in the live and
+// record modes of internal/oracletest, where a missing interpreter fails
+// the test. In replay mode it starts nothing and returns nil.
 func startOracle(t testing.TB) *oracle {
 	t.Helper()
-	python := pythonPath()
-	if _, err := os.Stat(python); err != nil {
+	var python, root string
+	switch {
+	case *update:
+		python = pythonPath()
+		if _, err := os.Stat(python); err != nil {
+			t.Fatalf("-update needs the Python oracle: %v", err)
+		}
+		var err error
+		if root, err = filepath.Abs(repoRoot); err != nil {
+			t.Fatal(err)
+		}
+	case oracletest.CurrentMode(t) != oracletest.Replay:
+		rel := oracletest.RequireLive(t)
+		python, root = rel.Python, rel.Root
+	default:
 		return nil
-	}
-	root, err := filepath.Abs(repoRoot)
-	if err != nil {
-		t.Fatal(err)
 	}
 	cmd := exec.CommandContext(t.Context(), python, "-I", "testdata/pyprobe.py", root)
 	cmd.Env = []string{"LANG=C.UTF-8", "PATH=" + os.Getenv("PATH")}
@@ -80,16 +93,13 @@ func (o *oracle) ask(t testing.TB, req, resp any) {
 	}
 }
 
-// requireOracle returns the oracle, failing under -update and skipping
-// otherwise when Python is missing.
+// requireOracle returns the oracle for -update and the live mode; in
+// replay mode the test is skipped with the reason (oracletest.RequireLive).
 func requireOracle(t testing.TB) *oracle {
 	t.Helper()
 	o := startOracle(t)
 	if o == nil {
-		if *update {
-			t.Fatal("-update needs the Python oracle")
-		}
-		t.Skip("no Python virtual environment")
+		oracletest.RequireLive(t)
 	}
 	return o
 }

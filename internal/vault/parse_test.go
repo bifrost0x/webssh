@@ -123,7 +123,7 @@ func TestParseRejects(t *testing.T) {
 		"garbage":         {[]byte("not a key"), errKeyInvalid},
 		"public key":      {[]byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"), errKeyInvalid},
 		"oversized":       {append(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: der}), bytes.Repeat([]byte("x"), MaxKeyBytes)...), errKeyInvalid},
-		"dsa pem":         {[]byte("-----BEGIN DSA PRIVATE KEY-----\nAAAA\n-----END DSA PRIVATE KEY-----\n"), errKeyDSA},
+		"dsa pem":         {pem.EncodeToMemory(&pem.Block{Type: "DSA PRIVATE KEY", Bytes: []byte{0, 0, 0}}), errKeyDSA},
 		"dsa openssh":     {pem.EncodeToMemory(&pem.Block{Type: "OPENSSH PRIVATE KEY", Bytes: dsaOpenSSH}), errKeyDSA},
 		"broken openssh":  {pem.EncodeToMemory(&pem.Block{Type: "OPENSSH PRIVATE KEY", Bytes: []byte("openssh-key-v1\x00\x00")}), errKeyInvalid},
 		"encrypted pkcs8": {pem.EncodeToMemory(&pem.Block{Type: "ENCRYPTED PRIVATE KEY", Bytes: []byte{0x30, 0}}), errEncryptedPKCS8},

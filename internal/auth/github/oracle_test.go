@@ -51,7 +51,7 @@ func askPython(t *testing.T, reqs []probeRequest) []json.RawMessage {
 	}
 	cmd := exec.CommandContext(t.Context(), pythonPath(), "testdata/pyprobe.py", root) // #nosec G204 -- test oracle
 	cmd.Env = []string{"LANG=C.UTF-8", "PATH=" + os.Getenv("PATH"), "DATA_DIR=" + t.TempDir(), "PYTHONWARNINGS=ignore",
-		"SECRET_KEY=probe-secret-key-0123456789abcdef0123"}
+		"SECRET_KEY=probe-test-only-0123456789abcdef0123456789"}
 	var in strings.Builder
 	enc := json.NewEncoder(&in)
 	for _, r := range reqs {

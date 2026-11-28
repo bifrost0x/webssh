@@ -65,7 +65,8 @@ func TestKeyIsSealedAtRest(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	body := plain[len("-----BEGIN OPENSSH PRIVATE KEY-----\n") : len("-----BEGIN OPENSSH PRIVATE KEY-----\n")+40]
+	start := bytes.IndexByte(plain, '\n') + 1 // after the PEM header line
+	body := plain[start : start+40]
 	if bytes.Contains(row.Sealed, body) || bytes.Contains(row.Sealed, []byte("PRIVATE KEY")) {
 		t.Fatal("private key stored in clear")
 	}

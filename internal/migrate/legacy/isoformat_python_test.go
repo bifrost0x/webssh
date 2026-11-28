@@ -3,15 +3,16 @@ package legacy
 import (
 	json "encoding/json/v2"
 	"math/rand/v2"
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/bifrost0x/webssh/internal/oracletest"
 )
 
 // Differential test against CPython's datetime.fromisoformat (the C
-// module the Python release runs). It uses the repository's virtual
-// environment and is skipped where it does not exist.
+// module the Python release runs). The answers are recorded in
+// testdata/python_isoformat.json (internal/oracletest).
 const pythonISO = `
 import json, sys
 from datetime import datetime
@@ -51,24 +52,39 @@ func isoCandidates(n int) []string {
 
 func TestPythonISOFormatDifferential(t *testing.T) {
 	t.Parallel()
-	python := "../../../.venv/bin/python"
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("no Python virtual environment")
-	}
 	inputs := isoCandidates(200000)
-	payload, err := json.Marshal(inputs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.CommandContext(t.Context(), python, "-I", "-c", pythonISO)
-	cmd.Stdin = strings.NewReader(string(payload))
-	raw, err := cmd.Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var want []*string
-	if err := json.Unmarshal(raw, &want); err != nil || len(want) != len(inputs) {
-		t.Fatalf("python output: %v", err)
+	rec := oracletest.Open(t, "testdata/python_isoformat.json")
+	// The answer holds the accepted inputs only, by index: most random
+	// inputs are refused, and the file stays small.
+	accepted := oracletest.Ask(t, rec, "fromisoformat", inputs, func(r oracletest.Release) map[int]string {
+		payload, err := json.Marshal(inputs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.CommandContext(t.Context(), r.Python, "-I", "-c", pythonISO) // #nosec G204 -- test oracle
+		cmd.Stdin = strings.NewReader(string(payload))
+		raw, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var answer []*string
+		if err := json.Unmarshal(raw, &answer); err != nil || len(answer) != len(inputs) {
+			t.Fatalf("python output: %v", err)
+		}
+		out := map[int]string{}
+		for i, a := range answer {
+			if a != nil {
+				out[i] = *a
+			}
+		}
+		return out
+	})
+	want := make([]*string, len(inputs))
+	for i, a := range accepted {
+		if i < 0 || i >= len(inputs) {
+			t.Fatalf("recorded index %d out of range", i)
+		}
+		want[i] = &a
 	}
 	mismatches := 0
 	for i, in := range inputs {

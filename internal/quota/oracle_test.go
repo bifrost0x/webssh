@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/oracletest"
 )
 
 // The differential tests compare the policy with app/quota_manager.py and
@@ -130,18 +131,33 @@ type oracle struct {
 	out *bufio.Scanner
 }
 
+func pythonPath() string {
+	if p := os.Getenv("WEBSSH_PYTHON"); p != "" {
+		return p
+	}
+	return filepath.Join(repoRoot, ".venv", "bin", "python")
+}
+
+// startOracle starts the Python oracle under -update and in the live and
+// record modes of internal/oracletest; in replay mode it returns nil.
 func startOracle(t testing.TB) *oracle {
 	t.Helper()
-	python := os.Getenv("WEBSSH_PYTHON")
-	if python == "" {
-		python = filepath.Join(repoRoot, ".venv", "bin", "python")
-	}
-	if _, err := os.Stat(python); err != nil {
+	var python, root string
+	switch {
+	case *update:
+		python = pythonPath()
+		if _, err := os.Stat(python); err != nil {
+			t.Fatalf("-update needs the Python oracle: %v", err)
+		}
+		var err error
+		if root, err = filepath.Abs(repoRoot); err != nil {
+			t.Fatal(err)
+		}
+	case oracletest.CurrentMode(t) != oracletest.Replay:
+		rel := oracletest.RequireLive(t)
+		python, root = rel.Python, rel.Root
+	default:
 		return nil
-	}
-	root, err := filepath.Abs(repoRoot)
-	if err != nil {
-		t.Fatal(err)
 	}
 	cmd := exec.CommandContext(t.Context(), python, "-I", "testdata/oracle.py", root) // #nosec G204 -- test oracle
 	cmd.Env = []string{"LANG=C.UTF-8", "PATH=" + os.Getenv("PATH")}
@@ -308,7 +324,7 @@ func TestPythonRandomLive(t *testing.T) {
 	t.Parallel()
 	o := startOracle(t)
 	if o == nil {
-		t.Skip("no Python virtual environment")
+		oracletest.RequireLive(t)
 	}
 	rng := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 3)) // #nosec G404 -- test data
 	for range 2000 {

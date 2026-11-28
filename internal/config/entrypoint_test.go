@@ -7,8 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/bifrost0x/webssh/internal/oracletest"
 )
 
 // entryCase prepares a directory tree under root and names the
@@ -217,77 +220,139 @@ func TestEntrypointRules(t *testing.T) {
 	}
 }
 
-// TestEntrypointDifferential runs the real entrypoint.sh of the Python
-// release on the same trees and compares DATA_DIR, SECRET_KEY and
-// WEBSSH_SECRET_KEY_SOURCE as it hands them to the application.
-func TestEntrypointDifferential(t *testing.T) {
-	python, err := filepath.Abs(pythonPath())
+// entryAnswer is the outcome of the Python release's entrypoint.sh for one
+// case: the case's root reads $ROOT and a secret it generated (64 hex
+// digits, written with a line feed to DATA_DIR/secret_key, mode 0600)
+// reads <generated>.
+type entryAnswer struct {
+	Failed  bool   `json:"failed"`
+	DataDir string `json:"data_dir,omitempty"`
+	Secret  string `json:"secret,omitempty"`
+	Source  string `json:"source,omitempty"`
+}
+
+// entryRequest describes a case as entrypoint.sh sees it: the tree under
+// root after the setup and the environment, root written as $ROOT.
+func entryRequest(t *testing.T, tc entryCase) map[string]any {
+	t.Helper()
+	root := t.TempDir()
+	if tc.setup != nil {
+		tc.setup(t, root)
+	}
+	tree := map[string]string{}
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || path == root {
+			return err
+		}
+		rel, _ := filepath.Rel(root, path)
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			tree[rel] = "link " + strings.ReplaceAll(target, root, "$ROOT")
+		case info.IsDir():
+			tree[rel] = "dir " + info.Mode().Perm().String()
+		default:
+			data, err := os.ReadFile(path) // #nosec G304 -- test tree
+			if err != nil && info.Mode().Perm()&0o400 == 0 {
+				data = nil // unreadable on purpose
+			} else if err != nil {
+				return err
+			}
+			tree[rel] = "file " + info.Mode().Perm().String() + " " + strconv.Quote(string(data))
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("no Python virtual environment")
+	env := map[string]string{}
+	for k, v := range tc.env(root) {
+		env[k] = strings.ReplaceAll(v, root, "$ROOT")
 	}
+	return map[string]any{"tree": tree, "env": env}
+}
+
+// pythonEntrypoint runs the real entrypoint.sh of the Python release on a
+// fresh tree of tc and reports DATA_DIR, SECRET_KEY and
+// WEBSSH_SECRET_KEY_SOURCE as it hands them to the application.
+func pythonEntrypoint(t *testing.T, r oracletest.Release, tc entryCase) entryAnswer {
+	t.Helper()
 	bash, err := exec.LookPath("bash")
 	if err != nil {
-		t.Skip("no bash")
+		t.Fatalf("the entrypoint oracle needs bash: %v", err)
 	}
-	script, err := os.ReadFile(filepath.Join(repoRoot, "entrypoint.sh"))
+	script, err := os.ReadFile(filepath.Join(r.Root, "entrypoint.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	bin := t.TempDir()
-	symlink(t, python, filepath.Join(bin, "python"))
+	symlink(t, r.Python, filepath.Join(bin, "python"))
+	root := t.TempDir()
+	if tc.setup != nil {
+		tc.setup(t, root)
+	}
+	legacy := filepath.Join(root, "legacy", "secret_key")
+	patched := bytes.ReplaceAll(script, []byte(legacySecretKeyFile), []byte(legacy))
+	entry := filepath.Join(t.TempDir(), "entrypoint.sh")
+	writeFile(t, entry, string(patched), 0o700)
+	result := filepath.Join(t.TempDir(), "result")
+	cmd := exec.CommandContext(t.Context(), bash, entry, "sh", "-c", `printf '%s\0%s\0%s\0' "$DATA_DIR" "$SECRET_KEY" "$WEBSSH_SECRET_KEY_SOURCE" > "$F1_RESULT"`) // #nosec G204 -- test oracle
+	cmd.Env = []string{"PATH=" + bin + ":/usr/bin:/bin", "LANG=C.UTF-8", "HOME=" + root, "F1_RESULT=" + result}
+	for k, v := range tc.env(root) {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	if err := cmd.Run(); err != nil {
+		if _, ok := errors.AsType[*exec.ExitError](err); !ok {
+			t.Fatal(err)
+		}
+		return entryAnswer{Failed: true}
+	}
+	out, err := os.ReadFile(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(string(out), "\x00")
+	if len(parts) != 4 {
+		t.Fatalf("entrypoint output %q", out)
+	}
+	a := entryAnswer{DataDir: strings.ReplaceAll(parts[0], root, "$ROOT"), Secret: parts[1], Source: parts[2]}
+	if file, err := os.ReadFile(filepath.Join(parts[0], "secret_key")); hexSecret.MatchString(a.Secret) && err == nil && string(file) == a.Secret+"\n" {
+		if info, err := os.Stat(filepath.Join(parts[0], "secret_key")); err == nil && info.Mode().Perm() == 0o600 && !strings.Contains(tc.env(root)["SECRET_KEY"], a.Secret) {
+			a.Secret = "<generated>"
+		}
+	}
+	return a
+}
+
+// TestEntrypointDifferential compares the table of entryCases, which
+// TestEntrypointRules holds Go to, with the real entrypoint.sh of the
+// Python release on the same trees (recorded in
+// testdata/python_entrypoint.json).
+func TestEntrypointDifferential(t *testing.T) {
+	rec := oracletest.Open(t, "testdata/python_entrypoint.json")
 	for _, tc := range entryCases() {
 		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			if tc.setup != nil {
-				tc.setup(t, root)
+			py := oracletest.Ask(t, rec, tc.name, entryRequest(t, tc), func(r oracletest.Release) entryAnswer {
+				return pythonEntrypoint(t, r, tc)
+			})
+			if py.Failed != tc.want.failed {
+				t.Fatalf("Python failed=%v, table says %v", py.Failed, tc.want.failed)
 			}
-			legacy := filepath.Join(root, "legacy", "secret_key")
-			patched := bytes.ReplaceAll(script, []byte(legacySecretKeyFile), []byte(legacy))
-			entry := filepath.Join(t.TempDir(), "entrypoint.sh")
-			writeFile(t, entry, string(patched), 0o700)
-			env := tc.env(root)
-			result := filepath.Join(t.TempDir(), "result")
-			cmd := exec.CommandContext(t.Context(), bash, entry, "sh", "-c", `printf '%s\0%s\0%s\0' "$DATA_DIR" "$SECRET_KEY" "$WEBSSH_SECRET_KEY_SOURCE" > "$F1_RESULT"`)
-			cmd.Env = []string{"PATH=" + bin + ":/usr/bin:/bin", "LANG=C.UTF-8", "HOME=" + root, "F1_RESULT=" + result}
-			for k, v := range env {
-				cmd.Env = append(cmd.Env, k+"="+v)
+			if py.Failed {
+				return
 			}
-			var stderr bytes.Buffer
-			cmd.Stderr = &stderr
-			runErr := cmd.Run()
-			var py entryResult
-			if runErr != nil {
-				if _, ok := errors.AsType[*exec.ExitError](runErr); !ok {
-					t.Fatal(runErr)
-				}
-				py.failed = true
-			} else {
-				out, err := os.ReadFile(result)
-				if err != nil {
-					t.Fatal(err)
-				}
-				parts := strings.Split(string(out), "\x00")
-				if len(parts) != 4 {
-					t.Fatalf("entrypoint output %q", out)
-				}
-				py = entryResult{dataDir: parts[0], secret: parts[1], source: SecretSource(parts[2])}
+			if want := tc.want.dataDirFromRootFn("$ROOT"); py.DataDir != want {
+				t.Errorf("DATA_DIR %q, table %q", py.DataDir, want)
 			}
-			if py.failed != tc.want.failed {
-				t.Fatalf("Python failed=%v (%s), table says %v", py.failed, stderr.String(), tc.want.failed)
-			}
-			if !py.failed {
-				want := *tc.want
-				checkEntry(t, root, want, py, nil)
-				// Go on a fresh copy of the same tree.
-				root2 := t.TempDir()
-				if tc.setup != nil {
-					tc.setup(t, root2)
-				}
-				got, err := runGoEntrypoint(root2, tc.env(root2))
-				checkEntry(t, root2, want, got, err)
+			if py.Source != string(tc.want.source) || py.Secret != tc.want.secret {
+				t.Errorf("secret %q from %q, table %q from %q", py.Secret, py.Source, tc.want.secret, tc.want.source)
 			}
 		})
 	}

@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/bifrost0x/webssh/internal/oracletest"
 )
 
 // The next slot of a schedule is differentially tested against next_due of
@@ -98,18 +100,30 @@ func goYear(c yearCase) yearAnswer {
 	return compactYear(runs, "")
 }
 
+// pythonYear asks the Python oracle under -update-next and in the live and
+// record modes of internal/oracletest; in replay mode it returns nil and
+// the recorded answers are used.
 func pythonYear(t *testing.T) []yearAnswer {
 	t.Helper()
-	python := os.Getenv("WEBSSH_PYTHON")
-	if python == "" {
-		python = filepath.Join("..", "..", ".venv", "bin", "python")
-	}
-	if _, err := os.Stat(python); err != nil {
+	var python, root string
+	switch {
+	case *updateNext:
+		python = os.Getenv("WEBSSH_PYTHON")
+		if python == "" {
+			python = filepath.Join("..", "..", ".venv", "bin", "python")
+		}
+		if _, err := os.Stat(python); err != nil {
+			t.Fatalf("-update-next needs the Python oracle: %v", err)
+		}
+		var err error
+		if root, err = filepath.Abs(filepath.Join("..", "..")); err != nil {
+			t.Fatal(err)
+		}
+	case oracletest.CurrentMode(t) != oracletest.Replay:
+		rel := oracletest.RequireLive(t)
+		python, root = rel.Python, rel.Root
+	default:
 		return nil
-	}
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
 	}
 	var in bytes.Buffer
 	enc := json.NewEncoder(&in)
