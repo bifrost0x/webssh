@@ -3,7 +3,7 @@ const crypto=require('node:crypto');
 const {login}=require('./helpers');
 
 // Names of jump hosts, SOCKS5 proxies and SSH keys are unique per user from
-// 3.4 (U72): a name in use, in any case and with surrounding spaces, is
+// 3.4 (U74): a name in use, in any case and with surrounding spaces, is
 // refused at the name field and nothing is stored. Go only (go_only in
 // go-suite.json): the default Python run leaves this file out. Run against
 // Python with another server command, the Python release stores the second
