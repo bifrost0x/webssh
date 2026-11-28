@@ -60,7 +60,7 @@ Ports are defined in `lab.env` and bind to `127.0.0.1` only.
 | ldap-blackhole | 13392 | Toxiproxy to ldap1, accepts TCP, never answers |
 | dex | 15556 | OIDC, issuer `https://localhost:15556/dex`, static users alice/bob, client `webssh-lab`, password grant enabled for tests |
 | mock-oauth2 | 18080 | navikt mock-oauth2-server, issuer `http://127.0.0.1:18080/default` |
-| github-stub | 18443 | Stub of the GitHub endpoints in `app/github_auth_service.py` (authorize with PKCE S256, token, `/user`, `/user/memberships/orgs/{org}`); `flaky-org` answers 502 |
+| github-stub | 18443 | Stub of the GitHub endpoints that `internal/auth/github` calls (authorize with PKCE S256, token, `/user`, `/user/memberships/orgs/{org}`); `flaky-org` answers 502 |
 | ts-node / ts-target | - | Tailscale stand-in, see below |
 | windows (profile) | 18006 web, 13489 RDP, 14446 SMB, 12204 SSH | dockur/windows, Windows Server 2025 evaluation, share `LabShare`, user `smbuser`; OpenSSH for `labadmin` with key `runtime/windows/ssh/labadmin_ed25519` only, default shell PowerShell |
 

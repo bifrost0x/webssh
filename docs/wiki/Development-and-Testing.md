@@ -1,6 +1,11 @@
 # Development and Testing
 
-The WebSSH server is a Go program (since 3.4). The frontend is vanilla JavaScript and CSS with locally vendored dependencies. The Python 3.3 server stays in the repository until the switch to Go is complete; it serves as the reference for difference tests and for the migration. It supports Python 3.11 and newer, and its container uses Python 3.15. The sections after **Go server** describe that Python tree.
+WebSSH is one Go program (`cmd/webssh`, packages in `internal/`). The
+frontend is vanilla JavaScript and CSS with locally vendored dependencies,
+embedded into the binary. Python is used only for the repository tools in
+`scripts/` and their tests in `tests/`. The last Python release (3.3) is
+maintained on the branch `release/3.3`; a worktree of it is the reference for
+re-recording the difference tests and for the lab migration tests.
 
 ## Go server
 
@@ -25,149 +30,109 @@ go test -race -count=1 -timeout 30m $GO_PACKAGES
 Gates run on `./cmd/... ./internal/...` rather than `./...`, because
 `node_modules` can contain Go files. `go test ./internal/architecture` checks
 the [package map](https://github.com/bifrost0x/webssh/blob/main/docs/architecture/go-package-map.md),
-the import rules and the size limit of production files.
+the import rules, the size limit of production files and that
+`THIRD-PARTY-NOTICES` covers every linked module. `.github/workflows/go.yml`
+runs the same gates in CI.
 
-- Difference tests compare Go with answers of the Python release that are
-  recorded under `testdata/` (`internal/oracletest`). They need no Python
-  and run in every `go test`. `WEBSSH_PYTHON_ORACLE=live` asks the Python
-  release instead and requires the recorded answers; it fails when no
-  interpreter is found (`WEBSSH_PYTHON`, default `.venv/bin/python`; the
-  Python sources come from `WEBSSH_PYTHON_ROOT`, default this checkout).
-  `PYTHON=.venv/bin/python scripts/record-python-oracles.sh` records every
-  answer again, and `scripts/check-python-oracles.sh` checks that the
-  recordings still match the release, with the environment from
-  **Development setup** below.
-- Lab tests (`-tags lab`) run against the containers of the test lab; the
-  browser suite runs against the Go server with `tests/e2e/go-suite.json`.
+- Lab tests (`-tags lab`) run against the containers of the test lab
+  (`tests/lab/up.sh`); `go test -tags lab -run Lab ./cmd/... ./internal/...`.
+- The end-to-end build (`-tags e2e`) adds the seeded test backend of the
+  browser suite; see [JavaScript and E2E tests](#javascript-and-e2e-tests).
 - `go run -tags devfs ./cmd/webssh serve` serves `static/` directly while
   working on the frontend.
 
-
 ## Development setup
 
-On Windows PowerShell:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements-test.txt
-$env:SECRET_KEY = '<strong local development secret>'
-$env:DEBUG = 'True'
-$env:DATA_DIR = "$PWD\dev-data"
-.\.venv\Scripts\python.exe start.py
+```bash
+scripts/stage-webassets.sh
+go build -o .test-run.tmp/webssh ./cmd/webssh
+export DEBUG=True
+export DATA_DIR="$PWD/dev-data"
+.test-run.tmp/webssh serve
 ```
 
-On Unix-like systems:
+With frontend work, `go run -tags devfs ./cmd/webssh serve` instead picks up
+changes below `static/` after a page reload.
+
+`DEBUG=True` selects development defaults, as in
+[Installation from Source](Installation-from-Source): a temporary
+`SECRET_KEY` when none is configured, cookies without the `Secure` flag for
+`http://127.0.0.1:5000`, and open registration. Never use it for a reachable
+instance. Do not reuse production `DATA_DIR`, credentials, or secrets for
+development and tests.
+
+## Difference tests against 3.3
+
+Difference tests compare Go with answers of the 3.3 release that are
+recorded under `testdata/` (`internal/oracletest`). They need no Python and
+run in every `go test`.
+
+Re-recording the answers, `WEBSSH_PYTHON_ORACLE=live` and the lab migration
+tests need the 3.3 release itself: a worktree of the tag `v3.3.1` (until the
+tag exists, commit `7d883135`) with its own virtual environment:
+
+```bash
+git worktree add ../webssh-3.3 v3.3.1        # until the tag exists: 7d883135
+python3 -m venv ../webssh-3.3/.venv
+../webssh-3.3/.venv/bin/python -m pip install --require-hashes \
+  -r ../webssh-3.3/requirements-test.txt
+export WEBSSH_PYTHON_ROOT="$PWD/../webssh-3.3"
+export WEBSSH_PYTHON="$WEBSSH_PYTHON_ROOT/.venv/bin/python"
+```
+
+- `PYTHON="$WEBSSH_PYTHON" scripts/record-python-oracles.sh` records every
+  answer again; `PYTHON="$WEBSSH_PYTHON" scripts/check-python-oracles.sh`
+  checks that the recordings still match the release and runs the
+  difference tests against it. Each recording names the interpreter and
+  the commit of the 3.3 sources in its header.
+- `WEBSSH_PYTHON_ORACLE=live go test …` asks the release instead of the
+  recordings and requires the recordings; it fails when no interpreter is
+  found.
+- The lab migration tests let 3.3 write a data directory and start Go on it:
+  `WEBSSH_LAB_JSON="$PWD/tests/lab/runtime/lab.json" go test -tags lab -run TestLabMigrated ./cmd/webssh`.
+  They fail, not skip, when the lab or the 3.3 environment is missing.
+
+## Repository tool tests
+
+`scripts/*.py` (CI, release and repository checks) and their tests in
+`tests/` use Python 3 with pytest; `requirements-test.txt` holds only pytest
+and ruff, hash-locked:
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install --require-hashes -r requirements-test.txt
-export SECRET_KEY=$(openssl rand -hex 32)
-export DEBUG=True
-export DATA_DIR="$PWD/dev-data"
-.venv/bin/python start.py
+.venv/bin/python -m pytest tests -q
+.venv/bin/python -m ruff check .
 ```
 
-`DEBUG=True` selects development defaults, as in
-[Installation from Source](Installation-from-Source): an auto-generated secret,
-cookies without the `Secure` flag for `http://127.0.0.1:5000`, and open
-registration. Never use it for a reachable instance.
+`ruff.toml` holds the selected rules. `scripts/lock_requirements.ps1`
+regenerates the hash-locked files from `requirements-test.in` and
+`requirements-graph.in` (the website code graph) with the uv version pinned
+in `uv.toml`; `-Check` verifies them without changes, `-Upgrade` refreshes
+all allowed resolutions. Do not hand-edit generated lock files.
 
-`start.py` runs the Werkzeug development server, which only starts from an
-interactive terminal. Without one, for example in an IDE run configuration
-without a terminal, a service unit or a CI job, it stops with "The Werkzeug web
-server is not designed to run in production"; `DEBUG=True` does not change
-that. Use Gunicorn there, as the container does:
+### Herdr lab
 
-```bash
-.venv/bin/gunicorn --worker-class gthread --workers 1 --threads 64 \
-  --bind 127.0.0.1:5000 start:app
-```
-
-Do not reuse production `DATA_DIR`, credentials, or secrets for development and tests.
-
-## Dependency management
-
-Direct Python dependencies live in `requirements.in`, `requirements-test.in` and `requirements-graph.in`. The shared `uv.toml` pins the resolver version used locally and by CI. Install that exact uv version before generating all three universal, hash-locked files:
-
-```powershell
-.\scripts\lock_requirements.ps1
-```
-
-Verify locks without modifying them:
-
-```powershell
-.\scripts\lock_requirements.ps1 -Check
-```
-
-Use `-Upgrade` for an intentional refresh of all allowed resolutions; the default preserves existing pins where possible. `-Check` and `-Upgrade` cannot be combined. Do not hand-edit generated lock files. A dependency change must update the input, all applicable lock outputs, and relevant compatibility tests. Preserve the Python 3.11 marker branches when newer Python versions select different packages. Existing lock files only seed version preferences; their hash lines are discarded and every hash is taken from the package index, so `-Check` also rejects added or duplicated hashes.
-
-Dependabot's pip updater rewrites the lock files without this script. When the `dependency-locks` check of a Dependabot pip pull request fails, the `Dependabot vendor refresh` workflow validates the pull request, reruns the lock script with the pinned uv and pushes only the three lock files as a follow-up commit. It accepts only Dependabot-authored `dependabot/pip/*` branches that change nothing but the requirement inputs and locks, and lock inputs limited to plain version specifiers.
-
-## Python tests
-
-Run the suite with:
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest tests --ignore=tests/integration -q -n 2 --dist=loadscope
-```
-
-Lint Python sources with the pinned ruff from the test requirements; `ruff.toml` holds the selected rules:
-
-```powershell
-.\.venv\Scripts\python.exe -m ruff check .
-```
-
-The pytest harness uses a reduced bcrypt work factor to keep authentication-heavy
-tests fast. An isolated subprocess contract verifies that normal application
-processes retain bcrypt's production work factor. The maintained gates execute
-the full unit suite in three complete file partitions on Python 3.15 and a representative compatibility suite on
-Python 3.11. The dependency-lock job also runs that unchanged minimum-version
-suite and checks Redis 7 and 8 against separate digest-pinned services, reducing
-concurrent setup jobs. Separate jobs exercise disposable
-OpenSSH and encrypted SMB servers. Targeted tests are useful while developing, but
-they do not replace the relevant full gate before release.
-
-### Real browser with disposable OpenSSH
-
-The tracked integration runner can also create an SFTP file through the browser,
-set its permissions, edit it and verify both content and mode after reopening.
-It also drives the Herdr session mode through the real terminal on desktop and
-mobile viewports against the lab's pinned Herdr host.
-Install the hash-locked Python test requirements, Node dependencies and Chromium,
-then run the complete Python and browser integration against the same Docker lab:
-
-```bash
-npm ci
-npx playwright install chromium
-python scripts/run_integration_tests.py --browser
-```
-
-On Linux, use `npx playwright install --with-deps chromium` when browser system
-libraries are not installed. Docker Compose must be available; loopback ports
-2222-2225 and 4184 must be free. Set `WEBSSH_E2E_PORT` to choose another browser
-port. The runner uses temporary application, backup and transfer data, creates
-disposable SSH keys, and tears down its lab after success or failure. It refuses
-missing Node/Playwright prerequisites before touching the lab. Do not run two
-instances of this lab concurrently. Without `--browser`, the existing Python-only
-command remains available. Browser failure, skipped tests and focused-only tests
-fail the gate; timing and failure evidence goes under `test-results/`.
-
-The Go server runs the same Herdr browser spec and the Go Herdr lab tests
-against its own disposable Herdr host, with a password and host keys made for
+The Go server runs the Herdr browser spec and the Go Herdr lab tests
+against a disposable Herdr host, with a password and host keys made for
 the run, and removes it afterwards:
 
 ```bash
 go build -o .test-run.tmp/webssh ./cmd/webssh
 tests/integration/herdr/run-go-lab.sh                 # Go lab tests, build tag herdr
-PYTHON=.venv/bin/python \
+PYTHON="$WEBSSH_PYTHON" \
 WEBSSH_E2E_M1_SERVER_COMMAND='.test-run.tmp/webssh serve' \
 WEBSSH_E2E_M1_ADMIN_COMMAND='.test-run.tmp/webssh' \
 tests/integration/herdr/run-go-browser.sh             # browser spec
 ```
 
+The spec's probe (`tests/integration/herdr_lab_probe.py`) needs paramiko;
+`PYTHON` names an interpreter that has it, such as the one of the 3.3
+worktree above.
+
 ## Frontend dependencies
 
-Pinned browser libraries are declared in `package.json` and copied into the repository through the vendor workflow. Current contracts include xterm.js, fit/search addons, Socket.IO client, highlight.js, and Material Icons.
+Pinned browser libraries are declared in `package.json` and copied into the repository through the vendor workflow. Current contracts include xterm.js, fit/search addons, highlight.js, and Material Icons.
 
 ```bash
 npm ci
@@ -175,7 +140,7 @@ npm run vendor
 npm run vendor:check
 ```
 
-Do not add runtime CDN scripts, fonts, or styles. The application must remain offline-capable and satisfy CSP and vendor-integrity tests.
+Do not add runtime CDN scripts, fonts, or styles. The application must remain offline-capable and satisfy CSP and vendor-integrity tests. Run `scripts/stage-webassets.sh` again before a build so the binary embeds the new files.
 
 ## JavaScript and E2E tests
 
@@ -183,10 +148,15 @@ Do not add runtime CDN scripts, fonts, or styles. The application must remain of
 npm run lint:js
 npm run test:js
 npm run test:e2e
+node tests/e2e/run-go-suite.js --with passkeys,e2e_hooks
 ```
 
-`test:e2e` always runs the complete suite. CI uses eight runner groups with four
-isolated app servers per group. Each server keeps one worker and receives one of
+Playwright starts the seeded Go test backend (build tag `e2e`) for every run;
+[tests/e2e/README.md](https://github.com/bifrost0x/webssh/blob/main/tests/e2e/README.md)
+describes the backend contract, the seed and the variables.
+`run-go-suite.js` runs the specs listed in `tests/e2e/go-suite.json`; every
+test it leaves out names its reason. CI uses eight runner groups with four
+isolated WebSSH servers per group. Each server keeps one worker and receives one of
 32 disjoint partitions, assigned by recorded duration:
 
 ```bash
@@ -216,38 +186,20 @@ cases start. Their partitions are calculated from the current discovery and
 weights. Only those cases run exclusively; all four lanes then run their remaining
 cases in parallel, with separate output and timing files for each phase. All
 remaining cases still run even when one fails.
-Font tests use Ubuntu hosted runners with Python 3.15 and the locked Playwright
-browsers. Both browser runtimes must pass their installation and launch checks.
+Font tests use Ubuntu hosted runners with the locked Playwright browsers. Both
+browser runtimes must pass their installation and launch checks.
 
-The Python partitions are computed from the current collection and keep whole
-files together, preserving module/class fixture locality. Run all three:
-
-```bash
-python -m pytest tests/ --ignore=tests/integration --ignore=tests/test_documentation_surface.py -p scripts.pytest_shard --ci-shard=1/3 -n 2 --dist=loadscope
-# Repeat --ci-shard=2/3 and --ci-shard=3/3; no single partition is the full gate.
-```
-
-The `pytest`, `browser-e2e` and `all-tests` aggregate checks retain all required
-partitions, minimum-version compatibility, font browsers and protocol labs.
-The runtime target is two to three minutes for the entire required gate, including
+The `browser-e2e` and `all-tests` aggregate checks retain all required
+partitions and font browsers. The runtime target is two to three minutes for the entire required gate, including
 `all-tests` and `security-scan / image-security`;
 queueing, cold dependency installation and runner capacity still require measured
 GitHub validation at the published revision. No test is dropped to meet that target.
-CI installs the unchanged hash-locked Python test requirements with pinned uv
-0.12.3 into the interpreter selected by `setup-python`. This retains the Python
-3.11 and 3.15 checks and does not change production installation commands.
-On Ubuntu CI, installed LDAP headers are reused and package indexes are refreshed
-only if installation from the existing indexes fails. Chromium installs the
-headless shell used by these tests and must pass a real launch probe; missing
+Chromium installs the headless shell used by these tests and must pass a real launch probe; missing
 system libraries trigger dependency installation and a second mandatory probe.
 Firefox and WebKit also probe their installed runtime before requesting system
-packages. LDAP package installation bounds stalled HTTP mirror connections to
-two seconds and HTTPS connections to five seconds, with failures still blocking
-the gate when no configured mirror can serve the packages.
-On GitHub-hosted runners, the recognized default mirror list prefers its existing
-official HTTPS archive and retains Azure as a fallback. Unknown mirror lists are
-left unchanged. The isolated SMB lab prebuilds both images with two build slots.
-Pull requests build scan images with the native Docker builder on AMD64 and
+packages. On GitHub-hosted runners, the recognized default APT mirror list
+prefers its existing official HTTPS archive and retains Azure as a fallback.
+Unknown mirror lists are left unchanged. Pull requests build scan images with the native Docker builder on AMD64 and
 ARM64 runners, avoiding a separate Buildx daemon and remote cache export.
 Base images are pulled and OS package refresh inputs remain unique per run.
 The SPDX SBOM, both Trivy scans and their required aggregate remain mandatory.
@@ -299,20 +251,24 @@ Test both the new default and the user's explicit override.
 
 ## Container and runtime gates
 
-Relevant release validation includes:
+`tests/image/check.sh` builds the `release` and `debug` targets of the
+`Dockerfile` and checks them (`BUILD=0` checks existing `webssh:local` and
+`webssh:local-debug` images, `TRIVY=1` adds the Trivy scan). Relevant release
+validation includes:
 
-- container build and startup;
-- runtime identities in `scripts/check_hardened_container.py`: the default
-  user, the hardened overlay, a custom UID and the shipped Unraid template;
+- container build and startup without a shell, under the restrictions of
+  `docker-compose.hardened.yml`;
+- runtime identities: the default user, a custom UID and the shipped Unraid
+  template;
 - the Unraid template's ports, paths and variables against
   `docker-compose.yml` (`tests/test_unraid_template.py`);
-- Gunicorn `gthread`, exactly one worker, and thread/socket reserve;
+- the Compose files, the 3.3 health checks and command forms;
 - `/health` and `/ready` behavior;
-- graceful shutdown and transfer cleanup;
+- offline backup and restore, graceful shutdown;
 - AMD64 and ARM64 images;
 - SPDX SBOM and provenance;
 - Trivy results for fixable High/Critical findings;
-- CodeQL for Python, JavaScript/TypeScript, and Actions.
+- CodeQL for the languages in the repository and for Actions.
 
 A new or changed setting, port or volume in `docker-compose.yml` must reach
 `unraid/webssh.xml` in the same change; the template test fails otherwise.
@@ -377,14 +333,14 @@ contract does not replace the real candidate scans or application runtime checks
 
 The protected PR checks are `all-tests` and `security-scan / image-security`.
 They always report a result. The first requires the complete test job set,
-including SMB, the release contract and the Go gates (`go-gates`, which calls
+including the release contract and the Go gates (`go-gates`, which calls
 `.github/workflows/go.yml`; a failed Go job fails `go-gates` and with it
 `all-tests`); the second requires both native image scans. Missing, failed or cancelled jobs block their aggregate. Successful older
 runs cannot satisfy a newer revision.
 
 | Change or trigger | Tests | Container scans and publication |
 |---|---|---|
-| Code, tests, dependencies, workflow or mixed PR | Full Python 3.15 partitions; Python 3.11 compatibility; Redis 7/8; OpenSSH with real browser lifecycle; SMB; JavaScript, vendor and lint checks; all 32 browser partitions; Firefox/WebKit fonts; runtime and release contracts | Native AMD64 and ARM64 scans; no publication |
+| Code, tests, dependencies, workflow or mixed PR | Go gates (build, vet, staticcheck, race tests, security scanners, network namespace and SSH protocol checks); repository tool tests; JavaScript, vendor and lint checks; all 32 browser partitions; Firefox/WebKit fonts; image and release contracts | Native AMD64 and ARM64 scans; no publication |
 | Documentation-only PR | Exact-revision classification, documentation contracts, the `lint` job and both required aggregates | Both image scans deliberately skipped; no publication |
 | Main push or version tag | Complete reusable Tests workflow once | Native candidates build alongside tests; publish only after all gates pass |
 | Manual exact-SHA test run | Full tests, regardless of changed paths | No publication from the Tests workflow |
@@ -401,12 +357,11 @@ full validation. Workflow summaries record the decision and its reason.
 
 The existing documentation contracts run in the initial test job through
 `python -m unittest discover -s tests -p test_documentation_surface.py -v`.
-The 33 checks cover Wiki links, page coverage, README structure, documentation
-media, LDAP and Command Set instructions, runtime-version consistency and
-production Compose commands without installing application dependencies.
-Keep every test that reads README or allowed documentation paths in this module,
-including contracts that compare documentation with runtime or workflow files. Full pytest excludes that module
-to avoid running it twice.
+The checks cover Wiki links, page coverage, README structure, documentation
+media, LDAP and Command Set instructions, the Go toolchain reference and
+production Compose commands without installing any dependencies. Keep every
+test that reads README or allowed documentation paths in this module,
+including contracts that compare documentation with runtime or workflow files.
 
 The same initial job runs `python scripts/check_repository_hygiene.py` against
 the complete tracked tree. This blocks local agent instructions, internal review
@@ -438,20 +393,21 @@ by accepting arbitrary skipped jobs or by removing a required check.
 
 ## Storage and concurrency rules
 
-When changing JSON persistence:
+When changing persistence:
 
-- hold `storage_lock` for the complete load-modify-save sequence;
-- use `atomic_write_json`;
-- preserve corrupt data for diagnosis rather than overwriting it;
-- make schema migrations additive and backed up.
+- go through `internal/store`: one SQLite database, changes in transactions,
+  versioned and additive schema migrations;
+- seal secrets with `internal/keyring`, bound to their record;
+- preserve unreadable data for diagnosis rather than overwriting it;
+- never write the 3.3 data in `DATA_DIR`; only `internal/migrate/legacy` reads it.
 
 When changing SSH/SFTP or transfers:
 
 - preserve user ownership checks;
-- use existing Paramiko channel helpers;
+- dial only through `internal/ssh/client` and its network policy;
 - keep timeouts, cancellation, and quota admission;
 - ensure quick connections outlive queued/active transfer references;
-- test graceful shutdown and disconnect races.
+- test graceful shutdown and disconnect races with `-race`.
 
 ## Contributions
 
