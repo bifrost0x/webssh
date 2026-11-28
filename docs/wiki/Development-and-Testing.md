@@ -377,8 +377,9 @@ contract does not replace the real candidate scans or application runtime checks
 
 The protected PR checks are `all-tests` and `security-scan / image-security`.
 They always report a result. The first requires the complete test job set,
-including SMB and the release contract; the second requires both native image
-scans. Missing, failed or cancelled jobs block their aggregate. Successful older
+including SMB, the release contract and the Go gates (`go-gates`, which calls
+`.github/workflows/go.yml`; a failed Go job fails `go-gates` and with it
+`all-tests`); the second requires both native image scans. Missing, failed or cancelled jobs block their aggregate. Successful older
 runs cannot satisfy a newer revision.
 
 | Change or trigger | Tests | Container scans and publication |
