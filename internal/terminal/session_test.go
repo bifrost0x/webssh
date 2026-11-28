@@ -45,10 +45,13 @@ func TestOpenStreamsOutputAndInput(t *testing.T) {
 }
 
 // Go-Back-N: a refused frame gets one rejection, later frames are dropped
-// silently until the refused sequence comes again.
+// silently until the refused sequence comes again. The session refills 10
+// bytes per second: the 4 bytes the second frame lacks take 400 ms, so a
+// slow scheduler between two frames cannot let it through (at 1000 bytes
+// per second a pause of 4 ms did).
 func TestInputGoBackN(t *testing.T) {
 	shells := &fakeShells{}
-	m := newManager(t, Config{Input: InputLimits{SessionRate: 1000, SessionBurst: 10, UserRate: 1000, UserBurst: 100}}, shells)
+	m := newManager(t, Config{Input: InputLimits{SessionRate: 10, SessionBurst: 10, UserRate: 1000, UserBurst: 100}}, shells)
 	peer := user(t, 1)
 	open(t, m, peer, 1)
 	sh := shells.last(t)
@@ -70,7 +73,8 @@ func TestInputGoBackN(t *testing.T) {
 	if r.Ch != 1 || r.ISeq != 2 || r.Code != fault.InputBackpressure || r.RetryAfterMS < 1 {
 		t.Fatalf("rejection %+v", r)
 	}
-	time.Sleep(10 * time.Millisecond)
+	// 2 bytes are left; "ab" and "c" need 3, 200 ms refill 2 more.
+	time.Sleep(200 * time.Millisecond)
 	mustBinary(input(1, 2, "ab", false)) // resent, fits now
 	mustBinary(input(1, 3, "c", false))
 	eventually(t, "input in order", func() bool { return sh.typed() == "12345678abc" })
