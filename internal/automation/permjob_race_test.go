@@ -70,7 +70,7 @@ func (p raceSource) Chmod(ctx context.Context, path string, perm uint32, want Pe
 type raceSources struct{ b *sftp.Backend }
 
 func (s raceSources) Hold(context.Context, principal.Principal, string) (PermSource, any, func(), error) {
-	return raceSource{s.b}, s.b, func() {}, nil
+	return raceSource(s), s.b, func() {}, nil
 }
 func (s raceSources) Clean(p string) (string, error) { return files.CleanTarget(p) }
 
