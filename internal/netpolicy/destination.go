@@ -43,6 +43,9 @@ func (p *Policy) JumpDestination(ctx context.Context, host string, port int, rel
 	case relay && p.cfg.Tailnet.active():
 		return "", tailnetRefusal(msgTailnetRelay)
 	}
+	if _, numeric := inetAton(canonical); numeric {
+		return "", err // the relay would reach the same refused address
+	}
 	if p.cfg.BlockInternal && !remoteDNSAllowed(canonical, p.cfg.JumpRemoteDNS) {
 		return "", errBlocked
 	}
@@ -67,7 +70,7 @@ func (p *Policy) SOCKSDestination(ctx context.Context, host string, port int, re
 	if port < 1 || port > 65535 {
 		return "", errPort
 	}
-	_, literal := parsePythonAddr(canonical)
+	_, literal := policyAddr(canonical)
 	if !literal && remoteDNS && (!p.cfg.BlockInternal || remoteDNSAllowed(canonical, p.cfg.SOCKSRemoteDNS)) {
 		if p.cfg.Tailnet.remoteNameRestricted(ctx, canonical, p.lookup) {
 			return "", tailnetRefusal(msgTailnetName)
@@ -102,9 +105,9 @@ func (p *Policy) lookup(ctx context.Context, host string) ([]netip.Addr, error) 
 }
 
 // remoteDNSAllowed matches a canonical name exactly against an allowlist of
-// canonical names. IP literals never match.
+// canonical names. IP literals and numeric IPv4 forms never match.
 func remoteDNSAllowed(canonical string, allowlist []string) bool {
-	if _, isIP := parsePythonAddr(canonical); isIP {
+	if _, isIP := policyAddr(canonical); isIP {
 		return false
 	}
 	return slices.Contains(allowlist, canonical)

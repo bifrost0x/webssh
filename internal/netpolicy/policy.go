@@ -149,7 +149,7 @@ func (p *Policy) decide(addr netip.Addr) (allowed, viaAllowance bool) {
 }
 
 func (p *Policy) admit(ctx context.Context, canonical string, port int, tailnetRule bool) (Admitted, error) {
-	if literal, ok := parsePythonAddr(canonical); ok {
+	if literal, ok := policyAddr(canonical); ok {
 		allowed, via := p.decide(literal)
 		if !allowed {
 			return Admitted{}, errBlocked
