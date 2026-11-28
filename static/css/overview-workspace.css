@@ -458,7 +458,7 @@ body.webssh-ui[data-theme="glass"]:not([data-custom-background]) .od-scene { bac
 .od-app-more[hidden] { display: none; }
 .od-app-more:hover { border-style: solid; background: var(--ws2-row-hover); }
 .od-host-empty { margin: 0; padding-top: 4px; color: var(--ws2-text-secondary); font-size: 12.5px; line-height: 1.45; }
-.od-host-apps .od-hint-chip { justify-self: start; }
+.od-host-apps > .od-chip { justify-self: start; }
 .od-host-runs { display: flex; gap: 6px; min-width: 0; min-height: 18px; margin: 0; font-size: 12px; line-height: 18px; color: var(--ws2-text-secondary); }
 .od-host-runs-label { flex: 0 0 auto; }
 .od-host-runs-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ws2-text); }
