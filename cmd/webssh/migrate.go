@@ -7,13 +7,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	json "encoding/json/v2"
 
 	"github.com/bifrost0x/webssh/internal/auth/totp"
 	"github.com/bifrost0x/webssh/internal/backup"
+	"github.com/bifrost0x/webssh/internal/config"
+	"github.com/bifrost0x/webssh/internal/keyring"
 	"github.com/bifrost0x/webssh/internal/migrate/legacy"
+	"github.com/bifrost0x/webssh/internal/platform"
 	"github.com/bifrost0x/webssh/internal/vault"
 )
 
@@ -27,7 +31,11 @@ func runMigrate(ctx context.Context, args []string, s streams) int {
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 || *dryRun == *replace {
 		return usageError(s.stderr, "migrate needs exactly one of --dry-run and --replace")
 	}
-	cfg, err := loadConfig()
+	load := loadConfig
+	if *dryRun {
+		load = loadConfigReadOnly
+	}
+	cfg, err := load()
 	if err != nil {
 		return fail(s, err)
 	}
@@ -55,6 +63,27 @@ func runMigrate(ctx context.Context, args []string, s streams) int {
 	}
 	write(s.stdout, "Migration report: "+out.ReportPath+"\n")
 	return 0
+}
+
+// loadConfigReadOnly resolves the configuration like loadConfig without
+// writing to DATA_DIR, for `migrate --dry-run`: the directory and its
+// subdirectories are not created or narrowed, and no secret is
+// generated. An interrupted secret rotation or restore of the secret
+// would have to be completed first, which writes; the dry run refuses
+// instead and names the way out.
+func loadConfigReadOnly() (config.Config, error) {
+	cfg, _, err := config.BootstrapReadOnly(os.LookupEnv, platform.CheckDataDir)
+	if err != nil {
+		return cfg, err
+	}
+	goDir := filepath.Join(cfg.DataDir, keyring.GoDirName)
+	if _, err := os.Lstat(filepath.Join(goDir, backup.PendingSecretName)); err == nil {
+		return cfg, errors.New("an interrupted rotation of SECRET_KEY is pending; start WebSSH once to complete it, then run the dry run")
+	}
+	if j, err := backup.ReadJournal(goDir); err == nil && j != nil && j.State == backup.RestoreInProgress && j.Secret {
+		return cfg, errors.New("a restore that replaces SECRET_KEY is pending; start WebSSH once to complete it, then run the dry run")
+	}
+	return cfg, nil
 }
 
 // runLegacy is `webssh legacy purge [--backup-to DIR] [--skip-backup]

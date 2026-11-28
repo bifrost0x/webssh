@@ -18,6 +18,9 @@ import (
 // step 5).
 const spaceMargin = 64 << 20
 
+// dryRunPrefix names the scratch directory of a dry run in TMPDIR.
+const dryRunPrefix = "webssh-migrate-dry-run-"
+
 // run is one migration of the legacy source into a staging database:
 // section 5.2 steps 2 to 9. Activation is a separate step (activate.go).
 type run struct {
@@ -126,6 +129,9 @@ func (r *run) checkSpace() error {
 	dir := r.l.goDir
 	if _, err := os.Lstat(dir); err != nil {
 		dir = r.l.dataDir
+	}
+	if r.dryRun {
+		dir = os.TempDir()
 	}
 	query := freeBytes
 	if r.o.freeSpace != nil {
@@ -239,7 +245,13 @@ func (r *run) prepareKeyring() error {
 // stage creates the staging directory and database with every schema.
 func (r *run) stage(ctx context.Context) error {
 	var err error
-	if r.staging, err = r.l.newStaging(); err != nil {
+	if r.dryRun {
+		// The scratch database of a dry run lives outside DATA_DIR.
+		r.staging, err = os.MkdirTemp("", dryRunPrefix)
+	} else {
+		r.staging, err = r.l.newStaging()
+	}
+	if err != nil {
 		return stop("", CodeActivation, "the staging directory cannot be created", err)
 	}
 	if r.db, err = store.Open(ctx, filepath.Join(r.staging, stagedDBName), store.Options{}); err != nil {
@@ -289,10 +301,14 @@ func (r *run) discard() error {
 		errs = append(errs, r.db.Close())
 		r.db = nil
 	}
-	if r.staging != "" {
+	switch {
+	case r.staging == "":
+	case r.dryRun:
+		errs = append(errs, os.RemoveAll(r.staging))
+	default:
 		errs = append(errs, r.l.removeStaging(r.staging))
-		r.staging = ""
 	}
+	r.staging = ""
 	return errors.Join(errs...)
 }
 

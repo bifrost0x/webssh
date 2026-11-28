@@ -3,6 +3,7 @@ package legacy
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"syscall"
 	"time"
@@ -37,8 +38,22 @@ const (
 // when the process ends, however it ends.
 type goLock struct{ f *os.File }
 
-func acquireLock(path string) (*goLock, error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o600) // #nosec G304 -- the Go-owned lock file
+func acquireLock(path string) (*goLock, error) { return openLock(path, os.O_CREATE) }
+
+// acquireExistingLock takes the lock only where the lock file exists and
+// returns nil without creating it otherwise: a dry run writes nothing to
+// DATA_DIR, and every Go process that uses the directory creates the file
+// before it holds the lock.
+func acquireExistingLock(path string) (*goLock, error) {
+	l, err := openLock(path, 0)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	return l, err
+}
+
+func openLock(path string, create int) (*goLock, error) {
+	f, err := os.OpenFile(path, os.O_RDWR|create|syscall.O_NOFOLLOW, 0o600) // #nosec G304 -- the Go-owned lock file
 	if err != nil {
 		return nil, fmt.Errorf("legacy: open lock file: %w", err)
 	}
@@ -64,7 +79,14 @@ func acquireLock(path string) (*goLock, error) {
 	}
 }
 
-func (l *goLock) release() error { return l.f.Close() }
+// release releases the lock; a nil lock (acquireExistingLock without a
+// lock file) has nothing to release.
+func (l *goLock) release() error {
+	if l == nil {
+		return nil
+	}
+	return l.f.Close()
+}
 
 // probeSQLiteLock reports whether another process holds any SQLite lock on
 // the database file at path: a pending, reserved or shared lock, which

@@ -385,6 +385,28 @@ func TestBootstrap(t *testing.T) {
 	}
 }
 
+// BootstrapReadOnly reads an existing secret but never writes one: a
+// directory without SECRET_KEY and secret_key is refused and stays empty.
+func TestBootstrapReadOnly(t *testing.T) {
+	dir := t.TempDir()
+	check := func(string) error { return nil }
+	_, _, err := BootstrapReadOnly(lookupMap(map[string]string{"DATA_DIR": dir}), check)
+	if err == nil || !strings.Contains(err.Error(), "neither SECRET_KEY nor") {
+		t.Fatalf("missing secret: %v", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("the read-only bootstrap wrote %v", entries)
+	}
+	writeFile(t, filepath.Join(dir, "secret_key"), testSecret+"\n", 0o600)
+	c, _, err := BootstrapReadOnly(lookupMap(map[string]string{"DATA_DIR": dir}), check)
+	if err != nil || c.SecretSource != SecretFromFile || string(c.SecretKey.Bytes()) != testSecret {
+		t.Fatalf("file secret: %v %q", err, c.SecretSource)
+	}
+	if _, _, err := BootstrapReadOnly(lookupMap(map[string]string{"DATA_DIR": dir}), func(string) error { return errors.New("missing") }); err == nil {
+		t.Error("check error ignored")
+	}
+}
+
 func TestSecretGeneratedBesideExistingData(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "app.db"), "", 0o600)

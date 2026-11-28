@@ -85,6 +85,23 @@ func PrepareDataDir(path string) (string, error) {
 	return root, nil
 }
 
+// CheckDataDir is the read-only counterpart of PrepareDataDir for commands
+// that must leave the data directory as it is: path must be absolute and
+// name an existing directory. Nothing is created, restricted or probed.
+func CheckDataDir(path string) error {
+	if !filepath.IsAbs(path) {
+		return &DataDirError{Path: path, Op: "check path", Err: ErrRelativeDataDir}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return &DataDirError{Path: path, Op: "check", Err: err}
+	}
+	if !info.IsDir() {
+		return &DataDirError{Path: path, Op: "check", Err: errNotDirectory}
+	}
+	return nil
+}
+
 // ProbeDataDir proves that dir is writable: it creates, writes, syncs and
 // removes a file. Readiness checks use the same probe.
 func ProbeDataDir(dir string) (err error) {

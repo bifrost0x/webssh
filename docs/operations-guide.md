@@ -108,7 +108,10 @@ follow [Production Deployment](wiki/Production-Deployment.md).
    `healthcheck:` block and any `command:` or `entrypoint:` that starts a
    shell, `gunicorn` or `python`. Keep `SECRET_KEY` if you set it before.
 4. Optional: `docker compose run --rm webssh migrate --dry-run` prints the
-   report without writing.
+   report without writing to `DATA_DIR`. Its scratch database lives in
+   `TMPDIR` (default `/tmp`) and needs three times the size of `app.db`
+   plus 64 MiB there; with a small `/tmp` tmpfs set `TMPDIR` to a larger
+   writable path outside `DATA_DIR`.
 5. Start: `docker compose pull && docker compose up -d`.
 6. Check the log and the report:
 

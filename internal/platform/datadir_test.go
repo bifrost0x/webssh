@@ -2,6 +2,8 @@ package platform
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -29,5 +31,34 @@ func TestDataDirErrorMessage(t *testing.T) {
 	noHint := &DataDirError{Path: "/x", Op: "resolve", Err: cause}
 	if strings.Contains(noHint.Error(), ";") {
 		t.Errorf("Error() without hint = %q", noHint.Error())
+	}
+}
+
+// CheckDataDir accepts an existing absolute directory and refuses the
+// rest, without creating anything.
+func TestCheckDataDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := CheckDataDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckDataDir("relative"); !errors.Is(err, ErrRelativeDataDir) {
+		t.Errorf("relative: %v", err)
+	}
+	missing := filepath.Join(dir, "missing")
+	if err := CheckDataDir(missing); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("missing: %v", err)
+	}
+	if _, err := os.Lstat(missing); !errors.Is(err, os.ErrNotExist) {
+		t.Error("CheckDataDir created the directory")
+	}
+	file := filepath.Join(dir, "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckDataDir(file); !errors.Is(err, errNotDirectory) {
+		t.Errorf("file: %v", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("entries %v", entries)
 	}
 }

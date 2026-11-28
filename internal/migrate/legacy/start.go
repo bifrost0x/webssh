@@ -194,7 +194,17 @@ func DryRun(ctx context.Context, o Options) (*Report, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
 	}
-	l, lock, _, err := lockAndClean(o)
+	// A dry run creates nothing in DATA_DIR: it takes the Go lock only
+	// where the lock file exists, and leaves the staging directories of
+	// an interrupted migration to the next start.
+	l, err := layoutOf(o.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	lock, err := acquireExistingLock(l.lock)
+	if errors.Is(err, ErrLocked) {
+		return nil, stop("", CodeLocked, "another WebSSH process uses this data directory; stop it first", err)
+	}
 	if err != nil {
 		return nil, err
 	}

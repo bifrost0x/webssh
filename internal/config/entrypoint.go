@@ -114,7 +114,9 @@ func resolveSecretKey(fsys fileSystem, create func(path string, data []byte) err
 	if err != nil {
 		return res, warns, fmt.Errorf("config: generate SECRET_KEY: %w", err)
 	}
-	if err := create(file, []byte(key+"\n")); err != nil {
+	if err := create(file, []byte(key+"\n")); errors.Is(err, errNoSecret) {
+		return res, warns, configError("SECRET_KEY", "neither SECRET_KEY nor "+file+" is set; set SECRET_KEY to the secret the Python release used")
+	} else if err != nil {
 		return res, warns, configError("SECRET_KEY", fmt.Sprintf("could not write %s -- mount a writable volume on %s.", file, dataDir))
 	}
 	res.Key, res.Generated = NewSecret([]byte(key)), true
@@ -209,6 +211,22 @@ func (r SecretResolution) Overlay(dataDir string, lookup LookupFunc) LookupFunc 
 // let prepare create and restrict the directory (internal/platform), resolve
 // the secret, then Load.
 func Bootstrap(lookup LookupFunc, prepare func(dataDir string) error) (Config, []Warning, error) {
+	return bootstrap(lookup, prepare, createSecretFile)
+}
+
+// errNoSecret is the refusal of BootstrapReadOnly when neither SECRET_KEY
+// nor DATA_DIR/secret_key holds a secret.
+var errNoSecret = errors.New("no secret to read")
+
+// BootstrapReadOnly is Bootstrap for commands that must not write to
+// DATA_DIR (`webssh migrate --dry-run`): check only inspects the
+// directory, and a missing secret is a configuration error instead of a
+// newly generated DATA_DIR/secret_key.
+func BootstrapReadOnly(lookup LookupFunc, check func(dataDir string) error) (Config, []Warning, error) {
+	return bootstrap(lookup, check, func(string, []byte) error { return errNoSecret })
+}
+
+func bootstrap(lookup LookupFunc, prepare func(dataDir string) error, create func(path string, data []byte) error) (Config, []Warning, error) {
 	dataDir, err := ResolveDataDir(lookup)
 	if err != nil {
 		return Config{}, nil, err
@@ -218,7 +236,7 @@ func Bootstrap(lookup LookupFunc, prepare func(dataDir string) error) (Config, [
 			return Config{}, nil, err
 		}
 	}
-	sec, warns, err := ResolveSecretKey(dataDir, lookup)
+	sec, warns, err := resolveSecretKey(osFS{}, create, legacySecretKeyFile, dataDir, lookup)
 	if err != nil {
 		return Config{}, warns, err
 	}
