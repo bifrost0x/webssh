@@ -1,5 +1,5 @@
+// The polling variant of the load test is dropped by ADR 0005 (go-suite.json).
 const exclusiveResourceTests = new Set([
-    'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over polling',
     'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over websocket',
 ]);
 

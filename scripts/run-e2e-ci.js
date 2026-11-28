@@ -47,7 +47,9 @@ function assertNoSharedExecutionGroups() {
         const directory = pending.pop();
         for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
             const entryPath = path.join(directory, entry.name);
-            if (entry.isDirectory()) pending.push(entryPath);
+            // m1/ and m2/ have their own configurations and backends; the
+            // main configuration ignores them (playwright.config.js).
+            if (entry.isDirectory() && !(directory === testDirectory && ['m1', 'm2'].includes(entry.name))) pending.push(entryPath);
             if (entry.isFile() && entry.name.endsWith('.spec.js')) specFiles.push(entryPath);
         }
     }
