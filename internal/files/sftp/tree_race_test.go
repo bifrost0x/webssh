@@ -1,6 +1,7 @@
 package sftp
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -212,4 +213,61 @@ func TestRemoveBelowLinkedRoot(t *testing.T) {
 		t.Fatalf("tree still there: %v", err)
 	}
 	rt.victimIntact(t)
+}
+
+// deepServer serves a chain of directories with names of 4096 bytes, as
+// a hostile server can: the paths of a tree walk grow past MaxPathBytes,
+// which no request of the file layer could address.
+func deepServer(t *testing.T) *Backend {
+	t.Helper()
+	long := strings.Repeat("a", 4096)
+	var mu sync.Mutex
+	next, sent := 0, map[string]bool{}
+	dirAttrs := attrsBody(0o040755)
+	b, _ := newFake(t, Options{}, func(typ byte, _ uint32, d *decoder) (byte, []byte) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch typ {
+		case fxpLstat:
+			return fxpAttrs, dirAttrs
+		case fxpRealpath:
+			p := d.bytesN(1 << 20)
+			body := be32(1)
+			body = append(body, str(p)...)
+			body = append(body, str(nil)...)
+			return fxpName, append(body, attrsBody(0)...)
+		case fxpOpendir:
+			next++
+			return fxpHandle, str(fmt.Appendf(nil, "h%d", next))
+		case fxpReaddir:
+			h := string(d.bytesN(1024))
+			if sent[h] {
+				return fxpStatus, statusBody(fxEOF)
+			}
+			sent[h] = true
+			body := be32(1)
+			body = append(body, str([]byte(long))...)
+			body = append(body, str(nil)...)
+			return fxpName, append(body, dirAttrs...)
+		case fxpClose:
+			return fxpStatus, statusBody(fxOK)
+		}
+		return fxpStatus, statusBody(fxOpUnsupported)
+	})
+	return b
+}
+
+func TestTreeRefusesPathsBeyondMaxPathBytes(t *testing.T) {
+	b := deepServer(t)
+	longest := 0
+	err := b.Walk(ctx(t), "/r", files.Budget{}, func(e files.Entry) error {
+		longest = max(longest, len(e.Path))
+		return nil
+	})
+	if !fault.Is(err, fault.OperationFailed) || longest > files.MaxPathBytes {
+		t.Fatalf("Walk = %v, longest path %d; want %s before a path over %d bytes", err, longest, fault.OperationFailed, files.MaxPathBytes)
+	}
+	if err := deepServer(t).Remove(ctx(t), "/r", true, files.Budget{}); !fault.Is(err, fault.OperationFailed) {
+		t.Fatalf("Remove = %v, want %s", err, fault.OperationFailed)
+	}
 }

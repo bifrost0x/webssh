@@ -80,6 +80,11 @@ func (d *dirReader) fill(ctx context.Context) error {
 			if e.name == "" || strings.ContainsAny(e.name, "/\x00") || d.strict && !strictName(e.name) {
 				return fault.New(fault.OperationFailed, msgUnsafeName)
 			}
+			// A tree operation never holds a path the file layer could not
+			// address (files.Clean): the budget counts names, not paths.
+			if d.strict && len(d.dir)+1+len(e.name) > files.MaxPathBytes {
+				return fault.New(fault.OperationFailed, msgUnsafeName)
+			}
 			d.buf = append(d.buf, e)
 		}
 	}
