@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"slices"
 	"sync"
 	"time"
@@ -64,9 +65,11 @@ type Handler struct {
 	// (StreamBody).
 	streamed map[string]bool
 	// signedIn and anonymous bound the buffered bodies in flight, users
-	// the share of one account within signedIn.
+	// the share of one account within signedIn, sources the share of one
+	// client source within anonymous.
 	signedIn, anonymous *bodyBudget
-	users               *userBudgets
+	users               *shareBudgets[int64]
+	sources             *shareBudgets[netip.Prefix]
 	budgetWait          time.Duration
 	// readTimeout is the read deadline of a request (requestReadTimeout).
 	readTimeout time.Duration
@@ -110,6 +113,7 @@ func New(o Options) (*Handler, error) {
 		anonymous: newBodyBudget(anonymousBodyBudget), budgetWait: bodyBudgetWait,
 		readTimeout: requestReadTimeout,
 		users:       newUserBudgets(userBodyShare),
+		sources:     newSourceBudgets(sourceBodyShare),
 	}
 	if h.session.name == "" {
 		return nil, errors.New("httpapi: the session cookie name is empty")
@@ -262,6 +266,9 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer release()
+		if !signedIn {
+			setReadDeadline(w, min(h.readTimeout, publicBodyReadTimeout), h.log)
+		}
 		b, ok, err := readBody(w, r, limit)
 		if err != nil {
 			// The client stopped sending or the read deadline passed.
@@ -281,19 +288,27 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
-// reserveBody reserves n bytes for the body of r: from the anonymous
-// budget without a session, otherwise from the account's share first and
-// then from the signed-in budget, both within one wait. The returned
+// reserveBody reserves n bytes for the body of r: without a session from
+// the source's share and then the anonymous budget, otherwise from the
+// account's share and then the signed-in budget, both within one wait. The returned
 // function gives the bytes back.
 func (h *Handler) reserveBody(r *http.Request, p principal.Principal, signedIn bool, n int64) (func(), bool) {
 	ctx := r.Context()
+	deadline := time.Now().Add(h.budgetWait)
 	if !signedIn {
-		if !h.anonymous.acquire(ctx, n, h.budgetWait) {
+		src := sourceKey(ClientAddr(r))
+		if !h.sources.acquire(ctx, src, n, h.budgetWait) {
 			return nil, false
 		}
-		return func() { h.anonymous.release(n) }, true
+		if !h.anonymous.acquire(ctx, n, time.Until(deadline)) {
+			h.sources.release(src, n)
+			return nil, false
+		}
+		return func() {
+			h.anonymous.release(n)
+			h.sources.release(src, n)
+		}, true
 	}
-	deadline := time.Now().Add(h.budgetWait)
 	if !h.users.acquire(ctx, p.UserID, n, h.budgetWait) {
 		return nil, false
 	}

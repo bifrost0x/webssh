@@ -67,6 +67,15 @@ func setDeadlines(w http.ResponseWriter, read time.Duration, log *slog.Logger) {
 	}
 }
 
+// setReadDeadline shortens the read deadline of a request whose body is
+// small (the anonymous sign-in forms).
+func setReadDeadline(w http.ResponseWriter, read time.Duration, log *slog.Logger) {
+	err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(read))
+	if err != nil && !errors.Is(err, http.ErrNotSupported) {
+		log.Debug("request read deadline not set", "err", err)
+	}
+}
+
 // BoundAnswer prepares an answer written in front of the edge (the
 // maintenance answer of the composition root): it sets the request
 // deadlines and, when the request announced a body that nobody reads,

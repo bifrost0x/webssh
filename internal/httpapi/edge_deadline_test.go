@@ -89,3 +89,23 @@ func TestEveryRequestHasTheDeadlines(t *testing.T) {
 		}
 	}
 }
+
+// The small bodies of requests without a session are read within the
+// shorter publicBodyReadTimeout, so their budget reservation ends early.
+func TestAnonymousBodiesHaveTheShortReadDeadline(t *testing.T) {
+	e := newEdge(t)
+	e.h.Mux().HandleFunc("POST /login", echo)
+	binding, token := e.csrf("")
+	r := httptest.NewRequest(http.MethodPost, "http://webssh.test/login", strings.NewReader("csrf_token="+token))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(&http.Cookie{Name: "session_binding", Value: binding})
+	w := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	started := time.Now()
+	e.h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("sign-in: %d %s", w.Code, w.Body)
+	}
+	if got := w.read.Sub(started); got > publicBodyReadTimeout+time.Second || got <= 0 {
+		t.Fatalf("read deadline in %v, want at most %v", got, publicBodyReadTimeout)
+	}
+}
