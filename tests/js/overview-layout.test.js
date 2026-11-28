@@ -97,3 +97,28 @@ test('drag autoscroll travels the same distance across frame rates and bounds st
     assert.equal(Layout.dragScrollDistance(0), 0);
     assert.equal(Layout.dragScrollDistance(-1), 0);
 });
+
+test('drag autoscroll speeds up while the pointer stays at the edge, so a long board stays reachable', () => {
+    const travel = (fps, ms) => {
+        let held = 0;
+        let distance = 0;
+        for (let frame = 0; frame < fps * ms / 1000; frame++) {
+            distance += Layout.dragScrollDistance(1000 / fps, held);
+            held += 1000 / fps;
+        }
+        return distance;
+    };
+    // Short holds stay close to the base speed for precise moves.
+    assert.ok(travel(60, 250) < 300, 'a quarter second moves less than a panel');
+    const held = travel(60, 2500);
+    for (const fps of [10, 12, 20, 30, 120]) {
+        assert.ok(Math.abs(travel(fps, 2500) - held) < .01, `${fps} fps travels as far as 60 fps`);
+    }
+    // A board of many hosts (several viewports) is crossed within 2.5 seconds;
+    // at the base speed it would take seven.
+    assert.ok(held > 5500, `2.5 seconds travel ${held}px`);
+    const top = Layout.dragScrollDistance(1000 / 60, 60_000);
+    assert.ok(Math.abs(top - 84) < .001, 'the speed is capped');
+    assert.ok(Math.abs(Layout.dragScrollDistance(5000, 60_000) - 504) < .001, 'a stalled frame is bounded at the top speed too');
+    assert.equal(Layout.dragScrollDistance(1000 / 60, -5), Layout.dragScrollDistance(1000 / 60), 'a negative hold counts as none');
+});
