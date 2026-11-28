@@ -107,6 +107,26 @@ window.i18n.registerLocales({
 
         "tour.loadError": "Could not load tour. Please try again.",
 
+        "upgradeNotice.title": "With 3.4, WebSSH runs on a new foundation built in Go",
+
+        "upgradeNotice.body": "All your data was carried over automatically during the update. You only had to sign in again once.",
+
+        "upgradeNotice.benefits": "What you get:",
+
+        "upgradeNotice.faster": "Faster start-up, sign-in, terminal and file transfers.",
+
+        "upgradeNotice.memory": "Considerably less memory use.",
+
+        "upgradeNotice.image": "A smaller image without operating system packages, and so without their known vulnerabilities.",
+
+        "upgradeNotice.report": "Something not working as before? Please report it as an issue on GitHub. We will take care of it right away.",
+
+        "upgradeNotice.changes": "What has changed",
+
+        "upgradeNotice.issues": "Report an issue",
+
+        "upgradeNotice.confirm": "Got it",
+
         "tour.feature.smb": "SMB file sources",
 
         "tour.feature.chmod": "Change file permissions",

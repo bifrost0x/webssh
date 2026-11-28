@@ -191,6 +191,7 @@
     {"file": "landscape-shell.spec.js", "exclude": []},
     {"file": "usability-orientation.spec.js", "exclude": []},
     {"file": "notifications-dialog-focus.spec.js", "exclude": []},
-    {"file": "work-first-setup.spec.js", "exclude": []}
+    {"file": "work-first-setup.spec.js", "exclude": []},
+    {"file": "upgrade-notice.spec.js", "exclude": []}
   ]
 }

@@ -6,8 +6,8 @@ const {waitForInventory, openProfileManagement, openKeyManagement, openWorkspace
 const {freshTotp} = require('./totp');
 
 // Signs in through /login, answers the TOTP challenge when one is asked
-// for and closes the first-run tour. Ends on the workspace with the
-// inventory loaded.
+// for and closes the upgrade notice and the first-run tour. Ends on the
+// workspace with the inventory loaded and returns what dismissTour saw.
 async function signIn(page, username, password, {totpSecret, usedSteps} = {}) {
     await page.goto('/login');
     await page.locator('#username').fill(username);
@@ -23,11 +23,31 @@ async function signIn(page, username, password, {totpSecret, usedSteps} = {}) {
         throw new Error(`${username} signed in without the expected TOTP challenge`);
     }
     await expect(page).toHaveURL(/\/$/);
-    await dismissTour(page);
+    const seen = await dismissTour(page);
     await waitForInventory(page);
+    return seen;
 }
 
+// Acknowledges the one-time upgrade notice that the Go server shows to
+// accounts taken over from 3.3, if the server lists it for the account.
+// The tour waits for it. Returns whether the notice was shown.
+async function acknowledgeUpgradeNotice(page) {
+    const pending = await page.evaluate(async () => {
+        const response = await fetch('/api/account/notices', {credentials: 'same-origin'});
+        return response.ok && (await response.json()).notices.includes('upgrade-3.4');
+    });
+    if (!pending) return false;
+    const notice = page.locator('dialog.upgrade-notice');
+    await expect(notice).toBeVisible();
+    await notice.getByRole('button', {name: 'Got it', exact: true}).click();
+    await expect(notice).toHaveCount(0);
+    return true;
+}
+
+// Closes the upgrade notice and the first-run tour when they are shown;
+// returns {upgradeNotice} saying whether the notice was there.
 async function dismissTour(page) {
+    const upgradeNotice = await acknowledgeUpgradeNotice(page);
     const tour = page.locator('.intro-tour');
     const state = await page.evaluate(async () => {
         const response = await fetch('/api/account/tour', {credentials: 'same-origin'});
@@ -38,6 +58,7 @@ async function dismissTour(page) {
         await tour.getByRole('button', {name: 'Skip tour', exact: true}).click();
     }
     await expect(tour).toHaveCount(0);
+    return {upgradeNotice};
 }
 
 async function signOut(page) {

@@ -107,6 +107,26 @@ window.i18n.registerLocales({
 
         "tour.loadError": "无法加载导览，请重试。",
 
+        "upgradeNotice.title": "自 3.4 起，WebSSH 运行在用 Go 构建的全新基础之上",
+
+        "upgradeNotice.body": "更新时，您的所有数据都已自动迁移，只需重新登录一次。",
+
+        "upgradeNotice.benefits": "您将获得：",
+
+        "upgradeNotice.faster": "启动、登录、终端和文件传输都更快。",
+
+        "upgradeNotice.memory": "内存占用明显减少。",
+
+        "upgradeNotice.image": "镜像更小，不含操作系统软件包，因此也没有这些软件包的已知漏洞。",
+
+        "upgradeNotice.report": "有功能与以前不一样？请在 GitHub 上提交 issue，我们会立即处理。",
+
+        "upgradeNotice.changes": "变更内容",
+
+        "upgradeNotice.issues": "报告问题",
+
+        "upgradeNotice.confirm": "知道了",
+
         "tour.feature.smb": "SMB 文件源",
 
         "tour.feature.chmod": "更改文件权限",

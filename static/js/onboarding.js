@@ -1,4 +1,5 @@
-/* First-login orientation uses the same navigation and account settings as the app. */
+/* First-login orientation uses the same navigation and account settings as the app:
+   the one-time upgrade notice for accounts taken over from 3.3, then the tour. */
 (() => {
     'use strict';
     // English text is the fallback when the translator or a key is missing.
@@ -20,20 +21,27 @@
     // URL prefix opened without a trailing slash.
     const appRoot = (document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/, '');
     const api = new URL(appRoot + '/api/account/tour', window.location.origin);
+    const noticesApi = new URL(appRoot + '/api/account/notices', window.location.origin);
+    const acknowledgeApi = new URL(appRoot + '/api/account/notices/acknowledge', window.location.origin);
+    const upgradeNotice = 'upgrade-3.4';
+    const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
     let state, index = 0, dialog, target;
     const node = (tag, text, className) => { const el = document.createElement(tag); if (text) el.textContent = text; if (className) el.className = className; return el; };
     const button = (text, handler, primary = false) => { const el = node('button', text, `btn ${primary ? 'btn-primary' : 'btn-secondary'}`); el.type = 'button'; el.addEventListener('click', handler); return el; };
     async function load() { const r = await fetch(api, {credentials: 'same-origin'}); if (!r.ok) throw Error('tour'); return r.json(); }
+    function focusHome() {
+        const next = [document.getElementById('overviewNavBtn'), document.getElementById('overviewTitle')].find(element => element?.offsetParent);
+        next?.focus();
+    }
     function close() {
         if (!dialog) return;
         target?.classList.remove('intro-target'); dialog.close(); dialog.remove(); dialog = null;
-        const next = [document.getElementById('overviewNavBtn'), document.getElementById('overviewTitle')].find(element => element?.offsetParent);
-        next?.focus();
+        focusHome();
     }
     async function finish(value) {
         const buttons = [...dialog.querySelectorAll('button')]; buttons.forEach(b => { b.disabled = true; });
         try {
-            const r = await fetch(api, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content}, body: JSON.stringify({state: value, acknowledged: value === 'completed' && dialog.querySelector('#introAcknowledge')?.checked === true})});
+            const r = await fetch(api, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf()}, body: JSON.stringify({state: value, acknowledged: value === 'completed' && dialog.querySelector('#introAcknowledge')?.checked === true})});
             if (!r.ok) throw Error('save');
             close();
         } catch {
@@ -44,6 +52,71 @@
             buttons.forEach(b => { b.disabled = false; });
             if (!dialog.querySelector('.intro-error')) { const error = node('p', t('tour.saveError', 'Could not save progress. Please try again.'), 'intro-error'); error.role = 'alert'; dialog.append(error); }
         }
+    }
+    // A prompt the user opened while the page loaded (a step-up, a connection) stays on top; the notice waits for it.
+    const modalOpen = () => document.querySelector('.modal.show') || [...document.querySelectorAll('dialog[open]')].some(d => { try { return d.matches(':modal'); } catch { return true; } });
+    const quiet = () => new Promise(resolve => { const check = () => { if (modalOpen()) setTimeout(check, 400); else resolve(); }; check(); });
+    async function noticePending() {
+        try {
+            const r = await fetch(noticesApi, {credentials: 'same-origin'});
+            return r.ok && (await r.json()).notices?.includes(upgradeNotice) === true;
+        } catch { return false; }
+    }
+    // Shown once per account: "Got it", Escape and closing all acknowledge it on the server. Resolves when it is closed.
+    function showUpgradeNotice() {
+        return new Promise(resolve => {
+            const previous = document.activeElement;
+            const notice = node('dialog', '', 'upgrade-notice');
+            notice.setAttribute('aria-labelledby', 'upgradeNoticeTitle'); notice.setAttribute('aria-describedby', 'upgradeNoticeBody');
+            let saving = false;
+            const external = (text, href) => {
+                const link = node('a'); link.href = href; link.target = '_blank'; link.rel = 'noopener noreferrer';
+                const icon = node('span', 'open_in_new', 'material-icons'); icon.setAttribute('aria-hidden', 'true'); link.append(node('span', text), icon); return link;
+            };
+            async function acknowledge() {
+                if (saving) return;
+                saving = true; notice.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                try {
+                    await fetch(acknowledgeApi, {method: 'POST', credentials: 'same-origin', signal: AbortSignal.timeout?.(10000),
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf()}, body: JSON.stringify({notice: upgradeNotice})});
+                } catch { /* Closing always works; without a saved acknowledgement the notice returns on the next page load. */ }
+                notice.close();
+            }
+            function draw() {
+                const heading = node('h2', t('upgradeNotice.title', 'With 3.4, WebSSH runs on a new foundation built in Go')); heading.id = 'upgradeNoticeTitle';
+                const body = node('p', t('upgradeNotice.body', 'All your data was carried over automatically during the update. You only had to sign in again once.')); body.id = 'upgradeNoticeBody';
+                const list = node('ul');
+                [['upgradeNotice.faster', 'Faster start-up, sign-in, terminal and file transfers.'],
+                    ['upgradeNotice.memory', 'Considerably less memory use.'],
+                    ['upgradeNotice.image', 'A smaller image without operating system packages, and so without their known vulnerabilities.']]
+                    .forEach(([key, fallback]) => list.append(node('li', t(key, fallback))));
+                const links = node('div', '', 'upgrade-notice-links');
+                links.append(external(t('upgradeNotice.changes', 'What has changed'), wiki + 'Upgrading-to-3.4'),
+                    external(t('upgradeNotice.issues', 'Report an issue'), 'https://github.com/bifrost0x/webssh/issues'));
+                const footer = node('footer'); const done = button(t('upgradeNotice.confirm', 'Got it'), acknowledge, true); done.disabled = saving;
+                footer.append(links, done);
+                notice.replaceChildren(heading, body, node('p', t('upgradeNotice.benefits', 'What you get:'), 'upgrade-notice-lead'), list,
+                    node('p', t('upgradeNotice.report', 'Something not working as before? Please report it as an issue on GitHub. We will take care of it right away.')), footer);
+                return done;
+            }
+            notice.addEventListener('cancel', event => { event.preventDefault(); acknowledge(); });
+            // Tab wraps inside the dialog instead of leaving the page, and no shortcut of the workspace behind it fires.
+            notice.addEventListener('keydown', event => {
+                event.stopPropagation();
+                if (event.key !== 'Tab') return;
+                const items = [...notice.querySelectorAll('a[href], button:not(:disabled)')];
+                const edge = event.shiftKey ? items[0] : items.at(-1);
+                if (items.length && document.activeElement === edge) { event.preventDefault(); (event.shiftKey ? items.at(-1) : items[0]).focus(); }
+            });
+            notice.addEventListener('close', () => {
+                window.removeEventListener('languageChanged', redraw); notice.remove();
+                if (previous?.isConnected && previous !== document.body) previous.focus(); else focusHome();
+                resolve();
+            }, {once: true});
+            const redraw = () => { const focused = notice.contains(document.activeElement); const done = draw(); if (focused) done.focus(); };
+            window.addEventListener('languageChanged', redraw);
+            const done = draw(); document.body.append(notice); notice.showModal(); done.focus();
+        });
     }
     // A language switch redraws the open dialog without re-clicking the anchor or losing the acknowledgement.
     function render(refresh = false) {
@@ -105,7 +178,11 @@
         label();
         window.addEventListener('languageChanged', () => { label(); if (dialog && state) render(true); });
         restart.addEventListener('click', async () => { try { state = await load(); start(); } catch { window.alert(t('tour.loadError', 'Could not load tour. Please try again.')); } });
-        try { state = await load(); if (state.state === 'new') start(); } catch { /* A failed optional tour must not block normal work. The menu allows retry. */ }
+        // Both are requested at once; the tour starts only after the notice is closed.
+        const tour = load().catch(() => null);
+        if (await noticePending()) { await quiet(); await showUpgradeNotice(); }
+        // A failed optional tour must not block normal work. The menu allows retry.
+        const loaded = await tour; if (loaded) { state = loaded; if (state.state === 'new') start(); }
     }
     if (document.readyState === 'complete') init(); else window.addEventListener('load', init, {once: true});
 })();
