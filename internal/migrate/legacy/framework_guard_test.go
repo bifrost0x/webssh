@@ -15,7 +15,7 @@ import (
 // pythonInterpreter returns the Python of the worktree's venv, or python3.
 func pythonInterpreter(t *testing.T) string {
 	t.Helper()
-	for _, p := range []string{"../../../.venv/bin/python3", "/usr/bin/python3"} {
+	for _, p := range []string{os.Getenv("WEBSSH_PYTHON"), "../../../.venv/bin/python3"} {
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}

@@ -145,7 +145,7 @@ func TestHostContextReadMatchesPython(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(python); err != nil {
-		python = "/usr/bin/python"
+		python = os.Getenv("WEBSSH_PYTHON")
 		if _, err := os.Stat(python); err != nil {
 			t.Skip("no Python virtual environment")
 		}
