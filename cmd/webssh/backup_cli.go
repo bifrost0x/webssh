@@ -74,8 +74,9 @@ func backupCreate(ctx context.Context, args []string, s streams) int {
 	dest := fs.String("destination", "", "")
 	offline := fs.Bool("confirm-offline", false, "")
 	without := fs.Bool("without-secret-key", false, "")
-	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
-		return usageError(s.stderr, "usage: webssh backup create [--destination ARCHIVE] [--without-secret-key] --confirm-offline")
+	include := fs.Bool("include-secret-key", false, "")
+	if err := fs.Parse(args); err != nil || fs.NArg() != 0 || (*without && *include) {
+		return usageError(s.stderr, "usage: webssh backup create [--destination ARCHIVE] [--without-secret-key | --include-secret-key] --confirm-offline")
 	}
 	if !*offline {
 		return refuseOnline(s)
@@ -108,12 +109,13 @@ func backupCreate(ctx context.Context, args []string, s streams) int {
 		return fail(s, err)
 	}
 	defer os.RemoveAll(work)
+	omit := *without || (envSecret(cfg) && !*include)
 	_, material, err := keyring.MaterialLocation(cfg.DataDir, legacyPresent(cfg))
 	if err != nil {
 		return fail(s, err)
 	}
 	v, err := backup.Export(ctx, backup.ExportRequest{Source: g.db, Path: path, Work: work, Scrub: exportScrubbers(),
-		SecretKey: cfg.SecretKey.Bytes(), WithoutSecretKey: *without, Material: material, KeyID: g.ring.KeyID(),
+		SecretKey: cfg.SecretKey.Bytes(), WithoutSecretKey: omit, Material: material, KeyID: g.ring.KeyID(),
 		Release: buildinfo.Read().Version, Now: time.Now().UTC(), Probes: []backup.Probe{vault.ProbeSealed},
 		Limits: backupLimits(cfg)})
 	if err != nil {
@@ -122,8 +124,11 @@ func backupCreate(ctx context.Context, args []string, s streams) int {
 	g.audit.Security("BACKUP_CREATE_SUCCESS", "file_count", len(v.Manifest.Files))
 	msg := fmt.Sprintf("Backup created and verified: %s (%d files, format v%d, data schema %d)\n", path,
 		len(v.Manifest.Files), v.Manifest.Version, v.Manifest.Version)
-	if !*without {
+	switch {
+	case !omit:
 		msg += "It contains SECRET_KEY; keep it off this host or create it with --without-secret-key.\n"
+	case !*without:
+		msg += "SECRET_KEY comes from the environment and is not in the archive; restore it with the same SECRET_KEY, or add it with --include-secret-key.\n"
 	}
 	return write(s.stdout, msg)
 }
@@ -133,6 +138,14 @@ func exportScrubbers() []backup.Scrubber {
 		_, err := vault.DropRemoteCredentialsTx(ctx, tx)
 		return err
 	}}
+}
+
+// envSecret reports a SECRET_KEY from the environment. Exports leave it
+// out by default: the Python release never wrote such a key to DATA_DIR,
+// so its archives never held it, and operators keep it off the volume
+// for that reason.
+func envSecret(cfg config.Config) bool {
+	return cfg.SecretSource == config.SecretFromEnvironment
 }
 
 func legacyPresent(cfg config.Config) bool {

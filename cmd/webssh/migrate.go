@@ -108,7 +108,7 @@ func runLegacy(ctx context.Context, args []string, s streams) int {
 	if err != nil {
 		return fail(s, err)
 	}
-	o := legacy.PurgeOptions{Options: mo, BackupDir: *backupTo, SkipBackup: *skip, Backup: writeVerifiedBackup,
+	o := legacy.PurgeOptions{Options: mo, BackupDir: *backupTo, SkipBackup: *skip, Backup: purgeBackupWriter(envSecret(cfg)),
 		Confirm: func(p legacy.PurgePlan) bool { return confirmPurge(s, p, *yes) }}
 	out, err := legacy.Purge(ctx, o)
 	if errors.Is(err, legacy.ErrPurgeAborted) {
@@ -166,24 +166,33 @@ func confirmPurge(s streams, p legacy.PurgePlan, yes bool) bool {
 	return answer == "y" || answer == "yes"
 }
 
-// writeVerifiedBackup writes the purge backup and verifies it by reading
-// it back, including one sealed SSH key or TOTP secret when there is one.
-func writeVerifiedBackup(ctx context.Context, req legacy.BackupRequest) (string, error) {
-	path, err := backup.Write(req.Dir, backup.Contents{Database: req.Database, SecretKey: req.Secret, Material: req.Material,
-		KeyID: req.KeyID, Release: req.Release, Reason: "legacy-purge", Now: req.Now, DataDir: req.DataDir, Legacy: req.Legacy})
-	if err != nil {
-		return "", err
+// purgeBackupWriter writes the purge backup and verifies it by reading it
+// back, including one sealed SSH key or TOTP secret when there is one.
+// A SECRET_KEY from the environment stays out of the archive, as in every
+// export (envSecret); the archive then verifies with that key.
+func purgeBackupWriter(omitSecret bool) func(context.Context, legacy.BackupRequest) (string, error) {
+	return func(ctx context.Context, req legacy.BackupRequest) (string, error) {
+		c := backup.Contents{Database: req.Database, SecretKey: req.Secret, Material: req.Material,
+			KeyID: req.KeyID, Release: req.Release, Reason: "legacy-purge", Now: req.Now, DataDir: req.DataDir, Legacy: req.Legacy}
+		if omitSecret {
+			c.SecretKey = nil
+		}
+		path, err := backup.Write(req.Dir, c)
+		if err != nil {
+			return "", err
+		}
+		v, err := backup.VerifyWith(ctx, path, backup.VerifyOptions{Secret: req.Secret, RequireSecret: !omitSecret,
+			Probes: []backup.Probe{vault.ProbeSealed, totp.ProbeSealed}})
+		if err == nil {
+			err = holdsLegacy(v.Manifest, req.Legacy)
+		}
+		if err != nil {
+			// The archive may hold SECRET_KEY; one that does not
+			// verify is not left behind.
+			return "", errors.Join(err, os.Remove(path))
+		}
+		return path, nil
 	}
-	v, err := backup.Verify(ctx, path, vault.ProbeSealed, totp.ProbeSealed)
-	if err == nil {
-		err = holdsLegacy(v.Manifest, req.Legacy)
-	}
-	if err != nil {
-		// The archive holds SECRET_KEY; one that does not verify is
-		// not left behind.
-		return "", errors.Join(err, os.Remove(path))
-	}
-	return path, nil
 }
 
 // holdsLegacy checks that the verified archive holds every kept legacy

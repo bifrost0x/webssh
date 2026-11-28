@@ -6,8 +6,9 @@ the generated `SECRET_KEY`.
 
 Backups are sensitive. An archive contains the database with user
 configuration, host information, password hashes, second factors and
-provider secrets such as the encrypted GitHub client secret, and by default
-the application secret and key material that decrypt them. Store downloaded
+provider secrets such as the encrypted GitHub client secret, the key
+material and, when WebSSH manages `SECRET_KEY` in `DATA_DIR/secret_key`, the
+application secret that decrypts them. Store downloaded
 archives encrypted and off the host with restricted access.
 
 Upgrading from 3.3? Backups made with 3.3 restore on 3.4; 3.4 backups do
@@ -23,7 +24,7 @@ secret is included and a SHA-256 for every member. Members are stored below
 | Member | Content |
 |---|---|
 | `data/go/webssh.db` | the database, taken as a consistent snapshot |
-| `data/secret_key` | `SECRET_KEY`, unless `--without-secret-key` is given |
+| `data/secret_key` | `SECRET_KEY` when it comes from `DATA_DIR/secret_key`, unless `--without-secret-key` is given. A `SECRET_KEY` set in the environment is left out, as 3.3 did, unless `backup create --include-secret-key` is given; restore such an archive with the same `SECRET_KEY`. The online backup and the `legacy purge` backup follow the same rule. |
 | `data/go/keyring-material` | the key material that, together with `SECRET_KEY`, protects stored secrets |
 | `data/<path>` | only in the backup `legacy purge` writes: left-over files of the 3.3 data |
 
@@ -131,7 +132,7 @@ docker compose up -d
 
 | Command | Notes |
 |---|---|
-| `backup create [--destination ARCHIVE] [--without-secret-key] --confirm-offline` | Without `--destination` the archive goes next to `DATA_DIR` when that directory is writable, otherwise below `BACKUP_TEMP_DIR`; the command prints the path. In the official image `/app` is read-only, so the archive lands in the recovery volume. |
+| `backup create [--destination ARCHIVE] [--without-secret-key \| --include-secret-key] --confirm-offline` | Without `--destination` the archive goes next to `DATA_DIR` when that directory is writable, otherwise below `BACKUP_TEMP_DIR`; the command prints the path. In the official image `/app` is read-only, so the archive lands in the recovery volume. |
 | `backup verify ARCHIVE` | Checks manifest, hashes, limits and the database without restoring. |
 | `backup restore ARCHIVE --confirm-offline [--recovery-snapshot]` | Restores 3.4 archives by their reason and 3.3 archives as exports. `--recovery-snapshot` restores a 3.3 recovery snapshot with its SSH keys and saved passwords. |
 

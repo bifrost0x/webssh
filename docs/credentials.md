@@ -55,7 +55,7 @@ Replacing a used password, changing its assignment, disabling storage or revokin
 
 Named passwords use AES-256-GCM with fresh 96-bit nonces. HKDF derives domain-separated keys from the application's SECRET_KEY and the installation's key material, bound to record ID and owning account. Encryption at rest cannot protect against control of the running server or possession of both data and the application secret. The server cannot guarantee erasure of every temporary memory copy.
 
-Preserve the exact original **SECRET_KEY** securely with deployment recovery material. Do not assume a data-only archive contains an externally supplied environment secret. Saved passwords cannot be decrypted with a different key or without the key material in the data volume.
+Preserve the exact original **SECRET_KEY** securely with deployment recovery material. Backups never contain a `SECRET_KEY` supplied through the environment unless `backup create --include-secret-key` is used; keep that value with your recovery material. Saved passwords cannot be decrypted with a different key or without the key material in the data volume.
 
 Native backup exports exclude saved passwords, their assignments, the legacy automation vault and SSH keys. Normal restore ignores these files even in older archives and removes existing copies to prevent credential reuse by a different restored account. Recreate passwords, reimport SSH keys and reassign credentials after restore; review and re-enable schedules.
 
