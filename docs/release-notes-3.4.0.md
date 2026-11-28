@@ -67,6 +67,23 @@ how to remove the 3.3 data later.
 - Restoring a backup with a different `SECRET_KEY` while 3.3 data exists
   re-seals the backup's secrets under the active key instead of replacing
   `DATA_DIR/secret_key`, so the way back to 3.3 keeps working.
+- New optional `ALLOWED_HOSTS` refuses requests for foreign host names
+  (`U30`). While no account exists, the first account can only be
+  registered through an IP address, `localhost` or a name in
+  `ALLOWED_HOSTS` (`U56`).
+- Sign-in, registration and live connections are bounded per client and in
+  total, so one source cannot exhaust them (`U38` to `U40`, `U55`).
+- Backups no longer carry a `SECRET_KEY` that comes from the environment
+  (`U112`); restores refuse archives whose database holds objects 3.4 does
+  not create (`U110`); `legacy purge` names and backs up every file it
+  removes that is no 3.3 data (`U111`).
+- Folder copies, downloads, recursive deletes and permission jobs on SFTP
+  stop when a folder of the tree is swapped for a link while they run, and
+  permission jobs refuse trees below unsafe folders (`U88`, `U90`).
+- IPv6 zones and numeric IPv4 forms can no longer slip past the network
+  policy or into `known_hosts` (`U75`, `U76`). LDAP identities use the full
+  unique-ID value; the migration report names links that may need a relink
+  (`U52`, `U53`).
 
 ## Upgrade and recovery
 
@@ -115,6 +132,13 @@ what to do is in [Upgrading to 3.4](wiki/Upgrading-to-3.4.md#changes-you-can-not
 Only Linux is supported: the image for `linux/amd64` and `linux/arm64` and a
 source build on Linux. Windows and macOS binaries and the systemd service of
 earlier releases are gone.
+
+The Compose files in the repository now describe 3.4: the image's own health
+check, no Gunicorn or Redis settings and the LDAP helper as
+`/app/webssh ldap-secret`. Port, volumes and user stay the same, so an
+existing installation can keep its 3.3 Compose file or switch to the new one.
+The Python source is no longer part of the repository; the 3.3 code stays
+available on the branch `release/3.3` and the tag `v3.3.1`.
 
 See [Upgrading to 3.4](wiki/Upgrading-to-3.4.md) and
 [Upgrading, Rollback, and FAQ](wiki/Upgrading-Rollback-and-FAQ.md).
