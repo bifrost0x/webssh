@@ -43,6 +43,39 @@ condition = "AND"
 paths = ['''(^|/)internal/migrate/legacy/golden_legacy_test\.go$''']
 regexes = ['''^ed25519_pkcs8$''']
 
+# The synthetic SECRET_KEY of the configuration vectors (testSecret in
+# internal/config/env_test.go). Gitleaks also reports cut-off prefixes of
+# it in single lines, which the optional tail covers.
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)internal/config/testdata/python_env\.jsonl$''']
+regexes = ['''^0123456789abc[0-9a-f]{0,19}(-test-only)?$''']
+
+# File names of synthetic SSH keys of the golden data set (UUIDs).
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)internal/migrate/legacy/m1_negative_test\.go$''']
+regexes = ['''^(9971eb1e-92db-4b73-93dd-b5c5d5d8387c|168716ca-55b4-4155-8827-f5d378fe0ad0)\.pem$''']
+
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)internal/hosts/testdata/oracle\.py$''']
+regexes = ['''^9971eb1e-92db-4b73-93dd-b5c5d5d8387c$''']
+
+# The sample nonce of RFC 6455, section 1.3 ("the sample nonce").
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)internal/realtime/server_test\.go$''']
+regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']
+
+# Authenticator data of a Chromium virtual authenticator: the SHA-256 of
+# the relying party "localhost", flags 0x05 and the signature counter 2.
+# Public by design (WebAuthn section 6.1).
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)internal/auth/webauthn/testdata/chromium-virtual-authenticator\.json$''']
+regexes = ['''^SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MFAAAAAg$''']
+
 # Public test vector of the Fernet specification, not a credential.
 [[rules.allowlists]]
 condition = "AND"
@@ -64,3 +97,12 @@ regexes = ['''^'webssh-lab:\$\(secret dex-client-secret\)'$''']
 description = "synthetic test fixtures"
 targetRules = ["generic-api-key", "private-key"]
 paths = ['''(^|/)tests/golden/fixture/(legacy/)?manifest\.json$''']
+
+# The example JWS of RFC 7515, appendices A.2 and A.3 (payload
+# {"iss":"joe",...}), signed with the RFC's published example keys.
+[[allowlists]]
+description = "RFC 7515 example JWS"
+condition = "AND"
+targetRules = ["jwt"]
+paths = ['''(^|/)internal/auth/oidc/testdata/rfc_jws_vectors\.json$''']
+regexes = ['''^eyJhbGciOiJ(SUzI1NiJ9|FUzI1NiJ9)\.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ\.''']

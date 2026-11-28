@@ -28,7 +28,23 @@ type envCase struct {
 // first line and then one case per line with only the entries that differ
 // from it.
 
-const testSecret = "0123456789abcdef0123456789abcdef-test"
+// testSecret is a synthetic SECRET_KEY; "-test-only" keeps secret
+// scanners from taking it for a credential.
+const testSecret = "0123456789abcdef0123456789abcdef-test-only"
+
+// generatedSecret stands in a recorded answer for the random SECRET_KEY
+// the Python release generates without one (DEBUG), so that recordings
+// carry no random key material and stay byte-identical when recorded
+// again.
+const generatedSecret = "<generated>"
+
+// normaliseSecret replaces a SECRET_KEY the Python release generated for
+// env with generatedSecret.
+func normaliseSecret(env map[string]string, a *pythonAnswer) {
+	if strings.TrimSpace(env["SECRET_KEY"]) == "" && a.SecretKey != "" {
+		a.SecretKey = generatedSecret
+	}
+}
 
 func baseEnv() map[string]string {
 	return map[string]string{"SECRET_KEY": testSecret, "DATA_DIR": "/app/data"}
@@ -269,7 +285,11 @@ func compareEnv(t *testing.T, env map[string]string, py pythonAnswer) bool {
 	if canonicalJSON(nonNil(gotExplicit)) != canonicalJSON(nonNil(explicit)) {
 		return fail("explicit: Go %q, Python %q", gotExplicit, explicit)
 	}
-	if c.SecretSource != SecretEphemeral && string(c.SecretKey.value) != py.SecretKey {
+	if py.SecretKey == generatedSecret {
+		if c.SecretSource != SecretEphemeral {
+			return fail("Python generates a SECRET_KEY, Go takes it from %s", c.SecretSource)
+		}
+	} else if c.SecretSource != SecretEphemeral && string(c.SecretKey.value) != py.SecretKey {
 		return fail("SECRET_KEY differs")
 	}
 	return true
@@ -295,6 +315,7 @@ func TestPythonEnvVectors(t *testing.T) {
 		for _, env := range vectorEnvs(700) {
 			var a pythonAnswer
 			o.ask(t, map[string]any{"env": env}, &a)
+			normaliseSecret(env, &a)
 			for k, v := range a.View {
 				if canonicalJSON(v) == canonicalJSON(def.View[k]) {
 					delete(a.View, k)
@@ -335,6 +356,7 @@ func TestPythonEnvLive(t *testing.T) {
 	for _, env := range vectorEnvs(4000) {
 		var a pythonAnswer
 		o.ask(t, map[string]any{"env": env}, &a)
+		normaliseSecret(env, &a)
 		if !compareEnv(t, env, a) {
 			if failures++; failures > 20 {
 				t.Fatal("too many mismatches")
