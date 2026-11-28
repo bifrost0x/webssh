@@ -9,6 +9,7 @@ import (
 
 	"github.com/bifrost0x/webssh/internal/auth"
 	"github.com/bifrost0x/webssh/internal/fault"
+	"github.com/bifrost0x/webssh/internal/idna2003"
 	"github.com/bifrost0x/webssh/internal/principal"
 	"github.com/bifrost0x/webssh/internal/store"
 )
@@ -41,6 +42,14 @@ func (s *Service) Authenticate(ctx context.Context, presented, password string) 
 	if !found && !s.AutoProvision {
 		return 0, errAuthFailed
 	}
+	release := func() {}
+	if s.Attempts != nil {
+		var ok bool
+		if release, ok = s.Attempts(ctx, s.Provider+"\x00"+entry.Subject); !ok {
+			s.audit("RATE_LIMIT_EXCEEDED", "endpoint", "ldap_login_identity", "dn", entry.DN)
+			return 0, errTooMany
+		}
+	}
 	ok, err := s.Directory.VerifyPassword(ctx, entry.DN, password)
 	if err != nil {
 		return 0, classify(err, errUnavailable)
@@ -56,6 +65,7 @@ func (s *Service) Authenticate(ctx context.Context, presented, password string) 
 	if err := s.signedIn(ctx, linked.UserID, username, entry); err != nil {
 		return 0, err
 	}
+	release()
 	return linked.UserID, nil
 }
 
@@ -137,12 +147,15 @@ func (s *Service) signedIn(ctx context.Context, userID int64, username string, e
 
 // provision creates the account of a verified directory identity
 // (_auto_provision_ldap_identity): a name of at most 80 characters without
-// control or unassigned characters, a local break-glass administrator,
+// control or unassigned characters and unchanged by NFKC (the directory
+// matches full-width or mathematical forms of a name; an account under
+// such a form would look like another), a local break-glass administrator,
 // and no account whose name equals it after case folding. A concurrent
 // sign-in that provisioned the same identity first wins; its account is
 // used.
 func (s *Service) provision(ctx context.Context, username, presented string, entry Entry) (Identity, error) {
-	if username == "" || utf8.RuneCountInString(username) > maxProvisionedNameRunes || hasOtherCategory(presented) {
+	if username == "" || utf8.RuneCountInString(username) > maxProvisionedNameRunes || hasOtherCategory(presented) ||
+		idna2003.NFKC(username) != username {
 		s.audit("LDAP_LOGIN_REJECTED", "user", username, "reason", "unsafe_username")
 		return Identity{}, errAuthFailed
 	}

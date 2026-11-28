@@ -1,9 +1,13 @@
 package auth
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/bifrost0x/webssh/internal/fault"
@@ -81,13 +85,21 @@ func (d *DirectorySignIn) login(w http.ResponseWriter, r *http.Request) {
 	var reservation []Reservation
 	if f.Limits.Enabled {
 		var ok bool
-		if reservation, ok = f.reserveUsername(ctx, "ldap_login", username, ip, f.Devices.Trusted(r, username)); !ok {
+		device := f.Devices.Trusted(r, username)
+		if reservation, ok = f.reserveUsername(ctx, "ldap_login", username, ip, device); !ok {
 			limited("ldap_login_username", username)
 			return
+		}
+		if device != "" {
+			ctx = context.WithValue(ctx, knownDeviceKey{}, true)
 		}
 	}
 	userID, err := d.Provider.Authenticate(ctx, presented, password)
 	switch {
+	case fault.Is(err, fault.RateLimited):
+		f.Limiter.Release(reservation...)
+		limited("ldap_login_username", username)
+		return
 	case fault.Is(err, fault.AuthFailed):
 		if f.Audit != nil {
 			f.Audit.Security("LDAP_LOGIN_REJECTED", "user", username, "ip", ip, "reason", "invalid_credentials_or_mapping")
@@ -166,3 +178,32 @@ func wantsJSON(r *http.Request) bool {
 // isPythonSpace is Python's str.isspace for strip(): Unicode White_Space
 // plus the separators U+001C to U+001F.
 func isPythonSpace(r rune) bool { return unicode.IsSpace(r) || (r >= 0x1c && r <= 0x1f) }
+
+// knownDeviceKey marks the context of a directory sign-in from a browser
+// with a valid known-device cookie for the submitted name.
+type knownDeviceKey struct{}
+
+// ReserveSubjectAttempt reserves one attempt of endpoint against the
+// per-name ceiling (RATELIMIT_LOGIN_GLOBAL...) for a directory entry. The
+// directory matches spellings of a name the name ceiling counts apart
+// (full-width or mathematical letters under caseIgnoreMatch), so the
+// ceiling is held per entry as well. A browser with a known-device cookie
+// passes, as at the name ceiling. release gives the attempt back after a
+// successful sign-in; failed attempts keep it.
+func (f *Flow) ReserveSubjectAttempt(ctx context.Context, endpoint, subject string) (release func(), ok bool) {
+	if !f.Limits.Enabled || ctx.Value(knownDeviceKey{}) != nil {
+		return func() {}, true
+	}
+	global := DefaultGlobalRule.Limit
+	if f.Settings != nil {
+		if _, b, _, err := f.Settings.LoginLimits(ctx); err == nil {
+			global = b
+		}
+	}
+	sum := sha256.Sum256([]byte(subject))
+	res, ok, _ := f.Limiter.ReserveAccount(endpoint+":subject:"+hex.EncodeToString(sum[:16]), Rule{Limit: global, Window: time.Minute})
+	if !ok {
+		return nil, false
+	}
+	return func() { f.Limiter.Release(res) }, true
+}

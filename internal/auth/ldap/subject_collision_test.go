@@ -1,8 +1,11 @@
 package ldap
 
 import (
+	"context"
+	"sync"
 	"testing"
 
+	"github.com/bifrost0x/webssh/internal/fault"
 	"github.com/bifrost0x/webssh/internal/ldapproto"
 )
 
@@ -73,5 +76,41 @@ func TestLegacyTruncatedSubjectStillChecks(t *testing.T) {
 	}
 	if ok, err := f.svc.VerifyStepUp(t.Context(), 7, "pw-alice"); err != nil || !ok {
 		t.Fatalf("step-up: %v %v", ok, err)
+	}
+}
+
+// The directory matches spellings of a name that the name ceiling counts
+// apart (full-width, mathematical letters); the attempts of one directory
+// entry are counted together whatever the spelling.
+func TestAttemptsCountedPerDirectoryEntry(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.linkUser(t, 7, "alice", "uuid-a", "pw-alice")
+	f.dir.mu.Lock()
+	for _, v := range []string{"ａｌｉｃｅ", "\U0001d41alice"} {
+		f.dir.entries[v] = f.dir.entries["alice"]
+	}
+	f.dir.mu.Unlock()
+	var mu sync.Mutex
+	held := map[string]int{}
+	f.svc.Attempts = func(_ context.Context, subject string) (func(), bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		if held[subject] >= 3 {
+			return nil, false
+		}
+		held[subject]++
+		return func() { mu.Lock(); held[subject]--; mu.Unlock() }, true
+	}
+	for i, name := range []string{"alice", "ａｌｉｃｅ", "\U0001d41alice"} {
+		if _, err := f.svc.Authenticate(t.Context(), name, "wrong"); !fault.Is(err, fault.AuthFailed) {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+	}
+	if _, err := f.svc.Authenticate(t.Context(), "ａｌｉｃｅ", "pw-alice"); !fault.Is(err, fault.RateLimited) {
+		t.Fatalf("fourth spelling passed the ceiling: %v", err)
+	}
+	if held["corp\x00uuid-a"] != 3 {
+		t.Fatalf("held %v", held)
 	}
 }

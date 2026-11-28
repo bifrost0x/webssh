@@ -251,7 +251,12 @@ LDAP-managed WebSSH account only after the first successful directory password
 bind. Automatic provisioning never claims an existing local username, never
 creates an administrator, rejects invalid or overlong names without silently
 truncating them, and does not automatically delete stored data when a directory
-account later disappears.
+account later disappears. It also rejects names that NFKC normalization changes,
+such as full-width or mathematical letters (`ａｌｉｃｅ`), which many directories
+match to the plain name and which would look like another account.
+
+The per-name sign-in ceiling also counts per directory entry, so spellings of
+a name that the directory matches to the same entry share one ceiling.
 
 Linking stores the stable provider and subject plus the current DN and directory
 username. A renamed DN can be updated after successful authentication as long as

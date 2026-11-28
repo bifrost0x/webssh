@@ -105,6 +105,10 @@ func TestAutoProvisionRefusals(t *testing.T) {
 		"no break-glass administrator":  {setup: func(f *fixture) { f.accounts.accounts[1].IsLocked = true }, presented: "erin"},
 		"control character":             {presented: "erin\u200b"},
 		"too long":                      {presented: strings.Repeat("e", 81)},
+		// The directory matches compatibility forms of a name; an account
+		// under such a form would look like the local "erin".
+		"full-width variant of a taken name": {setup: func(f *fixture) { f.accounts.add(Account{ID: 5, Username: "erin"}) }, presented: "ｅｒｉｎ"},
+		"mathematical letters":               {presented: "\U0001d41erin"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
