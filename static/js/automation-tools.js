@@ -1,5 +1,5 @@
-/* Pure helpers for automation: comparing run results across hosts and
- * deciding when to poll.
+/* Pure helpers for automation: comparing run results across hosts,
+ * deciding when to poll and when a section animates.
  * No DOM; exported for tests. */
 (function (root) {
     'use strict';
@@ -60,7 +60,17 @@
 
     const isRunActive = run => ['queued', 'running'].includes(run?.status);
 
-    const api = Object.freeze({compareRun, pollPlan, isRunActive, POLL});
+    /**
+     * A section plays its entry animation only when it becomes visible. A
+     * section that is already shown (the library after a delete, a repeated
+     * tab click) is not animated again: in Chromium, restarting the animation
+     * on the section that holds the focus target right after a modal dialog
+     * closed can leave its controls unfocusable until the next style change,
+     * so the library search lost the focus that deleteBook gives it.
+     */
+    const animatePanelEntry = ({entering, reducedMotion}) => entering === true && !reducedMotion;
+
+    const api = Object.freeze({compareRun, pollPlan, isRunActive, animatePanelEntry, POLL});
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (root) root.AutomationTools = api;
 })(typeof window !== 'undefined' ? window : globalThis);
