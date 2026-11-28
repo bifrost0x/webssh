@@ -15,6 +15,10 @@ import types
 from datetime import datetime, timedelta, timezone
 
 ROOT = sys.argv[1]
+if len(sys.argv) > 2:
+    # A pinned zone database in place of the system's (zonedb_test.go).
+    import zoneinfo
+    zoneinfo.reset_tzpath(sys.argv[2:])
 
 
 class AutomationError(Exception):

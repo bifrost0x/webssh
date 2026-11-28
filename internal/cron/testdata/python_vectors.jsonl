@@ -114,13 +114,9 @@
 {"req":{"op":"parse","expr":"* * * * *","zone":"leapseconds"},"want":{"ok":false,"error":"invalid_schedule"}}
 {"req":{"op":"parse","expr":"* * * * *","zone":" UTC"},"want":{"ok":false,"error":"invalid_schedule"}}
 {"req":{"op":"parse","expr":"* * * * *","zone":"a\u0000b"},"want":{"ok":false,"error":"invalid_schedule"}}
-{"req":{"op":"parse","expr":"* * * * *","zone":"localtime"},"want":{"ok":false,"error":"invalid_schedule"}}
 {"req":{"op":"parse","expr":"* * * * *","zone":"+VERSION"},"want":{"ok":false,"error":"invalid_schedule"}}
 {"req":{"op":"parse","expr":"* * * * *","zone":"Europe\\Berlin"},"want":{"ok":false,"error":"invalid_schedule"}}
 {"req":{"op":"parse","expr":"* * * * *","zone":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"want":{"ok":false,"error":"invalid_schedule"}}
-{"req":{"op":"parse","expr":"* * * * *","zone":"posix/Europe/Berlin"},"want":{"ok":true}}
-{"req":{"op":"parse","expr":"* * * * *","zone":"right/UTC"},"want":{"ok":true}}
-{"req":{"op":"parse","expr":"* * * * *","zone":"posixrules"},"want":{"ok":true}}
 {"req":{"op":"parse","expr":"* * * * *","zone":"Factory"},"want":{"ok":true}}
 {"req":{"op":"parse","expr":"* * * * *","zone":"EST5EDT"},"want":{"ok":true}}
 {"req":{"op":"parse","expr":"* * * * *","zone":"GMT"},"want":{"ok":true}}

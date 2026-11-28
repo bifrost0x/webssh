@@ -40,10 +40,17 @@ var zones = []string{
 // time.LoadLocation.
 var badZones = []string{
 	"", "Local", "utc", "/etc/localtime", "../x", "..", "Europe/../UTC", "Europe//Berlin", "./UTC",
-	"UTC/", "Europe", "zone.tab", "tzdata.zi", "leapseconds", " UTC", "a\x00b", "localtime",
-	"+VERSION", "Europe\\Berlin", strings.Repeat("A", 129), "posix/Europe/Berlin", "right/UTC",
-	"posixrules", "Factory", "EST5EDT", "GMT", "Etc/GMT-14", "US/Pacific",
+	"UTC/", "Europe", "zone.tab", "tzdata.zi", "leapseconds", " UTC", "a\x00b",
+	"+VERSION", "Europe\\Berlin", strings.Repeat("A", 129),
+	"Factory", "EST5EDT", "GMT", "Etc/GMT-14", "US/Pacific",
 }
+
+// hostZones are keys that only the system zone database may have; the
+// embedded database of Go and the tzdata package of Python lack them.
+// Whether they load depends on the host (Ubuntu links localtime to
+// /etc/localtime and moved posix/ and right/ to tzdata-legacy), so they
+// are not recorded but tested against a pinned database (zonedb_test.go).
+var hostZones = []string{"localtime", "posix/Europe/Berlin", "right/UTC", "posixrules"}
 
 var nextExprs = []string{
 	"*/15 * * * *", "30 2 * * *", "0 2 * * *", "0 3 * * *", "59 1 * * *", "0 1 * * *", "0 0 * * *",
