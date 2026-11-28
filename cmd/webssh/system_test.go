@@ -112,8 +112,15 @@ func TestMaintenanceAnswersOnlyTheProbes(t *testing.T) {
 	}
 	jar, _ := cookiejar.New(nil)
 	c := &http.Client{Jar: jar, Timeout: 5 * time.Second}
-	if resp, body := get(t, c, ts.URL+"/login"); resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(body, `"maintenance"`) {
+	resp, body := get(t, c, ts.URL+"/login")
+	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(body, `"maintenance"`) {
 		t.Fatalf("login in maintenance: %d %s", resp.StatusCode, body)
+	}
+	// The maintenance answer carries the headers of every other answer.
+	if !strings.Contains(resp.Header.Get("Content-Security-Policy"), "frame-ancestors 'none'") ||
+		resp.Header.Get("X-Frame-Options") != "DENY" || resp.Header.Get("X-Content-Type-Options") != "nosniff" ||
+		resp.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("maintenance headers: %v", resp.Header)
 	}
 	if resp, _ := get(t, c, ts.URL+"/health"); resp.StatusCode != http.StatusOK {
 		t.Fatalf("health in maintenance: %d", resp.StatusCode)

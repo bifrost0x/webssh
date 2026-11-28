@@ -124,8 +124,8 @@ func (s *system) handler() http.Handler {
 		reason, on := s.maintenance.Active()
 		if on && !isProbe(s.cfg.ApplicationRoot, r.URL.Path) &&
 			(reason != backup.MaintenanceRestore || strings.TrimPrefix(r.URL.Path, s.cfg.ApplicationRoot) != restoreStatusPath) {
+			httpapi.SecurityHeaders(w.Header(), s.cfg.Debug)
 			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("Retry-After", "60")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"success":false,"code":"maintenance","error":"The server is in maintenance mode."}` + "\n"))

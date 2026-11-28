@@ -49,6 +49,10 @@ func setSecurityHeaders(h http.Header, debugMode bool) {
 	h.Set("Cache-Control", "no-store")
 }
 
+// SecurityHeaders adds the headers of every response to h, for answers
+// written before the edge runs (the maintenance answer).
+func SecurityHeaders(h http.Header, debugMode bool) { setSecurityHeaders(h, debugMode) }
+
 // Per-request deadlines. The listener has only a header timeout and an
 // idle timeout, because a server-wide read or write timeout would stay on
 // hijacked WebSocket connections; every other request gets these.
