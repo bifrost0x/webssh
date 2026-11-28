@@ -93,7 +93,7 @@ func backupNamespace(cfg config.Config) (string, error) {
 	} else if !st.IsDir() {
 		return "", errors.New("BACKUP_TEMP_DIR must be a real directory, not a link")
 	}
-	if err := os.Chmod(root, 0o700); err != nil {
+	if err := os.Chmod(root, 0o700); err != nil { // #nosec G302 -- a directory needs the search bit; 0700 is owner-only
 		return "", fmt.Errorf("BACKUP_TEMP_DIR: %w", err)
 	}
 	sum := sha256.Sum256([]byte(data))
