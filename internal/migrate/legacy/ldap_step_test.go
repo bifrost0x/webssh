@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -166,6 +167,39 @@ func TestLDAPIdentityOfMissingAccountIsFlagged(t *testing.T) {
 	e := m.entity(t, "E03")
 	if e.Written != 1 || !hasFlag(e.Flagged, 999, "LDAP identity of a missing account") {
 		t.Fatalf("E03 report %+v", e)
+	}
+}
+
+// The Python release read a binary unique ID (objectGUID) as C string,
+// so values that start with a digit and NUL, or spell TRUE/FALSE before
+// a NUL, all got the same short subject. Such a binding still migrates
+// and signs in for its own DN, but the report names it for the
+// administrators: another directory entry with the same short form is
+// refused and needs a relink (finding #40).
+func TestLDAPIdentityWithPossiblyTruncatedSubjectIsReported(t *testing.T) {
+	t.Parallel()
+	for _, subject := range []string{"7", "True", "-12"} {
+		dir := copyGolden(t)
+		execLegacySQL(t, dir, fmt.Sprintf(`UPDATE ldap_identities SET subject = '%s' WHERE id = 1`, subject))
+		m := migrateWithLDAP(t, dir, golden.manifest.SecretKey.Value)
+		e := m.entity(t, "E03")
+		if e.Written != 1 || !hasFlag(e.Flagged, goldenLDAPUser, "LDAP binding may stem from a truncated") {
+			t.Fatalf("%s: E03 report %+v", subject, e)
+		}
+		var found bool
+		for _, w := range m.report.Warnings {
+			found = found || (w.Code == "ldap_subject_truncated" && w.UserID == goldenLDAPUser && strings.Contains(w.Message, "relink"))
+		}
+		if !found {
+			t.Fatalf("%s: warnings %+v", subject, m.report.Warnings)
+		}
+	}
+	// The golden binding (b64:) is not named.
+	m := migrateWithLDAP(t, copyGolden(t), golden.manifest.SecretKey.Value)
+	for _, w := range m.report.Warnings {
+		if w.Code == "ldap_subject_truncated" {
+			t.Fatalf("golden binding reported: %+v", w)
+		}
 	}
 }
 

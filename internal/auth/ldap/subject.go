@@ -192,3 +192,21 @@ func digitValue(c byte) int {
 	}
 	return 99
 }
+
+// SubjectMayBeTruncated reports a stored subject that the Python release
+// may have read from the C string of a value with a NUL byte: "True",
+// "False" or the decimal form of an integer, the only forms such a value
+// can take (canonicalSubject). A binary unique ID (objectGUID) of another
+// directory entry can share it; Go refuses that entry and the binding
+// needs an administrator's relink. A numeric attribute such as uidNumber
+// gives the same forms legitimately, so this names candidates only.
+func SubjectMayBeTruncated(subject string) bool {
+	if subject == "True" || subject == "False" {
+		return true
+	}
+	digits := strings.TrimPrefix(subject, "-")
+	if digits == "" || (digits[0] == '0' && len(digits) > 1) || (digits == "0" && subject != "0") {
+		return false
+	}
+	return strings.Trim(digits, "0123456789") == ""
+}
