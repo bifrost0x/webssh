@@ -17,7 +17,9 @@ import (
 // and 'self' covers ws: and wss: of the same host (CSP Level 3); the
 // Python release also allowed WebSocket connections to every other host.
 // img-src drops https:, because no page shows an image from another host;
-// the Python release allowed images from every HTTPS origin.
+// the Python release allowed images from every HTTPS origin. form-action
+// is added: it does not fall back to default-src, and no form posts to
+// another origin (the IdP sign-ins are GET links).
 const contentSecurityPolicy = "default-src 'self'; " +
 	"script-src 'self'; " +
 	"style-src 'self' 'unsafe-inline'; " +
@@ -26,6 +28,7 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"media-src 'self' data:; " +
 	"connect-src 'self'; " +
 	"base-uri 'self'; " +
+	"form-action 'self'; " +
 	"object-src 'none'; " +
 	"frame-ancestors 'none';"
 
