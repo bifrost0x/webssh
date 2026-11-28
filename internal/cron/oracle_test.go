@@ -104,8 +104,9 @@ type oracle struct {
 }
 
 // startOracle starts the Python oracle under -update and in the live and
-// record modes of internal/oracletest; in replay mode it returns nil.
-func startOracle(t testing.TB) *oracle {
+// record modes of internal/oracletest; in replay mode it returns nil. A
+// tzpath replaces the zone database search path of the oracle.
+func startOracle(t testing.TB, tzpath ...string) *oracle {
 	t.Helper()
 	var python, root string
 	switch {
@@ -118,7 +119,8 @@ func startOracle(t testing.TB) *oracle {
 	default:
 		return nil
 	}
-	cmd := exec.CommandContext(t.Context(), python, "-I", "testdata/oracle.py", root) // #nosec G204 -- test oracle
+	args := append([]string{"-I", "testdata/oracle.py", root}, tzpath...)
+	cmd := exec.CommandContext(t.Context(), python, args...) // #nosec G204 -- test oracle
 	cmd.Env = []string{"LANG=C.UTF-8", "PATH=" + os.Getenv("PATH")}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
