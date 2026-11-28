@@ -1,4 +1,5 @@
-// Lab fixture: the Python release writes a DATA_DIR the way a user would,
+// Lab fixture: the Python release (a worktree of it in WEBSSH_PYTHON_ROOT,
+// python-release.js) writes a DATA_DIR the way a user would,
 // through its interface: an administrator with a password and TOTP, an
 // uploaded SSH key, two saved hosts and a host key accepted on the test lab.
 // The migration spec starts the server under test on a copy of it.
@@ -11,6 +12,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {Backend, scratchRoot, removeScratch} = require('./backend');
 const {loadLab} = require('./lab');
+const {pythonRelease} = require('./python-release');
 const ui = require('./ui');
 
 const legacy = {username: 'legacyadmin', password: 'Legacy-admin-password-5'};
@@ -19,11 +21,7 @@ const hosts = {key: 'Legacy key host', password: 'Legacy password host'};
 
 // Always the Python release, whatever server the suite tests.
 function pythonBackend(label) {
-    const backend = new Backend(scratchRoot(label), label);
-    const python = process.env.PYTHON || 'python';
-    backend.serverCommand = `"${python}" tests/e2e/m1/python_backend.py serve`;
-    backend.adminCommand = `"${python}" tests/e2e/m1/python_backend.py cli`;
-    return backend;
+    return new Backend(scratchRoot(label), label, pythonRelease().commands());
 }
 
 async function createPythonDataDir(browser) {

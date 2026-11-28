@@ -3,11 +3,9 @@ const { execFileSync } = require('node:child_process');
 const { test, expect } = require('playwright/test');
 const { login } = require('../e2e/helpers');
 
-// Requires a disposable OpenSSH host with Herdr 0.9.5: the paramiko5 lab
-// and run_herdr_browser_app.py for Python, or the host and the server that
-// herdr/run-go-browser.sh starts for Go.
+// Requires the disposable OpenSSH host with Herdr 0.9.5 and the Go server
+// that herdr/run-go-browser.sh starts.
 const PASSWORD = process.env.WEBSSH_HERDR_PASSWORD || 'Paramiko5-Test-Only!';
-const GO = Boolean(process.env.WEBSSH_E2E_M1_SERVER_COMMAND);
 const PYTHON = process.env.PYTHON || 'python';
 const MOBILE = {
     viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2,
@@ -161,7 +159,6 @@ async function closeTab(page, id) {
 // writes directly through the interface: Herdr switched on (step-up) and
 // the two saved hosts on the disposable host.
 test.beforeAll(async ({ browser }) => {
-    if (!GO) return;
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await login(page);
     await page.goto('/settings#integrations');

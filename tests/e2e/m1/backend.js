@@ -7,20 +7,30 @@ const fs = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
+const {webssh} = require('../go-binary');
+const {pythonRelease} = require('./python-release');
 
 const repoRoot = path.resolve(__dirname, '../../..');
-const python = process.env.PYTHON || 'python';
-const launcher = path.join('tests', 'e2e', 'm1', 'python_backend.py');
 
-// Own names, so WEBSSH_E2E_SERVER_COMMAND keeps meaning the seeded e2e
-// backend of the main suite.
-const serverCommand = process.env.WEBSSH_E2E_M1_SERVER_COMMAND || `"${python}" ${launcher} serve`;
-const adminCommand = process.env.WEBSSH_E2E_M1_ADMIN_COMMAND
-    || (process.env.WEBSSH_E2E_M1_SERVER_COMMAND ? null : `"${python}" ${launcher} cli`);
+// The specs run against the Go server built from this checkout
+// (../go-binary.js). WEBSSH_E2E_M1_SERVER_COMMAND and
+// WEBSSH_E2E_M1_ADMIN_COMMAND start another Go build (own names, so
+// WEBSSH_E2E_SERVER_COMMAND keeps meaning the seeded e2e backend of the
+// main suite). WEBSSH_E2E_M1_BACKEND=python runs them against the Python
+// release in WEBSSH_PYTHON_ROOT instead (python-release.js).
+const kind = process.env.WEBSSH_E2E_M1_BACKEND === 'python' ? 'python' : 'go';
+if (!['', 'go', 'python'].includes(process.env.WEBSSH_E2E_M1_BACKEND || '')) {
+    throw new Error('WEBSSH_E2E_M1_BACKEND must be go or python');
+}
 
-// The suite runs against Python unless a server command is given; that is
-// how the Go server is started (tests/e2e/README.md).
-const kind = process.env.WEBSSH_E2E_M1_SERVER_COMMAND ? 'go' : 'python';
+function defaultCommands() {
+    if (kind === 'python') return pythonRelease().commands();
+    if (process.env.WEBSSH_E2E_M1_SERVER_COMMAND) {
+        return {serverCommand: process.env.WEBSSH_E2E_M1_SERVER_COMMAND, adminCommand: process.env.WEBSSH_E2E_M1_ADMIN_COMMAND || null};
+    }
+    const binary = webssh('release');
+    return {serverCommand: `"${binary}" serve`, adminCommand: `"${binary}"`};
+}
 
 // Configuration both servers document. It makes the loopback fixture work
 // (plain HTTP, lab targets on 127.0.0.1) and lets one spec sign in often.
@@ -120,15 +130,14 @@ async function waitForLogin(url, child, out, timeoutMs) {
 }
 
 class Backend {
-    constructor(root, label) {
+    constructor(root, label, commands = defaultCommands()) {
         this.root = root;
         this.label = label;
         this.dataDir = path.join(root, 'data');
         this.child = null;
         this.out = new Output();
         this.port = null;
-        this.serverCommand = serverCommand;
-        this.adminCommand = adminCommand;
+        ({serverCommand: this.serverCommand, adminCommand: this.adminCommand} = commands);
     }
 
     get baseURL() { return `http://127.0.0.1:${this.port}`; }
