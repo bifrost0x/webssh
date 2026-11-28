@@ -100,15 +100,15 @@
                 const footer = node('footer'); const done = button(t('upgradeNotice.confirm', 'Got it'), acknowledge, true); done.disabled = saving;
                 footer.append(done);
                 const parts = [heading, body, node('p', t('upgradeNotice.benefits', 'What you get:'), 'upgrade-notice-lead'), list,
-                    node('p', t('upgradeNotice.report', 'Something not working as before? Please report it as an issue on GitHub. We will take care of it right away.')), links];
+                    node('p', t('upgradeNotice.report', 'Something not working as before? Please report it as an issue on GitHub. I\'ll take care of it right away.')), links];
                 if (supportLinks) {
                     // An offer, set apart and below the notice itself; the same links and icons as the settings page.
                     const support = node('section', '', 'upgrade-notice-support'); support.setAttribute('aria-labelledby', 'upgradeNoticeSupportTitle');
-                    const title = node('h3'); title.id = 'upgradeNoticeSupportTitle'; title.append(icon('favorite'), node('span', t('settings.supportProject', 'Support WebSSH')));
+                    const title = node('h3'); title.id = 'upgradeNoticeSupportTitle'; title.append(icon('favorite'), node('span', t('upgradeNotice.supportTitle', 'WebSSH stays free and independent')));
                     const items = node('ul');
                     [['GitHub Sponsors', 'https://github.com/sponsors/bifrost0x', 'favorite'], ['Patreon', 'https://www.patreon.com/bifrost0x', 'volunteer_activism'],
                         ['Buy Me a Coffee', 'https://buymeacoffee.com/bifrost0x', 'local_cafe']].forEach(([name, href, glyph]) => { const item = node('li'); item.append(external(name, href, glyph)); items.append(item); });
-                    support.append(title, node('p', t('upgradeNotice.support', 'WebSSH is a solo project: one person develops it, covers all the costs and is glad to put in the time. If you would like to support the project, you can do so here:')), items);
+                    support.append(title, node('p', t('upgradeNotice.support', 'I build WebSSH as a solo developer, with no company and no ads behind it. I pay for servers, testing and development time myself. Every bit of support goes straight into making WebSSH better.')), items);
                     parts.push(support);
                 }
                 notice.replaceChildren(...parts, footer);

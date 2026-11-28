@@ -119,7 +119,7 @@ window.i18n.registerLocales({
 
         "upgradeNotice.image": "镜像更小，不含操作系统软件包，因此也没有这些软件包的已知漏洞。",
 
-        "upgradeNotice.report": "有功能与以前不一样？请在 GitHub 上提交 issue，我们会立即处理。",
+        "upgradeNotice.report": "有功能与以前不一样？请在 GitHub 上提交 issue，我会立即处理。",
 
         "upgradeNotice.changes": "变更内容",
 
@@ -127,7 +127,9 @@ window.i18n.registerLocales({
 
         "upgradeNotice.confirm": "知道了",
 
-        "upgradeNotice.support": "WebSSH 是一个个人项目：由一个人独自开发，承担全部费用，也乐于为它投入时间。如果您愿意支持这个项目，可以通过以下方式：",
+        "upgradeNotice.supportTitle": "WebSSH 保持自由与独立",
+
+        "upgradeNotice.support": "WebSSH 由我作为独立开发者开发，背后没有公司，也没有广告。服务器、测试和开发时间的费用都由我自己承担。每一份支持都会直接用于让 WebSSH 变得更好。",
 
         "tour.feature.smb": "SMB 文件源",
 

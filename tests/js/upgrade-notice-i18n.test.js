@@ -11,17 +11,20 @@ const source = fs.readFileSync(path.join(__dirname, '../../static/js/onboarding.
 const notice = source.slice(source.indexOf('function showUpgradeNotice'), source.indexOf('// A language switch redraws'));
 
 // Keys with their English fallback: t('key', 'fallback') and the
-// ['key', 'fallback'] pairs of the benefit list.
+// ['key', 'fallback'] pairs of the benefit list. Fallbacks may hold an
+// escaped apostrophe.
 function noticeKeys() {
     const keys = new Map();
-    for (const [, key, fallback] of notice.matchAll(/(?:t\(|\[)'((?:upgradeNotice|settings)\.[\w.]+)',\s*'([^']*)'/g)) keys.set(key, fallback);
+    for (const [, key, fallback] of notice.matchAll(/(?:t\(|\[)'((?:upgradeNotice|settings)\.[\w.]+)',\s*'((?:[^'\\]|\\.)*)'/g)) {
+        keys.set(key, fallback.replace(/\\(.)/g, '$1'));
+    }
     return keys;
 }
 
 test('the notice reads its texts, including the support section', () => {
     const keys = noticeKeys();
     for (const key of ['upgradeNotice.title', 'upgradeNotice.body', 'upgradeNotice.report', 'upgradeNotice.confirm',
-        'upgradeNotice.support', 'settings.supportProject']) {
+        'upgradeNotice.supportTitle', 'upgradeNotice.support']) {
         assert.ok(keys.has(key), `${key} is not read by the notice`);
     }
 });

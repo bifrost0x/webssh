@@ -66,8 +66,10 @@ test('a taken-over account sees the notice once, before the tour, and on no othe
         await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     }
     // The support offer is its own section below the notice, with the icons of the settings page.
-    const offer = dialog.getByRole('region', {name: 'Support WebSSH'});
-    await expect(offer).toContainText('WebSSH is a solo project');
+    const offer = dialog.getByRole('region', {name: 'WebSSH stays free and independent'});
+    await expect(offer).toContainText('I build WebSSH as a solo developer, with no company and no ads behind it.');
+    await expect(dialog).toContainText("Please report it as an issue on GitHub. I'll take care of it right away.");
+    await expect(dialog).not.toContainText(/\b(we|us)\b/i);
     expect(await offer.locator('a .material-icons').allTextContents()).toEqual(support.map(([, , glyph]) => glyph));
     for (const width of [390, 1440]) {
         await page.setViewportSize({width, height: 800});

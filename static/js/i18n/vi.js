@@ -119,7 +119,7 @@ window.i18n.registerLocales({
 
         "upgradeNotice.image": "Image nhỏ hơn, không chứa gói hệ điều hành nên cũng không còn các lỗ hổng đã biết của những gói đó.",
 
-        "upgradeNotice.report": "Có gì không hoạt động như trước? Hãy báo lại bằng một issue trên GitHub, chúng tôi sẽ xử lý ngay.",
+        "upgradeNotice.report": "Có gì không hoạt động như trước? Hãy báo lại bằng một issue trên GitHub, tôi sẽ xử lý ngay.",
 
         "upgradeNotice.changes": "Những gì đã thay đổi",
 
@@ -127,7 +127,9 @@ window.i18n.registerLocales({
 
         "upgradeNotice.confirm": "Đã hiểu",
 
-        "upgradeNotice.support": "WebSSH là dự án do một người phát triển. Người đó tự chi trả mọi chi phí và sẵn lòng dành thời gian cho dự án. Nếu bạn muốn ủng hộ, bạn có thể làm điều đó tại đây:",
+        "upgradeNotice.supportTitle": "WebSSH vẫn tự do và độc lập",
+
+        "upgradeNotice.support": "Tôi phát triển WebSSH một mình, không có công ty đứng sau và không có quảng cáo. Máy chủ, việc kiểm thử và thời gian phát triển đều do tôi tự chi trả. Mọi sự ủng hộ đều trực tiếp giúp WebSSH tiếp tục phát triển.",
 
         "tour.feature.smb": "Nguồn tệp SMB",
 

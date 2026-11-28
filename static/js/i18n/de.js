@@ -119,7 +119,7 @@ window.i18n.registerLocales({
 
         "upgradeNotice.image": "Ein kleineres Image ohne Betriebssystempakete und damit ohne deren bekannte Schwachstellen.",
 
-        "upgradeNotice.report": "Funktioniert etwas nicht wie gewohnt? Melde es bitte als Issue auf GitHub, wir kümmern uns sofort darum.",
+        "upgradeNotice.report": "Funktioniert etwas nicht wie gewohnt? Melde es bitte als Issue auf GitHub, ich kümmere mich sofort darum.",
 
         "upgradeNotice.changes": "Was sich geändert hat",
 
@@ -127,7 +127,9 @@ window.i18n.registerLocales({
 
         "upgradeNotice.confirm": "Verstanden",
 
-        "upgradeNotice.support": "WebSSH ist ein Soloprojekt: Eine Person entwickelt es, trägt alle Kosten selbst und investiert die Zeit gern. Wenn du das Projekt unterstützen möchtest, geht das hier:",
+        "upgradeNotice.supportTitle": "WebSSH bleibt frei und unabhängig",
+
+        "upgradeNotice.support": "WebSSH wird von mir als Solo-Entwickler gebaut, ohne Firma und ohne Werbung. Server, Tests und Entwicklungszeit bezahle ich selbst. Jede Unterstützung hilft direkt dabei, WebSSH weiterzuentwickeln.",
 
         "tour.feature.smb": "SMB-Dateiquellen",
 
