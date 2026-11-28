@@ -78,6 +78,23 @@ PINNED_ACTIONS = {
 }
 
 
+def _job(workflow, name):
+    jobs = re.split(r'\n  (?=[a-z][a-z0-9-]*:\n)', workflow.split('\njobs:\n', 1)[1])
+    return next(job for job in jobs if job.startswith(f'{name}:\n'))
+
+
+def _dockerfile_stages(dockerfile):
+    """Map each FROM line of a Dockerfile to the stage names defined before it."""
+    stages, names = [], []
+    for line in dockerfile.read_text(encoding='utf-8').splitlines():
+        match = re.match(r'FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?', line.strip())
+        if match:
+            stages.append((line.strip(), match.group(1), tuple(names)))
+            if match.group(2):
+                names.append(match.group(2))
+    return stages
+
+
 def _workflow_texts():
     return {
         path.name: path.read_text(encoding='utf-8')
@@ -158,22 +175,25 @@ def test_wiki_sync_is_main_only_and_uses_the_repository_token():
 def test_container_build_inputs_and_ci_services_are_digest_pinned():
     dockerfiles = [
         ROOT / 'Dockerfile',
-        ROOT / 'tests' / 'integration' / 'paramiko5' / 'Dockerfile',
-        ROOT / 'tests' / 'integration' / 'smb' / 'Dockerfile',
+        ROOT / 'tests' / 'integration' / 'herdr' / 'Dockerfile',
+        *sorted((ROOT / 'tests' / 'lab' / 'images').glob('*/Dockerfile')),
     ]
     for dockerfile in dockerfiles:
-        from_lines = [
-            line.strip()
-            for line in dockerfile.read_text(encoding='utf-8').splitlines()
-            if line.lstrip().startswith('FROM ')
-        ]
-        assert from_lines
-        assert all(IMAGE_DIGEST.search(line) for line in from_lines), dockerfile
+        stages = _dockerfile_stages(dockerfile)
+        assert stages, dockerfile
+        for line, image, earlier in stages:
+            # scratch and earlier stages (possibly selected by a build
+            # argument such as herdr-${TARGETARCH}) pull nothing.
+            local = image == 'scratch' or any(
+                re.fullmatch(re.sub(r'\\\$\\\{[A-Z_]+\\\}', '.+', re.escape(image)), name)
+                for name in earlier
+            )
+            assert local or IMAGE_DIGEST.search(line), (dockerfile, line)
 
-    tests_workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
-    redis_references = re.findall(r'redis:[78]-alpine[^\s#]*', tests_workflow)
-    assert len(redis_references) == 2
-    assert all(IMAGE_DIGEST.search(reference) for reference in redis_references)
+    check = (ROOT / 'tests' / 'image' / 'check.sh').read_text(encoding='utf-8')
+    references = re.findall(r'^[A-Z_]+=([a-z0-9./-]+:[^\s@]+@\S+)$', check, re.MULTILINE)
+    assert len(references) == 2
+    assert all(IMAGE_DIGEST.search(reference) for reference in references)
 
 
 def test_images_built_inside_workflows_are_digest_pinned():
@@ -188,21 +208,24 @@ def test_images_built_inside_workflows_are_digest_pinned():
 
 
 def test_container_build_applies_available_base_image_security_updates():
+    """The CA bundle is the only distribution package that reaches the image."""
     dockerfile = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
 
-    assert dockerfile.count('apt-get update') == 2
-    assert dockerfile.count('apt-get upgrade --yes') == 2
+    assert dockerfile.count('apk upgrade --no-cache ca-certificates-bundle') == 1
+    assert not re.search(r'\b(?:apt-get|apk add|pip3? install)\b', dockerfile)
 
 
 def test_scanned_and_published_images_refresh_os_packages_per_ci_attempt():
-    """A cached apt upgrade must not hide newly available security updates."""
+    """A cached package upgrade must not hide newly available security updates."""
     dockerfile = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
-    stages = re.split(r'^FROM ', dockerfile, flags=re.MULTILINE)[1:]
-    assert len(stages) == 2
-    for stage in stages:
-        assert stage.index('ARG OS_PACKAGE_REFRESH=local') < stage.index(
-            'RUN apt-get update'
-        )
+    stages = [
+        stage for stage in re.split(r'^FROM ', dockerfile, flags=re.MULTILINE)[1:]
+        if 'apk upgrade' in stage
+    ]
+    assert len(stages) == 1
+    assert stages[0].index('ARG OS_PACKAGE_REFRESH=local') < stages[0].index(
+        'RUN apk upgrade'
+    )
 
     refresh = 'OS_PACKAGE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}'
     for filename, expected_builds in [('security.yml', 2), ('docker-publish.yml', 1)]:
@@ -298,56 +321,65 @@ def test_publish_records_and_verifies_the_immutable_image_identity():
 def test_docker_image_declares_the_source_revision_label():
     dockerfile = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
 
-    assert 'ARG VCS_REF=unknown' in dockerfile
-    assert 'LABEL org.opencontainers.image.revision=$VCS_REF' in dockerfile
+    runtime = dockerfile.split('\nFROM scratch AS runtime\n', 1)[1].split('\nFROM ', 1)[0]
+    label = re.search(r'^LABEL (?:.*\\\n)*.*$', runtime, re.MULTILINE).group(0)
+
+    assert 'ARG VCS_REF=unknown' in runtime
+    assert re.search(r'\borg\.opencontainers\.image\.revision=\$VCS_REF\b', label)
 
 
 def test_runtime_image_excludes_repository_only_tooling():
-    ignored = {
+    """The build context is an allowlist; every COPY source must be on it."""
+    lines = [
         line.strip()
-        for line in (ROOT / '.dockerignore').read_text(
-            encoding='utf-8'
-        ).splitlines()
+        for line in (ROOT / '.dockerignore').read_text(encoding='utf-8').splitlines()
         if line.strip() and not line.lstrip().startswith('#')
-    }
+    ]
+    allowed = {line[1:].rstrip('/') for line in lines if line.startswith('!')}
 
+    assert lines[0] == '*'
+    assert allowed == {
+        'go.mod',
+        'go.sum',
+        'cmd',
+        'internal',
+        'static',
+        'third_party/go-smb2',
+        'scripts/stage-webassets.sh',
+        'LICENSE',
+        'NOTICE',
+        'THIRD-PARTY-NOTICES',
+    }
+    # Exclusions after the allowlist win over it.
+    last_include = max(index for index, line in enumerate(lines) if line.startswith('!'))
     assert {
-        '.agents/',
-        '.codex/',
-        '.env.example',
-        '.trivyignore.yaml',
-        'AGENTS.md',
-        'design-qa.md',
-        'docker-compose*.yml',
-        'ca_profile.xml',
-        'unraid/',
-        'package*.json',
-        'playwright.config.js',
-        'requirements-graph.*',
-        'requirements-test.*',
-        'requirements.in',
-        'scripts/',
-        'site/',
-        'assets/',
+        '**/.env',
         '**/.env.*',
+        '**/*.db',
+        '**/*.sqlite*',
         '**/*.pem',
         '**/*.key',
-        '**/*.sqlite3',
-        'static/images/theme-backgrounds/*.png',
-    } <= ignored
+    } <= set(lines[last_include + 1:])
 
     dockerfile = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
     assert not re.search(r'^COPY\s+\.\s', dockerfile, re.MULTILINE)
-    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
-    assert 'python scripts/check_container_context.py' in workflow
-    assert 'python scripts/check_container_context.py --container' in workflow
+    copies = re.findall(r'^COPY\s+(?!--from=)((?:--\S+\s+)*)(.+)$', dockerfile, re.MULTILINE)
+    assert copies
+    for _flags, arguments in copies:
+        for source in arguments.split()[:-1]:
+            source = source.removeprefix('./').rstrip('/')
+            assert any(source == entry or source.startswith(entry + '/') for entry in allowed), source
 
 
-def test_runtime_image_removes_python_packaging_tooling():
+def test_runtime_image_is_scratch_without_shell_or_package_manager():
     dockerfile = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
 
-    assert 'python -m pip uninstall --yes pip' in dockerfile
-    assert 'rm -rf /usr/local/lib/python*/ensurepip' in dockerfile
+    assert re.search(r'^FROM scratch AS runtime$', dockerfile, re.MULTILINE)
+    assert re.search(r'^FROM runtime AS release$', dockerfile, re.MULTILINE)
+    assert dockerfile.rstrip().splitlines()[-1] == 'FROM runtime AS release'
+    release = dockerfile.split('\nFROM runtime AS release\n', 1)[1]
+    assert 'COPY' not in release and 'RUN' not in release
+    assert 'USER 1000:1000' in dockerfile
 
 
 def test_ci_rejects_stale_vendored_frontend_assets():
@@ -519,27 +551,14 @@ def test_dependabot_tracks_pinned_docker_bases():
         config,
         re.DOTALL,
     )
-    assert len(docker_blocks) == 4
     directories = {
-        re.search(r'directory:\s*"([^"]+)"', block).group(1)
+        re.search(r'directory:\s*"([^"]+)"', block).group(1): block
         for block in docker_blocks
     }
-    assert directories == {
-        '/',
-        '/deploy/docker',
-        '/tests/integration/paramiko5',
-        '/tests/integration/smb',
-    }
-    # The Go release image lives on the integration branch only.
-    go_image = next(b for b in docker_blocks if '"/deploy/docker"' in b)
-    assert re.search(r'target-branch:\s*"go"', go_image)
-    compose_blocks = re.findall(
-        r'- package-ecosystem:\s*"docker-compose"\s+(.*?)(?=\n\s+- package-ecosystem:|\Z)',
-        config,
-        re.DOTALL,
-    )
-    assert len(compose_blocks) == 1
-    assert re.search(r'directory:\s*"([^"]+)"', compose_blocks[0]).group(1) == '/tests/integration/ldap'
+    # The bases of the release image live in the root Dockerfile on the
+    # default branch.
+    assert '/' in directories
+    assert 'target-branch:' not in directories['/']
 
 
 def test_graph_pages_toolchain_versions_are_explicit():
@@ -577,11 +596,8 @@ def test_every_workflow_job_with_steps_has_a_timeout():
 
 def test_static_checks_run_once_in_the_lint_job():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
-    lint_job = workflow.split('\n  lint:', 1)[1].split('\n  dependency-locks:', 1)[0]
-    browser_job = workflow.split('  browser-e2e-shards:', 1)[1].split(
-        '\n  browser-e2e:',
-        1,
-    )[0]
+    lint_job = _job(workflow, 'lint')
+    browser_job = _job(workflow, 'browser-e2e-shards')
 
     for command in (
         'run: python -m ruff check --output-format=github .',
@@ -596,40 +612,19 @@ def test_static_checks_run_once_in_the_lint_job():
     assert 'if:' not in lint_job
 
 
-def test_slow_test_gates_are_sharded_without_duplicate_redis_unit_runs():
+def test_browser_gate_is_sharded_and_aggregated():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
     playwright = (ROOT / 'playwright.config.js').read_text(encoding='utf-8')
 
-    assert '--ignore=tests/integration' in workflow
-    assert '-n 2' in workflow
-    assert '--dist=loadscope' in workflow
-    assert '--durations=30' in workflow
-    assert workflow.count(
-        'tests/test_rate_limiter.py::'
-        'test_real_redis_does_not_store_denied_requests'
-    ) == 2
     assert 'name: browser-e2e (${{ matrix.group }}/8)' in workflow
     assert 'node scripts/run-e2e-ci-parallel.js --group=${{ matrix.group }}/8 --lanes=4' in workflow
     assert 'group: [1, 2, 3, 4, 5, 6, 7, 8]' in workflow
-    assert '--ci-shard=${{ matrix.pytest_shard }}' in workflow
     assert re.search(
         r'\n  browser-e2e:\s*\n\s+needs:\s+\[dispatch-integrity, browser-e2e-shards, browser-fonts\]',
         workflow,
     )
     assert 'test "$SHARD_RESULT" = success' in workflow
     assert 'fullyParallel: true' in playwright
-
-
-def test_real_browser_lab_is_required_in_ssh_integration():
-    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
-    job = workflow.split('\n  ssh-integration:', 1)[1].split('\n  smb-integration:', 1)[0]
-    assert 'actions/setup-node@' in job
-    assert 'python scripts/run_ci_protocol_checks.py' in job
-    from scripts.run_ci_protocol_checks import GROUPS
-    assert ('npm', 'ci') in GROUPS['ssh']
-    assert ('node', 'scripts/install-ci-chromium.js') in GROUPS['ssh']
-    assert GROUPS['ssh'][-1][1:] == ('scripts/run_integration_tests.py', '--browser')
-    assert 'if: always()' in job and 'test-results/' in job
 
 
 def assert_pinned_remote_font_browsers(fonts):
@@ -654,12 +649,11 @@ def assert_pinned_remote_font_browsers(fonts):
     assert 'docker rm --force --volumes "$WEBSSH_FONT_BROWSER_CONTAINER"' in fonts
     assert 'Refusing to remove container without matching CI ownership label' in fonts
 
-def test_font_browsers_and_python_shards_are_required_parallel_gates():
+def test_font_browsers_are_a_required_parallel_gate():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
     fonts = workflow.split('\n  browser-fonts:', 1)[1].split('\n  browser-e2e:', 1)[0]
     assert 'matrix:' not in fonts
     assert "WEBSSH_E2E_FAST_HASHING: '1'" in fonts
-    assert "python-version: '3.15'" in fonts
     assert_pinned_remote_font_browsers(fonts)
     for browser, port in (('firefox', '4173'), ('webkit', '4174')):
         assert 'WEBSSH_E2E_PORT=' + port in fonts
@@ -676,7 +670,6 @@ def test_font_browsers_and_python_shards_are_required_parallel_gates():
     assert fonts.count('overview defers terminal fonts|restored terminals load their saved fonts') == 2
     assert 'FONT_RESULT: ${{ needs.browser-fonts.result }}' in workflow
     assert 'test "$FONT_RESULT" = success' in workflow
-    assert 'needs: [dispatch-integrity, pytest-shards, dependency-locks]' in workflow
 
 
 def test_font_job_uses_hosted_runtime_and_locked_browser_launch_checks():
@@ -685,17 +678,17 @@ def test_font_job_uses_hosted_runtime_and_locked_browser_launch_checks():
     assert 'runs-on: ubuntu-24.04' in fonts
     assert 'container:' not in fonts
     assert 'PLAYWRIGHT_BROWSERS_PATH:' not in fonts
-    assert "python-version: '3.15'" in fonts
+    assert 'actions/setup-python@' not in fonts
     assert "node-version: '24'" in fonts
+    assert 'go-version-file: go.mod' in fonts
     assert 'run: npm ci' in fonts
     assert_pinned_remote_font_browsers(fonts)
-    ldap = fonts.split('- name: Install LDAP build dependencies', 1)[1].split('- name:', 1)[0]
-    assert 'run: bash scripts/install_ci_test_system_deps.sh' in ldap
 
 
 def test_ci_setup_keeps_safe_dependency_fallbacks():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
-    assert 'bash scripts/install_ci_test_system_deps.sh' in workflow
+    oracles = (WORKFLOWS / 'python-oracles.yml').read_text(encoding='utf-8')
+    assert 'bash scripts/install_ci_test_system_deps.sh' in oracles
     assert 'node scripts/install-ci-chromium.js' in workflow
     browser = (ROOT / 'scripts/install-ci-chromium.js').read_text(encoding='utf-8')
     assert "runCli(['install-deps', browserName])" in browser
@@ -720,7 +713,9 @@ def test_release_only_promotes_the_candidate_after_exact_sha_tests_and_scans():
         assert re.search(r'arch: ' + arch + r'\s+runner: ' + re.escape(runner) + r'\s', candidate)
     inspect = candidate.index('python scripts/release_image.py inspect-platform')
     scan = candidate.index('image-ref: ${{ env.RUNTIME_REF }}')
-    runtime = candidate.index('python scripts/check_hardened_container.py')
+    runtime = candidate.index('BUILD=0 IMG="$RUNTIME_REF" tests/image/check.sh')
+    runtime_step = candidate[:runtime].rsplit('- name:', 1)[1]
+    assert 'REVISION: ${{ github.sha }}' in runtime_step
     handoff = candidate.index('- name: Upload verified native identity')
     assert inspect < scan < runtime < handoff
     identity_step = candidate[handoff:].split('- name:', 2)[1]
@@ -775,14 +770,11 @@ def test_opt_in_hardening_preserves_restrictions_and_ldap_mounts():
         assert service['security_opt'] == ['no-new-privileges:true']
         assert int(service['pids_limit']) == 768
         assert int(service['mem_limit']) == 3 * 1024 ** 3
-        assert service['environment']['XDG_RUNTIME_DIR'] == '/run/webssh'
         assert service['ports'][0]['host_ip'] == '127.0.0.1'
         assert len(service['ports']) == 1
         for mount in service['tmpfs']:
             assert all(option in mount for option in ('noexec', 'nosuid', 'nodev', 'size='))
         assert any(mount.startswith('/tmp:') for mount in service['tmpfs'])
-        assert any(mount.startswith('/run/webssh:') and 'mode=700' in mount
-                   for mount in service['tmpfs'])
         volumes = {volume['target']: volume for volume in service['volumes']}
         assert not volumes['/app/data'].get('read_only', False)
         assert not volumes['/app/recovery'].get('read_only', False)
@@ -816,10 +808,9 @@ def test_docs_selection_is_job_level_and_keeps_both_required_aggregates():
         assert 'if: ${{ always() }}' in workflow
     assert "CI_FORCE_FULL: ${{ inputs.expected_sha != '' }}" in tests
     assert 'python -m unittest discover -s tests -p test_documentation_surface.py -v' in tests
-    assert '--ignore=tests/test_documentation_surface.py' in tests
     from scripts.check_release_gates import REQUIRED
     from scripts.check_release_gates import ALWAYS_RUN
-    for name in REQUIRED - ALWAYS_RUN - {'dispatch-integrity', 'browser-e2e', 'pytest', 'redis-rate-limiter', 'smb-integration', 'release-contract'}:
+    for name in REQUIRED - ALWAYS_RUN - {'dispatch-integrity', 'browser-e2e'}:
         job = re.split(r'\n  [a-z][a-z-]*:', tests.split('\n  ' + name + ':', 1)[1], maxsplit=1)[0]
         assert 'needs: dispatch-integrity' in job
         assert "if: needs.dispatch-integrity.outputs.mode == 'full'" in job
@@ -837,8 +828,10 @@ def test_security_images_require_native_runtime_acceptance_before_success():
         assert 'if:' not in runtime
         assert f'test "$(uname -m)" = "{machine}"' in runtime
         assert 'docker image inspect --format' in runtime
-        assert '--image "$runtime_ref"' in runtime
-        assert f'--revision "$GITHUB_SHA" --platform linux/{arch}' in runtime
+        assert f'--target debug --platform linux/{arch}' in runtime
+        assert ('BUILD=0 IMG="webssh-security:$GITHUB_SHA" '
+                'DEBUG_IMG="webssh-security-debug:$GITHUB_SHA" REVISION="$GITHUB_SHA"') in runtime
+        assert 'tests/image/check.sh' in runtime
         assert 'continue-on-error' not in job
         assert 'setup-qemu' not in job
     arm = workflow.split('  image-security-arm64:', 1)[1].split('  image-security:', 1)[0]
@@ -857,69 +850,3 @@ def test_pr_image_scans_use_native_builder_without_skipping_security_gates():
         assert "exit-code: '1'" in job
         assert 'OS_PACKAGE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}' in job
     assert 'anchore/sbom-action@' in workflow
-
-
-def test_minimum_python_and_both_redis_versions_share_the_lock_gate():
-    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
-    locks = workflow.split('\n  dependency-locks:', 1)[1].split('\n  pytest-shards:', 1)[0]
-    shards = workflow.split('\n  pytest-shards:', 1)[1].split('\n  pytest:', 1)[0]
-    python_gate = workflow.split('\n  pytest:', 1)[1].split('\n  redis-rate-limiter:', 1)[0]
-    redis_gate = workflow.split('\n  redis-rate-limiter:', 1)[1].split('\n  ssh-integration:', 1)[0]
-    assert "python-version: '3.11'" in locks
-    assert 'lock_requirements.ps1 -Check' in locks
-    assert 'bash scripts/install_ci_test_system_deps.sh' in locks
-    assert 'uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt' in locks
-    minimum = locks.split('- name: Run Python 3.11 minimum compatibility', 1)[1].split('- name:', 1)[0]
-    assert 'python -m pytest' in minimum and '--ci-shard=1/1' in minimum
-    assert '--basetemp="$RUNNER_TEMP/python-minimum"' in minimum
-    assert '-n 2' in minimum and '--dist=loadscope' in minimum
-    expected = {
-        'admin_cli', 'backup_manager', 'deployment_compatibility', 'auth', 'entrypoint',
-        'factor_bootstrap', 'file_service', 'gunicorn_command', 'ldap_auth', 'network_policy',
-        'production_config', 'sftp_handler', 'smb_protocol_contract', 'ssh_manager',
-        'storage_migrations', 'threaded_runtime',
-    }
-    assert set(re.findall(r'tests/test_([a-z_]+)\.py', minimum)) == expected
-    assert "python_version: '3.11'" not in shards
-    assert shards.count("python_version: '3.15'") == 3
-    for version, port, digest in (
-        ('7', 6379, '57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541'),
-        ('8', 6380, '0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0'),
-    ):
-        assert f'image: redis:{version}-alpine@sha256:{digest}' in locks
-        assert f'{port}:6379' in locks
-        step = locks.split(f'- name: Run Redis {version} rate limiter test', 1)[1].split('- name:', 1)[0]
-        assert f'TEST_REDIS_URL: redis://localhost:{port}/15' in step
-        assert 'python -m pytest' in step
-        assert 'tests/test_rate_limiter.py::test_real_redis_does_not_store_denied_requests' in step
-        assert f'--basetemp="$RUNNER_TEMP/redis-{version}"' in step
-    assert 'needs: [dispatch-integrity, pytest-shards, dependency-locks]' in python_gate
-    assert 'MINIMUM_RESULT: ${{ needs.dependency-locks.result }}' in python_gate
-    assert 'test "$PYTEST_RESULT" = success && test "$MINIMUM_RESULT" = success' in python_gate
-    assert 'needs: [dispatch-integrity, dependency-locks]' in redis_gate
-    assert "always() && needs.dispatch-integrity.outputs.mode == 'full'" in redis_gate
-    assert 'REDIS_RESULT: ${{ needs.dependency-locks.result }}' in redis_gate
-    assert 'test "$REDIS_RESULT" = success' in redis_gate
-    assert 'strategy:' not in redis_gate and 'services:' not in redis_gate
-    assert 'continue-on-error:' not in locks
-
-
-def test_protocol_labs_share_one_runner_and_keep_required_aggregate_checks():
-    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
-    ssh = workflow.split('\n  ssh-integration:', 1)[1].split('\n  smb-integration:', 1)[0]
-    assert "python-version: '3.15'" in ssh and "node-version: '24'" in ssh
-    assert 'astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2' in ssh
-    assert 'cache: npm' in ssh
-    buildx = 'run: docker buildx version'
-    runner = 'python scripts/run_ci_protocol_checks.py'
-    assert ssh.index(buildx) < ssh.index(runner)
-    assert 'name: ssh-browser-evidence' in ssh and 'if: always()' in ssh
-    assert 'continue-on-error:' not in ssh
-    for name, variable in [('smb-integration', 'SMB_RESULT'), ('release-contract', 'RELEASE_RESULT')]:
-        job = re.split(r'\n  [a-z][a-z0-9-]*:', workflow.split('\n  ' + name + ':', 1)[1], maxsplit=1)[0]
-        assert 'needs: [dispatch-integrity, ssh-integration]' in job
-        assert "always() && needs.dispatch-integrity.outputs.mode == 'full'" in job
-        assert variable + ': ${{ needs.ssh-integration.result }}' in job
-        assert f'test "${variable}" = success' in job
-        assert 'actions/setup-python@' not in job
-        assert 'continue-on-error:' not in job

@@ -152,10 +152,12 @@ def test_vendor_check_failure_in_other_jobs_is_rejected(tmp_path, name):
 def test_tests_workflow_runs_the_vendor_check_in_the_lint_job():
     from scripts.dependabot_vendor import PROFILES
     workflow = (ROOT / '.github/workflows/tests.yml').read_text(encoding='utf-8')
-    lint_job = workflow.split('\n  lint:', 1)[1].split('\n  dependency-locks:', 1)[0]
+    lint_job = workflow.split('\n  lint:', 1)[1].split('\n  browser-e2e-shards:', 1)[0]
 
     assert PROFILES['npm'].failed_job.fullmatch('lint')
     assert f"- name: {PROFILES['npm'].failed_step}\n        run: npm run vendor:check" in lint_job
+    assert PROFILES['pip'].failed_job.fullmatch('lint')
+    assert f"- name: {PROFILES['pip'].failed_step}\n        shell: pwsh\n        run: ./scripts/lock_requirements.ps1 -Check" in lint_job
 
 
 def test_gate_rejects_pr_code_outside_manifests_and_generated_vendor(tmp_path):
@@ -300,22 +302,22 @@ def test_stage_captures_added_modified_and_removed_vendor_files_only(tmp_path):
 
 
 PIP_BRANCH = 'dependabot/pip/python-minor-and-patch-34c4db8fb1'
-PYTHON_INPUTS = ('requirements.in', 'requirements-test.in', 'requirements-graph.in')
-PYTHON_LOCKS = ('requirements.txt', 'requirements-test.txt', 'requirements-graph.txt')
+PYTHON_INPUTS = ('requirements-test.in', 'requirements-graph.in')
+PYTHON_LOCKS = ('requirements-test.txt', 'requirements-graph.txt')
 
 
 def _pip_mutation(event, pull_request, files, jobs):
     event['workflow_run']['head_branch'] = PIP_BRANCH
     pull_request['head']['ref'] = PIP_BRANCH
     files[:] = [
-        {'filename': 'requirements.in', 'status': 'modified'},
-        {'filename': 'requirements.txt', 'status': 'modified'},
+        {'filename': 'requirements-test.in', 'status': 'modified'},
         {'filename': 'requirements-test.txt', 'status': 'modified'},
+        {'filename': 'requirements-graph.txt', 'status': 'modified'},
     ]
     pull_request['changed_files'] = len(files)
     jobs['jobs'] = [
         {
-            'name': 'dependency-locks',
+            'name': 'lint',
             'conclusion': 'failure',
             'steps': [
                 {'name': 'Check dependency locks', 'conclusion': 'failure'},
@@ -383,39 +385,39 @@ def test_valid_dependabot_pip_run_emits_sanitized_push_coordinates(tmp_path):
             'head repository',
         ),
         (
-            _replace_files(('requirements.txt', 'modified'), ('uv.toml', 'modified')),
+            _replace_files(('requirements-test.txt', 'modified'), ('uv.toml', 'modified')),
             'uv.toml',
         ),
         (
             _replace_files(
-                ('requirements.txt', 'modified'),
+                ('requirements-test.txt', 'modified'),
                 ('scripts/lock_requirements.ps1', 'modified'),
             ),
             'lock_requirements.ps1',
         ),
         (
             _replace_files(
-                ('requirements.txt', 'modified'),
+                ('requirements-test.txt', 'modified'),
                 ('scripts/dependabot_vendor.py', 'modified'),
             ),
             'dependabot_vendor.py',
         ),
         (
             _replace_files(
-                ('requirements.txt', 'modified'),
+                ('requirements-test.txt', 'modified'),
                 ('.github/workflows/tests.yml', 'modified'),
             ),
             'tests.yml',
         ),
         (
-            _replace_files(('requirements.txt', 'modified'), ('package-lock.json', 'modified')),
+            _replace_files(('requirements-test.txt', 'modified'), ('package-lock.json', 'modified')),
             'package-lock.json',
         ),
         (_replace_files(('requirements-dev.txt', 'added')), 'requirements-dev.txt'),
         (_replace_files(('docs/requirements.txt', 'modified')), 'docs/requirements.txt'),
-        (_replace_files(('requirements.txt', 'removed')), 'status'),
-        (_replace_files(('requirements.txt', 'renamed')), 'status'),
-        (_replace_files(('requirements.in', 'modified')), 'was changed'),
+        (_replace_files(('requirements-test.txt', 'removed')), 'status'),
+        (_replace_files(('requirements-test.txt', 'renamed')), 'status'),
+        (_replace_files(('requirements-test.in', 'modified')), 'was changed'),
         (
             lambda _event, _pr, _files, jobs: jobs['jobs'][0]['steps'][0].update(
                 conclusion='success'
@@ -504,7 +506,7 @@ def test_python_input_gate_rejects_resolution_overrides(tmp_path, line):
 
 
 def test_python_input_gate_rejects_missing_inputs(tmp_path):
-    (tmp_path / 'requirements.in').write_text('Flask==3.1.3\n', encoding='utf-8')
+    (tmp_path / 'requirements-graph.in').write_text('graphifyy==0.9.105\n', encoding='utf-8')
 
     result = _check_inputs(tmp_path)
 

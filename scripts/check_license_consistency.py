@@ -15,7 +15,7 @@ FILES = {
     "site/index.html": [r"Apache License 2\.0", r"Apache 2\.0 licensed"],
     "site/security.html": [r"Apache License 2\.0"],
     "site/impressum.html": [r"Apache License 2\.0"],
-    "Dockerfile": [r"org\.opencontainers\.image\.licenses=Apache-2\.0", r"COPY config\.py start\.py LICENSE THIRD-PARTY-NOTICES NOTICE /app/"],
+    "Dockerfile": [r"org\.opencontainers\.image\.licenses=Apache-2\.0", r"(?m)^COPY LICENSE NOTICE THIRD-PARTY-NOTICES /app/$"],
 }
 
 # SHA-256 of the complete UTF-8 text, with universal newline normalization.

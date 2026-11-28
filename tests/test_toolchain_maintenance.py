@@ -38,7 +38,7 @@ def test_every_uv_setup_consumes_the_same_required_version():
                 assert 'version-file: uv.toml' in block, path
                 assert not re.search(r'^\s+version:', block, re.M), path
                 setups.append(path)
-    assert len(setups) == 10
+    assert len(setups) == 4
 
 
 def test_scanner_fallbacks_use_the_same_pinned_release_images():
@@ -78,7 +78,7 @@ def test_lock_generator_preserves_existing_files_without_a_successful_update(tmp
     scripts = tmp_path / 'scripts'
     scripts.mkdir()
     shutil.copyfile(ROOT / 'scripts/lock_requirements.ps1', scripts / 'lock_requirements.ps1')
-    names = ('requirements', 'requirements-test', 'requirements-graph')
+    names = ('requirements-test', 'requirements-graph')
     for name in names:
         (tmp_path / (name + '.in')).write_text('example==1\n', encoding='utf-8')
         (tmp_path / (name + '.txt')).write_bytes(b'--require-hashes\nexample==1\n')
@@ -88,7 +88,7 @@ def test_lock_generator_preserves_existing_files_without_a_successful_update(tmp
 function global:uv {
     $global:lockTestCalls += 1
     if ($env:LOCK_TEST_MODE -eq 'conflicting-options') { throw 'resolver must not run' }
-    if ($env:LOCK_TEST_MODE -eq 'late-failure' -and $global:lockTestCalls -eq 3) {
+    if ($env:LOCK_TEST_MODE -eq 'late-failure' -and $global:lockTestCalls -eq 2) {
         $global:LASTEXITCODE = 1
         return
     }
@@ -123,7 +123,7 @@ def test_lock_generator_never_seeds_the_resolver_with_committed_hashes(tmp_path)
     scripts = tmp_path / 'scripts'
     scripts.mkdir()
     shutil.copyfile(ROOT / 'scripts/lock_requirements.ps1', scripts / 'lock_requirements.ps1')
-    names = ('requirements', 'requirements-test', 'requirements-graph')
+    names = ('requirements-test', 'requirements-graph')
     bogus = '--hash=sha256:' + 'ab' * 32
     for name in names:
         (tmp_path / (name + '.in')).write_text('example==1\n', encoding='utf-8')
@@ -132,7 +132,7 @@ def test_lock_generator_never_seeds_the_resolver_with_committed_hashes(tmp_path)
             "example==1 ; sys_platform == 'win32' \\\n"
             f'    {bogus} \\\n'
             f'    {bogus}\n'
-            '    # via -r requirements.in\n',
+            '    # via -r requirements-test.in\n',
             encoding='utf-8',
         )
     seeds = tmp_path / 'seeds'
@@ -152,10 +152,10 @@ catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }
                             env={**os.environ, 'LOCK_TEST_SEEDS': str(seeds)},
                             capture_output=True, text=True, encoding='utf-8', timeout=30)
     assert result.returncode == 1
-    assert 'requirements.txt is out of date' in result.stderr
-    seed = (seeds / 'requirements.txt').read_text(encoding='utf-8')
+    assert 'requirements-test.txt is out of date' in result.stderr
+    seed = (seeds / 'requirements-test.txt').read_text(encoding='utf-8')
     assert seed.splitlines() == [
         '--require-hashes',
         "example==1 ; sys_platform == 'win32'",
-        '    # via -r requirements.in',
+        '    # via -r requirements-test.in',
     ]

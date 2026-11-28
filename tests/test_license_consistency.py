@@ -83,6 +83,17 @@ class LicenseConsistencyTests(unittest.TestCase):
                 finally:
                     (self.root / name).write_text(original, encoding='utf-8')
 
+    def test_image_without_the_license_files_is_rejected(self):
+        dockerfile = self.root / 'Dockerfile'
+        dockerfile.write_text(
+            dockerfile.read_text(encoding='utf-8').replace(
+                'COPY LICENSE NOTICE THIRD-PARTY-NOTICES /app/\n', '',
+            ),
+            encoding='utf-8',
+        )
+        with self.assertRaisesRegex(SystemExit, 'Dockerfile'):
+            self.run_check()
+
     def test_historical_and_vendor_mit_declarations_are_allowed(self):
         vendor = self.root / 'static/vendor/example/LICENSE'
         vendor.parent.mkdir(parents=True)

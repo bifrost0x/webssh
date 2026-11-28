@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 
@@ -18,6 +17,8 @@ APPROVED_INSTALL_COMMANDS = {APPROVED_PIP_INSTALL_COMMAND, APPROVED_UV_INSTALL_C
 # "pipefail" contains "pip"; the exact strict-mode line installs nothing.
 ALLOWED_PIP_LINES = {"cache: pip", "set -euo pipefail", *APPROVED_INSTALL_COMMANDS}
 MINIMUM_PYTHON = "3.11"
+PYTHON_INPUTS = ("requirements-test.in", "requirements-graph.in")
+PYTHON_LOCKS = ("requirements-test.txt", "requirements-graph.txt")
 
 
 def pip_policy_allows(workflow):
@@ -32,14 +33,6 @@ def pip_policy_allows(workflow):
     )
 
 
-def normalized_names(path):
-    return {
-        canonicalize_name(line.split("=", 1)[0].split("<", 1)[0].split(">", 1)[0])
-        for line in Path(path).read_text(encoding="utf-8").splitlines()
-        if line and not line.startswith(("#", "-"))
-    }
-
-
 def locked_version(path, package_name):
     prefix = f"{package_name}=="
     for line in Path(path).read_text(encoding="utf-8").splitlines():
@@ -48,47 +41,15 @@ def locked_version(path, package_name):
     raise AssertionError(f"{package_name} is not locked in {path}")
 
 
-def lock_provenance(path, package_name):
-    lines = Path(path).read_text(encoding="utf-8").splitlines()
-    prefix = f"{package_name}=="
-    start = next(
-        index for index, line in enumerate(lines) if line.startswith(prefix)
-    )
-    end = next(
-        (index for index in range(start + 1, len(lines))
-        if lines[index] and not lines[index].startswith((" ", "#"))),
-        len(lines),
-    )
-    return "\n".join(lines[start:end])
-
-
-def lock_provenance_set(block):
-    return {
-        line.partition("# via ")[2].strip()
-        for line in block.splitlines()
-        if "# via " in line
-    }
-
-
-def test_greenlet_provenance_parser_returns_exact_dependency_set():
-    block = "greenlet==3.5.4 \\\n+    # via sqlalchemy\n"
-
-    assert lock_provenance_set(block) == {"sqlalchemy"}
-
-
-@pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
-def test_runtime_locks_are_hashed_and_exclude_eventlet(path):
-    """A resolver must not silently restore the superseded Eventlet runtime."""
+@pytest.mark.parametrize("path", PYTHON_LOCKS)
+def test_python_tool_locks_are_hashed(path):
     text = Path(path).read_text(encoding="utf-8")
 
     assert "--require-hashes" in text
-    assert "eventlet" not in normalized_names(path)
+    assert re.search(r"--hash=sha256:[0-9a-f]{64}", text)
 
 
-@pytest.mark.parametrize(
-    "path",
-    ["requirements.txt", "requirements-test.txt", "requirements-graph.txt"],
-)
+@pytest.mark.parametrize("path", PYTHON_LOCKS)
 def test_lock_files_do_not_repeat_hashes_within_a_requirement(path):
     """A regenerated requirement must list each approved artifact only once."""
     requirement = None
@@ -108,56 +69,9 @@ def test_lock_files_do_not_repeat_hashes_within_a_requirement(path):
         hashes.add(digest)
 
 
-@pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
-def test_greenlet_is_absent_or_only_a_sqlalchemy_transitive_dependency(path):
-    """SQLAlchemy 2.1 no longer needs greenlet for our synchronous runtime."""
-    direct = normalized_names("requirements.in")
-
-    assert "greenlet" not in direct
-    assert "sqlalchemy" not in direct
-    if "greenlet" in normalized_names(path):
-        assert lock_provenance_set(lock_provenance(path, "greenlet")) == {"sqlalchemy"}
-    else:
-        assert locked_version(path, "sqlalchemy") >= Version("2.1")
-
-
-def test_runtime_artifacts_do_not_select_cooperative_runtime():
-    """A stale Eventlet import or greenthread reference would change scheduling."""
-    runtime_artifacts = (
-        "requirements.in",
-        "Dockerfile",
-        "docker-compose.yml",
-        "docker-compose.ldap.yml",
-        "config.py",
-        "start.py",
-    )
-
-    runtime_paths = [Path(artifact) for artifact in runtime_artifacts]
-    runtime_paths.extend(Path("app").rglob("*.py"))
-
-    for artifact in runtime_paths:
-        text = artifact.read_text(encoding="utf-8").casefold()
-        assert "eventlet" not in text
-        assert "greenthread" not in text
-        assert "greenlet" not in text
-
-
-@pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
-def test_runtime_locks_resolve_reviewed_gunicorn_26(path):
-    """Gunicorn 25 would retain the superseded runtime baseline."""
-    version = locked_version(path, "gunicorn")
-
-    assert Version("26") <= version < Version("27")
-
-
-def test_direct_requirements_do_not_hide_transitive_packages():
-    direct = normalized_names("requirements.in")
-    assert "sqlalchemy" not in direct
-    assert "python-engineio" not in direct
-
-
-def test_every_direct_version_range_has_an_adjacent_compatibility_reason():
-    lines = Path("requirements.in").read_text(encoding="utf-8").splitlines()
+@pytest.mark.parametrize("path", PYTHON_INPUTS)
+def test_every_direct_version_range_has_an_adjacent_compatibility_reason(path):
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
     undocumented = []
 
     for index, line in enumerate(lines):
@@ -201,34 +115,9 @@ def test_lock_generator_compares_text_independent_of_checkout_line_endings():
     assert "Test-ByteEqual" not in script
 
 
-@pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
-def test_runtime_locks_exclude_vulnerable_cryptography_versions(path):
+def test_tool_lock_excludes_vulnerable_cryptography_versions():
     """CVE-2026-69247 affects cryptography 44 through 49."""
-    assert locked_version(path, "cryptography") >= Version("50.0.0")
-
-
-@pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
-def test_runtime_locks_exclude_vulnerable_urllib3_versions(path):
-    """CVE-2026-97687 and CVE-2026-97689 affect urllib3 before 2.8.0."""
-    assert locked_version(path, "urllib3") >= Version("2.8.0")
-
-
-@pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
-def test_runtime_locks_include_reviewed_mfa_libraries(path):
-    """TOTP codes come from the standard library; only QR rendering is a dependency."""
-    qrcode_version = locked_version(path, "qrcode")
-
-    assert Version("8.2") <= qrcode_version < Version("9")
-    with pytest.raises(AssertionError, match="pyotp is not locked"):
-        locked_version(path, "pyotp")
-
-
-def test_frontend_lock_excludes_vulnerable_socket_io_parser_versions():
-    """CVE-2026-69185 affects socket.io-parser 4.0.0 through 4.2.6."""
-    package_lock = json.loads(Path("package-lock.json").read_text(encoding="utf-8"))
-    parser = package_lock["packages"]["node_modules/socket.io-parser"]
-
-    assert Version(parser["version"]) >= Version("4.2.7")
+    assert locked_version("requirements-test.txt", "cryptography") >= Version("50.0.0")
 
 
 def test_ci_installs_only_hash_checked_python_dependencies():
@@ -352,8 +241,11 @@ def test_uv_installer_policy_is_exact_and_keeps_all_hash_requirements(lines, all
 def test_every_host_test_environment_sets_up_the_reviewed_uv_before_installing():
     workflow = Path('.github/workflows/tests.yml').read_text(encoding='utf-8')
     setup = 'astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2'
-    for name in ['lint', 'dependency-locks', 'pytest-shards', 'ssh-integration', 'browser-e2e-shards', 'browser-fonts']:
-        job = re.split(r'\n  [a-z][a-z0-9-]*:', workflow.split('\n  ' + name + ':', 1)[1], maxsplit=1)[0]
-        install = 'python scripts/run_ci_protocol_checks.py' if name == 'ssh-integration' else 'uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt'
+    install = APPROVED_UV_INSTALL_COMMAND
+    jobs = re.split(r'\n  (?=[a-z][a-z0-9-]*:\n)', workflow.split('\njobs:\n', 1)[1])
+    installing = [job for job in jobs if install in job]
+
+    assert [job.split(':', 1)[0].strip() for job in installing] == ['lint']
+    for job in installing:
         assert job.index(setup) < job.index(install)
         assert "version-file: uv.toml" in job

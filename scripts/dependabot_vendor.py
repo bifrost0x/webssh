@@ -18,8 +18,8 @@ from typing import Callable, NamedTuple
 DEPENDABOT = 'dependabot[bot]'
 SHA = re.compile(r'[0-9a-f]{40}')
 MANIFESTS = {'package.json', 'package-lock.json'}
-PYTHON_INPUTS = ('requirements.in', 'requirements-test.in', 'requirements-graph.in')
-PYTHON_LOCKS = ('requirements.txt', 'requirements-test.txt', 'requirements-graph.txt')
+PYTHON_INPUTS = ('requirements-test.in', 'requirements-graph.in')
+PYTHON_LOCKS = ('requirements-test.txt', 'requirements-graph.txt')
 _SPECIFIER = r'(?:===|==|~=|!=|<=|>=|<|>)\s*[A-Za-z0-9.*+!]+'
 # Plain names with version specifiers only: no URLs, extras, markers, options
 # or index overrides that could redirect resolution away from the default index.
@@ -73,7 +73,7 @@ PROFILES = {
         allowed_file=frozenset(PYTHON_INPUTS + PYTHON_LOCKS).__contains__,
         allowed_statuses=frozenset({'modified'}),
         required_files=frozenset(PYTHON_LOCKS),
-        failed_job=re.compile(r'dependency-locks'),
+        failed_job=re.compile(r'lint'),
         failed_step='Check dependency locks',
         stage_command=('git', 'add', '--', *PYTHON_LOCKS),
         staged_file=frozenset(PYTHON_LOCKS).__contains__,

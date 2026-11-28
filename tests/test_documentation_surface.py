@@ -123,7 +123,7 @@ def test_wiki_has_no_unresolved_placeholders():
 
 def test_github_setup_is_actionable_in_admin_and_wiki():
     """GitHub setup must name the exact menus and credentials in both places."""
-    admin = (ROOT / "templates" / "admin.html").read_text(encoding="utf-8")
+    admin = (ROOT / "internal" / "httpapi" / "pages" / "admin.gohtml").read_text(encoding="utf-8")
     guide = wiki_text("GitHub-Authentication.md")
 
     for phrase in (
@@ -518,53 +518,6 @@ def test_wiki_documents_command_set_lifecycle_and_upgrade_behavior():
         'legacy startup commands',
     ):
         assert phrase in documentation
-
-
-def workflow_job(workflow, job_name):
-    marker = f"\n  {job_name}:\n"
-    _, separator, remainder = workflow.partition(marker)
-    assert separator, f"missing workflow job: {job_name}"
-
-    next_job = re.search(r"(?m)^  [a-zA-Z0-9_-]+:\s*$", remainder)
-    return remainder[:next_job.start()] if next_job else remainder
-
-
-def test_python_runtime_contract_stays_synchronized():
-    minimum_python = "3.11"
-    production_python = "3.15"
-    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    workflow = (ROOT / ".github/workflows/tests.yml").read_text(encoding="utf-8")
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-
-    pytest_job = workflow_job(workflow, "pytest-shards")
-    matrix_entries = re.findall(
-        r"- python_version: '([^']+)'\s+check_name: ([^\n]+)",
-        pytest_job,
-    )
-
-    assert dockerfile.startswith(
-        f"FROM python:{production_python}-slim@sha256:"
-    )
-    assert matrix_entries == [
-        (production_python, "pytest (Python 3.15 shard 1/3)"),
-        (production_python, "pytest (Python 3.15 shard 2/3)"),
-        (production_python, "pytest (Python 3.15 shard 3/3)"),
-    ]
-    assert "python-version: ${{ matrix.python_version }}" in pytest_job
-    compatibility_job = workflow_job(workflow, "dependency-locks")
-    assert f"python-version: '{minimum_python}'" in compatibility_job
-    assert f"Run Python {minimum_python} minimum compatibility" in compatibility_job
-    assert "python -m pytest" in compatibility_job
-    assert "tests/test_auth.py" in compatibility_job
-    assert "tests/test_smb_protocol_contract.py" in compatibility_job
-
-    for job_name in ("ssh-integration", "browser-e2e-shards"):
-        assert (
-            f"python-version: '{production_python}'"
-            in workflow_job(workflow, job_name)
-        )
-
-    assert f"python-{minimum_python}+" in readme
 
 
 def test_readme_exposes_the_public_product_entry_points():
