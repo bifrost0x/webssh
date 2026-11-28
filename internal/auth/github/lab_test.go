@@ -14,6 +14,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -80,9 +81,7 @@ func labEnv(t *testing.T, extra map[string]any) (*env, labStub) {
 	e := newEnv(t)
 	e.svc.Client = Client{WebURL: stub.base, APIURL: stub.base, HTTP: stub.http}
 	body := map[string]any{"enabled": true, "client_id": stub.clientID, "client_secret": stub.secret, "redirect_uri": testRedirect}
-	for k, v := range extra {
-		body[k] = v
-	}
+	maps.Copy(body, extra)
 	raw, _ := json.Marshal(body)
 	if _, err := e.svc.Update(t.Context(), raw, 1); err != nil {
 		t.Fatalf("configure: %v", err)
